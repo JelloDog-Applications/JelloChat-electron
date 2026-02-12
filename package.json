@@ -6,16 +6,49 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "web": "node server.js"
+    "web": "node server.js",
+    "build:win": "electron-builder --win nsis",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
+    "build:apk": "npx cap sync android && npx cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "^7.4.2",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
+    "livekit-server-sdk": "^2.13.2",
     "pg": "^8.16.3",
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "electron": "^37.2.0"
+    "@capacitor/android": "^7.4.2",
+    "@capacitor/cli": "^7.4.2",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.7.0"
+  },
+  "build": {
+    "appId": "com.jellochat.app",
+    "productName": "JelloChat",
+    "files": [
+      "main.js",
+      "preload.js",
+      "db.js",
+      "server.js",
+      "sql/**/*",
+      "src/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }

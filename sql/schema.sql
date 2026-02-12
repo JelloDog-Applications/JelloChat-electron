@@ -26,9 +26,13 @@ CREATE TABLE IF NOT EXISTS server_members (
 CREATE TABLE IF NOT EXISTS channels (
   id SERIAL PRIMARY KEY,
   server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  type VARCHAR(10) NOT NULL DEFAULT 'text',
   name VARCHAR(80) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE channels
+ADD COLUMN IF NOT EXISTS type VARCHAR(10) NOT NULL DEFAULT 'text';
 
 CREATE TABLE IF NOT EXISTS messages (
   id BIGSERIAL PRIMARY KEY,
@@ -111,8 +115,8 @@ INSERT INTO servers (name)
 SELECT 'Jello HQ'
 WHERE NOT EXISTS (SELECT 1 FROM servers WHERE name = 'Jello HQ');
 
-INSERT INTO channels (server_id, name)
-SELECT s.id, c.name
+INSERT INTO channels (server_id, type, name)
+SELECT s.id, 'text', c.name
 FROM servers s
 CROSS JOIN (VALUES ('general'), ('dev-chat'), ('memes')) AS c(name)
 WHERE s.name = 'Jello HQ'
@@ -121,4 +125,3 @@ WHERE s.name = 'Jello HQ'
     FROM channels x
     WHERE x.server_id = s.id AND x.name = c.name
   );
-#

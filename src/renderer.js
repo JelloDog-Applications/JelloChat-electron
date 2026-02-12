@@ -25,6 +25,10 @@
   channelsList: document.getElementById('channels-list'),
   serverTitle: document.getElementById('server-title'),
   channelTitle: document.getElementById('channel-title'),
+  vcPanel: document.getElementById('vc-panel'),
+  vcRoomTitle: document.getElementById('vc-room-title'),
+  vcFrame: document.getElementById('vc-frame'),
+  vcCloseBtn: document.getElementById('vc-close-btn'),
   messagesList: document.getElementById('messages-list'),
   mobileServersToggle: document.getElementById('mobile-servers-toggle'),
   mobileUsersToggle: document.getElementById('mobile-users-toggle'),
@@ -65,8 +69,40 @@ const state = {
   serverOptionsServerId: null,
   selectedModerationUserId: null,
   serverOptionsTab: 'general',
-  bannedUsers: []
+  bannedUsers: [],
+  activeVoiceChannelId: null
 };
+
+function getSelectedChannel() {
+  return state.channels.find((channel) => channel.id === state.selectedChannelId) || null;
+}
+
+function pickDefaultChannelId(channels) {
+  if (!channels.length) {
+    return null;
+  }
+  const textChannel = channels.find((channel) => channel.type !== 'voice');
+  return (textChannel || channels[0]).id;
+}
+
+function leaveVoiceView() {
+  state.activeVoiceChannelId = null;
+  if (ui.vcFrame.src && ui.vcFrame.src !== 'about:blank') {
+    ui.vcFrame.src = 'about:blank';
+  }
+  ui.vcPanel.classList.add('hidden');
+  ui.messagesList.classList.remove('hidden');
+  ui.messageForm.classList.remove('hidden');
+}
+
+function openVoiceView(roomLabel, joinUrl, channelId) {
+  state.activeVoiceChannelId = channelId;
+  ui.vcRoomTitle.textContent = roomLabel;
+  ui.vcFrame.src = joinUrl;
+  ui.vcPanel.classList.remove('hidden');
+  ui.messagesList.classList.add('hidden');
+  ui.messageForm.classList.add('hidden');
+}
 
 function setAuthMessage(message, isError = false) {
   ui.authMessage.textContent = message;
@@ -283,12 +319,41 @@ function subscribeToSelectedChannel() {
     return;
   }
 
+  const selected = getSelectedChannel();
+  if (!selected || selected.type === 'voice') {
+    return;
+  }
+
   if (state.subscribedChannelId && state.subscribedChannelId !== state.selectedChannelId) {
     sendRealtime({ type: 'unsubscribe', channelId: state.subscribedChannelId });
   }
 
   state.subscribedChannelId = state.selectedChannelId;
   sendRealtime({ type: 'subscribe', channelId: state.selectedChannelId });
+}
+
+function buildVoiceJoinUrl(livekitUrl, token) {
+  return `https://meet.livekit.io/custom?liveKitUrl=${encodeURIComponent(livekitUrl)}&token=${encodeURIComponent(token)}`;
+}
+
+async function joinVoiceChannel(channel) {
+  if (!state.selectedServerId) {
+    ui.channelTitle.textContent = 'Select a server first.';
+    return;
+  }
+
+  const result = await window.api.vc.getToken({
+    serverId: state.selectedServerId,
+    channelId: channel.id
+  });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+
+  const joinUrl = buildVoiceJoinUrl(result.livekitUrl, result.token);
+  ui.channelTitle.textContent = `VC: ${channel.name}`;
+  openVoiceView(`Voice Channel: ${channel.name}`, joinUrl, channel.id);
 }
 
 async function ensureRealtime(token) {
@@ -439,6 +504,7 @@ function renderMessages(messages) {
 }
 
 async function loadMessages(channelId) {
+  leaveVoiceView();
   const response = await window.api.chat.getMessages(channelId);
   if (!response.ok) {
     ui.channelTitle.textContent = response.message;
@@ -451,6 +517,7 @@ async function loadMessages(channelId) {
 }
 
 async function loadDmMessages(partnerUserId, partnerUsername) {
+  leaveVoiceView();
   const response = await window.api.dm.getMessages({ partnerUserId });
   if (!response.ok) {
     ui.channelTitle.textContent = response.message;
@@ -469,7 +536,8 @@ function renderChannels() {
   for (const channel of state.channels) {
     const item = document.createElement('li');
     const button = document.createElement('button');
-    button.textContent = `# ${channel.name}`;
+    const label = channel.type === 'voice' ? `VC ${channel.name}` : `# ${channel.name}`;
+    button.textContent = label;
     if (channel.id === state.selectedChannelId) {
       button.classList.add('active');
     }
@@ -477,9 +545,15 @@ function renderChannels() {
     button.addEventListener('click', async () => {
       state.selectedChannelId = channel.id;
       state.selectedDmUser = null;
-      ui.channelTitle.textContent = `# ${channel.name}`;
       renderChannels();
-      await loadMessages(channel.id);
+      if (channel.type === 'voice') {
+        state.subscribedChannelId = null;
+        ui.messagesList.innerHTML = '';
+        await joinVoiceChannel(channel);
+      } else {
+        ui.channelTitle.textContent = `# ${channel.name}`;
+        await loadMessages(channel.id);
+      }
       if (window.innerWidth <= 700) {
         closeMobileDrawers();
       }
@@ -505,20 +579,30 @@ async function loadChannels(serverId, resetSelection = true) {
   updateChannelCreateButton();
 
   if (resetSelection) {
-    state.selectedChannelId = response.channels[0]?.id || null;
+    state.selectedChannelId = pickDefaultChannelId(response.channels);
   } else {
     const stillExists = response.channels.some((channel) => channel.id === previousSelected);
-    state.selectedChannelId = stillExists ? previousSelected : response.channels[0]?.id || null;
+    state.selectedChannelId = stillExists ? previousSelected : pickDefaultChannelId(response.channels);
   }
 
   renderChannels();
 
   if (state.selectedChannelId) {
     state.selectedDmUser = null;
-    await loadMessages(state.selectedChannelId);
-    const c = state.channels.find((x) => x.id === state.selectedChannelId);
-    ui.channelTitle.textContent = c ? `# ${c.name}` : 'Select a channel';
+    const selected = getSelectedChannel();
+    if (selected?.type === 'voice') {
+      ui.channelTitle.textContent = `VC: ${selected.name}`;
+      ui.messagesList.innerHTML = '';
+      state.subscribedChannelId = null;
+      if (state.activeVoiceChannelId !== selected.id) {
+        leaveVoiceView();
+      }
+    } else {
+      await loadMessages(state.selectedChannelId);
+      ui.channelTitle.textContent = selected ? `# ${selected.name}` : 'Select a channel';
+    }
   } else {
+    leaveVoiceView();
     ui.channelTitle.textContent = 'No channels available';
     ui.messagesList.innerHTML = '';
     state.subscribedChannelId = null;
@@ -863,6 +947,14 @@ ui.banUserBtn.addEventListener('click', async () => {
   await loadServerPresence(state.selectedServerId);
 });
 
+ui.vcCloseBtn.addEventListener('click', () => {
+  leaveVoiceView();
+  const selected = getSelectedChannel();
+  if (selected?.type === 'voice') {
+    ui.channelTitle.textContent = `VC: ${selected.name} (left)`;
+  }
+});
+
 ui.createServerBtn.addEventListener('click', async () => {
   const name = window.prompt('Server name');
   if (!name) {
@@ -998,9 +1090,20 @@ ui.createChannelBtn.addEventListener('click', async () => {
     return;
   }
 
+  const kindRaw = window.prompt('Channel type: "text" or "voice"', 'text');
+  if (!kindRaw) {
+    return;
+  }
+  const type = kindRaw.trim().toLowerCase();
+  if (!['text', 'voice'].includes(type)) {
+    ui.channelTitle.textContent = 'Channel type must be "text" or "voice".';
+    return;
+  }
+
   const result = await window.api.chat.createChannel({
     serverId: state.selectedServerId,
-    name
+    name,
+    type
   });
 
   if (!result.ok) {
@@ -1085,6 +1188,12 @@ ui.messageForm.addEventListener('submit', async (event) => {
     return;
   }
 
+  const selected = getSelectedChannel();
+  if (selected?.type === 'voice') {
+    ui.channelTitle.textContent = 'Use VC channels for calls. Text chat is disabled in voice channels.';
+    return;
+  }
+
   const result = await window.api.chat.sendMessage({
     channelId: state.selectedChannelId,
     content
@@ -1099,6 +1208,7 @@ ui.messageForm.addEventListener('submit', async (event) => {
 });
 
 ui.logoutBtn.addEventListener('click', async () => {
+  leaveVoiceView();
   await window.api.auth.logout();
   if (state.ws) {
     state.ws.close();
@@ -1120,6 +1230,7 @@ ui.logoutBtn.addEventListener('click', async () => {
   state.mobileUsersOpen = false;
   state.serverOptionsServerId = null;
   state.selectedModerationUserId = null;
+  state.activeVoiceChannelId = null;
 
   ui.serversList.innerHTML = '';
   ui.channelsList.innerHTML = '';

@@ -16,6 +16,7 @@ A simple Discord-like desktop app built with Electron and PostgreSQL.
 - Kick and ban system (server owner only)
 - Unban members (server owner only)
 - Server options panel with tabs (General/Banned) and server rename
+- Voice channels (LiveKit token-based join)
 - Edit and delete your own messages
 - Live updates over local WebSocket events
 - Web mode for browser and phone access
@@ -32,13 +33,20 @@ A simple Discord-like desktop app built with Electron and PostgreSQL.
    ```
 
 3. Copy `.env.example` to `.env` and set DB credentials.
-4. Install dependencies:
+4. Configure LiveKit in `.env` for voice channels:
+
+   ```env
+   LIVEKIT_URL=wss://your-livekit-host
+   LIVEKIT_API_KEY=your_api_key
+   LIVEKIT_API_SECRET=your_api_secret
+   ```
+5. Install dependencies:
 
    ```powershell
    npm install
    ```
 
-5. Start the app:
+6. Start the app:
 
    ```powershell
    npm start
@@ -56,6 +64,11 @@ A simple Discord-like desktop app built with Electron and PostgreSQL.
 3. On phone (same Wi-Fi), open: `http://YOUR_COMPUTER_IP:3000`
 
 You can set `WEB_PORT` in `.env` if needed.
+
+## Voice Channels
+
+- Owner can create both `text` and `voice` channels.
+- Clicking a voice channel requests a secure token from the backend and opens LiveKit Meet.
 
 ## Schema Update
 

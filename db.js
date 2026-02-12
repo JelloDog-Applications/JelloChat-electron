@@ -1,5 +1,55 @@
 const { Pool } = require('pg');
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
+
+function loadEnv() {
+  const candidates = [];
+
+  function addCandidate(filePath) {
+    if (!filePath) {
+      return;
+    }
+    if (!candidates.includes(filePath)) {
+      candidates.push(filePath);
+    }
+  }
+
+  function addUpwardEnvCandidates(startDir, depth = 4) {
+    if (!startDir) {
+      return;
+    }
+    let current = path.resolve(startDir);
+    for (let i = 0; i <= depth; i += 1) {
+      addCandidate(path.join(current, '.env'));
+      const parent = path.dirname(current);
+      if (parent === current) {
+        break;
+      }
+      current = parent;
+    }
+  }
+
+  addCandidate(process.env.JELLOCHAT_ENV_PATH);
+  addUpwardEnvCandidates(process.cwd(), 5);
+  addUpwardEnvCandidates(path.dirname(process.execPath || ''), 5);
+  if (process.resourcesPath) {
+    addUpwardEnvCandidates(process.resourcesPath, 3);
+  }
+  addUpwardEnvCandidates(__dirname, 3);
+
+  for (const envPath of candidates) {
+    if (fs.existsSync(envPath)) {
+      dotenv.config({ path: envPath });
+      return envPath;
+    }
+  }
+
+  dotenv.config();
+  return null;
+}
+
+const loadedEnvPath = loadEnv();
 
 let pool;
 
@@ -17,8 +67,14 @@ function createPool() {
 
 async function connect() {
   pool = createPool();
-  const client = await pool.connect();
-  client.release();
+  try {
+    const client = await pool.connect();
+    client.release();
+  } catch (error) {
+    const envSource = loadedEnvPath || 'defaults/environment';
+    error.message = `${error.message} (env source: ${envSource})`;
+    throw error;
+  }
 }
 
 function query(text, params = []) {

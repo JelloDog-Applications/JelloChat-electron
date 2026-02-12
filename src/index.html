@@ -84,6 +84,13 @@
             <h2 id="channel-title">Select a channel</h2>
             <button id="mobile-users-toggle" class="mobile-drawer-toggle" type="button" title="Open users">👥</button>
           </header>
+          <section id="vc-panel" class="vc-panel hidden">
+            <div class="vc-panel-header">
+              <h3 id="vc-room-title">Voice Channel</h3>
+              <button id="vc-close-btn" type="button">Leave VC</button>
+            </div>
+            <iframe id="vc-frame" title="Voice Channel" allow="camera; microphone; autoplay; fullscreen"></iframe>
+          </section>
           <div id="messages-list" class="messages-list"></div>
           <form id="message-form" class="message-form">
             <input id="message-input" type="text" placeholder="Message #channel" autocomplete="off" />

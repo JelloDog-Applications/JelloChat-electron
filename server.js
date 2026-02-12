@@ -4,6 +4,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+const { AccessToken } = require('livekit-server-sdk');
 const db = require('./db');
 
 const WEB_PORT = Number(process.env.WEB_PORT || 3000);
@@ -126,6 +127,19 @@ async function canUsersDm(userAId, userBId) {
     [userAId, userBId]
   );
   return sharedServer.rows.length > 0;
+}
+
+function createVoiceToken({ identity, name, roomName }) {
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const livekitUrl = process.env.LIVEKIT_URL;
+  if (!apiKey || !apiSecret || !livekitUrl) {
+    throw new Error('LiveKit environment variables are not configured.');
+  }
+
+  const token = new AccessToken(apiKey, apiSecret, { identity, name, ttl: '1h' });
+  token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+  return { token: token.toJwt(), livekitUrl };
 }
 
 async function isServerOwner(userId, serverId) {
@@ -266,7 +280,7 @@ app.post('/api/chat/servers', authMiddleware, async (req, res) => {
       'INSERT INTO server_members (user_id, server_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [req.userId, server.id]
     );
-    await db.query('INSERT INTO channels (server_id, name) VALUES ($1, $2)', [server.id, 'general']);
+    await db.query('INSERT INTO channels (server_id, type, name) VALUES ($1, $2, $3)', [server.id, 'text', 'general']);
 
     await broadcastToServerMembers(server.id, { type: 'server-created', server });
     res.json({ ok: true, server });
@@ -518,7 +532,7 @@ app.get('/api/chat/servers/:serverId/channels', authMiddleware, async (req, res)
     }
 
     const owner = await db.query('SELECT owner_user_id FROM servers WHERE id = $1', [serverId]);
-    const channels = await db.query('SELECT id, name, server_id FROM channels WHERE server_id = $1 ORDER BY name', [
+    const channels = await db.query('SELECT id, type, name, server_id FROM channels WHERE server_id = $1 ORDER BY name', [
       serverId
     ]);
     res.json({
@@ -533,9 +547,10 @@ app.get('/api/chat/servers/:serverId/channels', authMiddleware, async (req, res)
 
 app.post('/api/chat/channels', authMiddleware, async (req, res) => {
   const serverId = Number(req.body?.serverId);
+  const type = String(req.body?.type || 'text').trim().toLowerCase();
   const name = String(req.body?.name || '').trim().toLowerCase();
 
-  if (!serverId || name.length < 1 || name.length > 80) {
+  if (!serverId || !['text', 'voice'].includes(type) || name.length < 1 || name.length > 80) {
     res.status(400).json({ ok: false, message: 'Valid server and channel name are required.' });
     return;
   }
@@ -552,14 +567,61 @@ app.post('/api/chat/channels', authMiddleware, async (req, res) => {
     }
 
     const created = await db.query(
-      'INSERT INTO channels (server_id, name) VALUES ($1, $2) RETURNING id, name, server_id',
-      [serverId, name]
+      'INSERT INTO channels (server_id, type, name) VALUES ($1, $2, $3) RETURNING id, type, name, server_id',
+      [serverId, type, name]
     );
     const channel = created.rows[0];
     await broadcastToServerMembers(serverId, { type: 'channel-created', serverId, channel });
     res.json({ ok: true, channel });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to create channel: ${error.message}` });
+  }
+});
+
+app.post('/api/vc/token', authMiddleware, async (req, res) => {
+  const serverId = Number(req.body?.serverId);
+  const channelId = Number(req.body?.channelId);
+  if (!serverId || !channelId) {
+    res.status(400).json({ ok: false, message: 'Valid server and channel are required.' });
+    return;
+  }
+
+  try {
+    const membership = await canAccessServer(req.userId, serverId);
+    if (!membership) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+
+    const channel = await db.query(
+      'SELECT id, server_id, type, name FROM channels WHERE id = $1 AND server_id = $2',
+      [channelId, serverId]
+    );
+    if (channel.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Channel not found.' });
+      return;
+    }
+    if (channel.rows[0].type !== 'voice') {
+      res.status(400).json({ ok: false, message: 'This channel is not a voice channel.' });
+      return;
+    }
+
+    const user = await db.query('SELECT username FROM users WHERE id = $1', [req.userId]);
+    const roomName = `server-${serverId}-channel-${channelId}`;
+    const voice = createVoiceToken({
+      identity: String(req.userId),
+      name: user.rows[0]?.username || `user-${req.userId}`,
+      roomName
+    });
+
+    res.json({
+      ok: true,
+      roomName,
+      livekitUrl: voice.livekitUrl,
+      token: voice.token
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to create voice token: ${error.message}` });
   }
 });
 

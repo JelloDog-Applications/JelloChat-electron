@@ -5,6 +5,7 @@
   }
 
   const TOKEN_KEY = 'jellochat_token';
+  const API_BASE_KEY = 'jellochat_api_base';
 
   function getToken() {
     return localStorage.getItem(TOKEN_KEY);
@@ -20,6 +21,15 @@
     localStorage.removeItem(TOKEN_KEY);
   }
 
+  function apiBase() {
+    if (location.protocol !== 'file:') {
+      return '';
+    }
+    // Android emulator default bridge to host machine.
+    const fromStorage = localStorage.getItem(API_BASE_KEY);
+    return fromStorage || 'http://10.0.2.2:3000';
+  }
+
   async function request(method, path, body) {
     const token = getToken();
     const headers = { 'Content-Type': 'application/json' };
@@ -27,7 +37,7 @@
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(path, {
+    const response = await fetch(`${apiBase()}${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined
@@ -46,6 +56,11 @@
   }
 
   function wsBaseUrl() {
+    if (location.protocol === 'file:') {
+      const httpBase = apiBase();
+      const wsBase = httpBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+      return `${wsBase}/ws`;
+    }
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${location.host}/ws`;
   }
@@ -81,6 +96,9 @@
     dm: {
       getMessages: (payload) => request('GET', `/api/dm/${payload.partnerUserId}/messages`),
       sendMessage: (payload) => request('POST', `/api/dm/${payload.partnerUserId}/messages`, payload)
+    },
+    vc: {
+      getToken: (payload) => request('POST', '/api/vc/token', payload)
     },
     friends: {
       list: () => request('GET', '/api/friends'),
