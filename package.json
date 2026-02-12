@@ -1,0 +1,21 @@
+{
+  "name": "jellochat",
+  "version": "1.0.0",
+  "description": "Electron chat app with PostgreSQL",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "web": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "pg": "^8.16.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0"
+  }
+}

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JelloChat</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="auth-panel" class="auth-panel">
+        <h1>JelloChat</h1>
+        <p>Login to continue.</p>
+
+        <div class="auth-tabs">
+          <button id="show-login" class="tab tab-active" type="button">Login</button>
+          <button id="show-register" class="tab" type="button">Register</button>
+        </div>
+
+        <form id="login-form" class="auth-form">
+          <label>Email</label>
+          <input id="login-email" type="email" required />
+          <label>Password</label>
+          <input id="login-password" type="password" required />
+          <button type="submit">Login</button>
+        </form>
+
+        <form id="register-form" class="auth-form auth-hidden">
+          <label>Username</label>
+          <input id="register-username" type="text" required />
+          <label>Email</label>
+          <input id="register-email" type="email" required />
+          <label>Password</label>
+          <input id="register-password" type="password" minlength="6" required />
+          <button type="submit">Create account</button>
+        </form>
+
+        <p id="auth-message" class="message"></p>
+      </section>
+
+      <section id="chat-panel" class="chat-panel hidden">
+        <aside class="servers-column">
+          <div class="panel-header">
+            <h2>Servers</h2>
+          </div>
+          <ul id="servers-list" class="list"></ul>
+          <div id="server-options-menu" class="server-options-menu hidden">
+            <div class="server-options-tabs">
+              <button id="server-tab-general" class="server-tab active" type="button">General</button>
+              <button id="server-tab-banned" class="server-tab" type="button">Banned</button>
+            </div>
+            <div class="server-options-content">
+              <section id="server-panel-general" class="server-panel">
+                <label for="server-name-input">Server Name</label>
+                <input id="server-name-input" type="text" maxlength="80" />
+                <button id="save-server-name-btn" type="button">Save Name</button>
+                <button id="leave-server-btn" type="button">Leave Server</button>
+              </section>
+              <section id="server-panel-banned" class="server-panel hidden">
+                <div id="banned-users-list" class="banned-users-list"></div>
+              </section>
+            </div>
+          </div>
+          <button id="join-invite-btn" class="create-server-btn secondary-btn" type="button">Join by Invite</button>
+          <button id="create-server-btn" class="create-server-btn" type="button">+ Create Server</button>
+        </aside>
+
+        <aside class="channels-column">
+          <div class="channels-header">
+            <h2 id="server-title">Channels</h2>
+            <div class="channel-actions">
+              <button id="create-invite-btn" class="icon-btn" type="button" title="Create invite">Invite</button>
+              <button id="create-channel-btn" class="icon-btn" type="button" title="Create channel">+</button>
+              <button id="logout-btn" type="button">Logout</button>
+            </div>
+          </div>
+          <ul id="channels-list" class="list"></ul>
+        </aside>
+
+        <section class="messages-column">
+          <header class="messages-header">
+            <button id="mobile-servers-toggle" class="mobile-drawer-toggle" type="button" title="Open servers">☰</button>
+            <h2 id="channel-title">Select a channel</h2>
+            <button id="mobile-users-toggle" class="mobile-drawer-toggle" type="button" title="Open users">👥</button>
+          </header>
+          <div id="messages-list" class="messages-list"></div>
+          <form id="message-form" class="message-form">
+            <input id="message-input" type="text" placeholder="Message #channel" autocomplete="off" />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+
+        <aside class="presence-column">
+          <div class="presence-actions">
+            <button id="add-friend-btn" class="create-server-btn secondary-btn" type="button">Add Friend</button>
+            <button id="friend-requests-btn" class="create-server-btn secondary-btn" type="button">Requests</button>
+          </div>
+          <div id="user-options-menu" class="user-options-menu hidden">
+            <button id="kick-user-btn" type="button">Kick User</button>
+            <button id="ban-user-btn" type="button">Ban User</button>
+          </div>
+          <h3>Online In Server</h3>
+          <ul id="online-users-list" class="list compact-list"></ul>
+          <h3>Friends</h3>
+          <ul id="friends-list" class="list compact-list"></ul>
+        </aside>
+
+        <button id="mobile-drawer-backdrop" class="mobile-drawer-backdrop" type="button" aria-label="Close panels"></button>
+      </section>
+    </main>
+
+    <script src="./api.js"></script>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

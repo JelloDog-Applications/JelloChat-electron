@@ -1,0 +1,124 @@
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(50) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS servers (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(80) NOT NULL,
+  owner_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE servers
+ADD COLUMN IF NOT EXISTS owner_user_id INT REFERENCES users(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS server_members (
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, server_id)
+);
+
+CREATE TABLE IF NOT EXISTS channels (
+  id SERIAL PRIMARY KEY,
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  name VARCHAR(80) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id BIGSERIAL PRIMARY KEY,
+  channel_id INT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS server_invites (
+  id SERIAL PRIMARY KEY,
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  code VARCHAR(20) NOT NULL UNIQUE,
+  created_by_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  uses_count INT NOT NULL DEFAULT 0,
+  max_uses INT,
+  expires_at TIMESTAMPTZ,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (max_uses IS NULL OR max_uses > 0),
+  CHECK (uses_count >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS friend_requests (
+  id SERIAL PRIMARY KEY,
+  sender_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  receiver_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  responded_at TIMESTAMPTZ,
+  CHECK (sender_user_id <> receiver_user_id),
+  CHECK (status IN ('pending', 'accepted', 'rejected'))
+);
+
+CREATE TABLE IF NOT EXISTS friendships (
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  friend_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, friend_user_id),
+  CHECK (user_id <> friend_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS dm_messages (
+  id BIGSERIAL PRIMARY KEY,
+  sender_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  receiver_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (sender_user_id <> receiver_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dm_pair_created_at
+ON dm_messages (
+  LEAST(sender_user_id, receiver_user_id),
+  GREATEST(sender_user_id, receiver_user_id),
+  created_at
+);
+
+CREATE TABLE IF NOT EXISTS server_bans (
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  banned_by_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (server_id, user_id),
+  CHECK (server_id > 0)
+);
+
+UPDATE servers s
+SET owner_user_id = members.user_id
+FROM (
+  SELECT server_id, MIN(user_id) AS user_id
+  FROM server_members
+  GROUP BY server_id
+) members
+WHERE s.id = members.server_id
+  AND s.owner_user_id IS NULL;
+
+INSERT INTO servers (name)
+SELECT 'Jello HQ'
+WHERE NOT EXISTS (SELECT 1 FROM servers WHERE name = 'Jello HQ');
+
+INSERT INTO channels (server_id, name)
+SELECT s.id, c.name
+FROM servers s
+CROSS JOIN (VALUES ('general'), ('dev-chat'), ('memes')) AS c(name)
+WHERE s.name = 'Jello HQ'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM channels x
+    WHERE x.server_id = s.id AND x.name = c.name
+  );
+#
