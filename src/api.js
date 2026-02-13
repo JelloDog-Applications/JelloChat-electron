@@ -5,6 +5,7 @@
   }
 
   const TOKEN_KEY = 'jellochat_token';
+  const REMEMBER_KEY = 'jellochat_remember';
   const API_BASE_KEY = 'jellochat_api_base';
 
   function getToken() {
@@ -19,6 +20,21 @@
 
   function clearToken() {
     localStorage.removeItem(TOKEN_KEY);
+  }
+
+  function shouldRemember() {
+    const raw = localStorage.getItem(REMEMBER_KEY);
+    if (raw === null) {
+      return true;
+    }
+    return raw === '1';
+  }
+
+  function setRemember(remember) {
+    localStorage.setItem(REMEMBER_KEY, remember ? '1' : '0');
+    if (!remember) {
+      clearToken();
+    }
   }
 
   function apiBase() {
@@ -45,6 +61,12 @@
 
     const payload = await response.json();
     if ((path === '/api/auth/login' || path === '/api/auth/register') && payload?.ok && payload?.realtimeToken) {
+      if (shouldRemember()) {
+        setToken(payload.realtimeToken);
+      }
+    }
+
+    if (path === '/api/auth/session' && payload?.ok && payload?.realtimeToken) {
       setToken(payload.realtimeToken);
     }
 
@@ -72,7 +94,16 @@
     auth: {
       register: (payload) => request('POST', '/api/auth/register', payload),
       login: (payload) => request('POST', '/api/auth/login', payload),
-      logout: () => request('POST', '/api/auth/logout')
+      getSession: () => request('GET', '/api/auth/session'),
+      setRemember,
+      getRemember: shouldRemember,
+      logout: () => request('POST', '/api/auth/logout'),
+      resendVerification: (payload) => request('POST', '/api/auth/resend-verification', payload),
+      verifyEmail: (payload) => request('POST', '/api/auth/verify-email', payload),
+      requestPasswordReset: (payload) => request('POST', '/api/auth/password-reset/request', payload),
+      confirmPasswordReset: (payload) => request('POST', '/api/auth/password-reset/confirm', payload),
+      updateAccount: (payload) => request('POST', '/api/auth/account', payload),
+      deleteAccount: (payload) => request('POST', '/api/auth/account/delete', payload)
     },
     chat: {
       getServers: () => request('GET', '/api/chat/servers'),

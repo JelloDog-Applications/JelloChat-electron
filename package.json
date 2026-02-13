@@ -18,6 +18,7 @@
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "livekit-server-sdk": "^2.13.2",
+    "nodemailer": "^6.9.16",
     "pg": "^8.16.3",
     "ws": "^8.18.3"
   },

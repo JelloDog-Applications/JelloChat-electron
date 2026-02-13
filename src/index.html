@@ -23,6 +23,10 @@
           <input id="login-email" type="email" required />
           <label>Password</label>
           <input id="login-password" type="password" required />
+          <label class="remember-row">
+            <input id="remember-me" type="checkbox" checked />
+            <span>Remember me</span>
+          </label>
           <button type="submit">Login</button>
         </form>
 
@@ -35,6 +39,12 @@
           <input id="register-password" type="password" minlength="6" required />
           <button type="submit">Create account</button>
         </form>
+
+        <div class="auth-actions">
+          <button id="resend-verification-btn" type="button">Resend Verification</button>
+          <button id="forgot-password-btn" type="button">Forgot Password</button>
+          <button id="verify-token-btn" type="button">Verify Token</button>
+        </div>
 
         <p id="auth-message" class="message"></p>
       </section>
@@ -72,7 +82,6 @@
             <div class="channel-actions">
               <button id="create-invite-btn" class="icon-btn" type="button" title="Create invite">Invite</button>
               <button id="create-channel-btn" class="icon-btn" type="button" title="Create channel">+</button>
-              <button id="logout-btn" type="button">Logout</button>
             </div>
           </div>
           <ul id="channels-list" class="list"></ul>
@@ -122,7 +131,63 @@
           <ul id="online-users-list" class="list compact-list"></ul>
           <h3>Friends</h3>
           <ul id="friends-list" class="list compact-list"></ul>
+
+          <div class="account-panel">
+            <div class="account-info">
+              <div id="account-username" class="account-username">User</div>
+              <div id="account-email" class="account-email">email@example.com</div>
+            </div>
+            <button id="account-settings-btn" class="account-settings-btn" type="button" title="Settings">⚙</button>
+            <div id="account-settings-menu" class="account-settings-menu hidden">
+              <button id="account-my-account-btn" type="button">My Account</button>
+              <button id="logout-btn" type="button">Logout</button>
+            </div>
+          </div>
         </aside>
+
+        <section id="account-modal" class="account-modal hidden">
+          <div class="account-modal-card">
+            <div class="account-modal-header">
+              <h3>My Account</h3>
+              <button id="account-modal-close-btn" type="button">Close</button>
+            </div>
+            <form id="account-form" class="account-form">
+              <label for="account-username-input">Username</label>
+              <input id="account-username-input" type="text" maxlength="50" />
+              <label for="account-email-input">Email</label>
+              <input id="account-email-input" type="email" />
+              <label for="account-current-password-input">Current Password</label>
+              <input id="account-current-password-input" type="password" autocomplete="current-password" />
+              <label for="account-new-password-input">New Password</label>
+              <input id="account-new-password-input" type="password" minlength="6" autocomplete="new-password" />
+              <button id="account-save-btn" type="submit">Save Changes</button>
+            </form>
+            <button id="account-delete-btn" class="account-delete-btn" type="button">Delete Account</button>
+            <p id="account-form-message" class="account-form-message"></p>
+          </div>
+        </section>
+
+        <section id="friend-requests-modal" class="account-modal hidden">
+          <div class="account-modal-card">
+            <div class="account-modal-header">
+              <h3>Friend Requests</h3>
+              <button id="friend-requests-close-btn" type="button">Close</button>
+            </div>
+            <div id="friend-requests-list" class="friend-requests-list"></div>
+          </div>
+        </section>
+
+        <section id="app-dialog" class="app-dialog hidden">
+          <div class="app-dialog-card">
+            <h3 id="app-dialog-title">Dialog</h3>
+            <p id="app-dialog-message"></p>
+            <input id="app-dialog-input" type="text" class="hidden" />
+            <div class="app-dialog-actions">
+              <button id="app-dialog-cancel-btn" type="button">Cancel</button>
+              <button id="app-dialog-ok-btn" type="button">OK</button>
+            </div>
+          </div>
+        </section>
 
         <button id="mobile-drawer-backdrop" class="mobile-drawer-backdrop" type="button" aria-label="Close panels"></button>
       </section>

@@ -3,8 +3,59 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(50) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  email_verification_token_hash TEXT,
+  email_verification_expires_at TIMESTAMPTZ,
+  password_reset_token_hash TEXT,
+  password_reset_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS email_verification_token_hash TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS password_reset_token_hash TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+
+DO $$
+DECLARE
+  rec RECORD;
+  base_name TEXT;
+  candidate TEXT;
+BEGIN
+  FOR rec IN
+    SELECT id, username
+    FROM users
+    WHERE username !~ '#[0-9]{4}$'
+  LOOP
+    base_name := LEFT(REGEXP_REPLACE(TRIM(rec.username), '#[0-9]{4}$', '', 'i'), 45);
+    IF LENGTH(base_name) < 2 THEN
+      base_name := 'user';
+    END IF;
+
+    LOOP
+      candidate := base_name || '#' || LPAD((FLOOR(RANDOM() * 10000))::INT::TEXT, 4, '0');
+      EXIT WHEN NOT EXISTS (
+        SELECT 1
+        FROM users u
+        WHERE LOWER(u.username) = LOWER(candidate)
+      );
+    END LOOP;
+
+    UPDATE users
+    SET username = candidate
+    WHERE id = rec.id;
+  END LOOP;
+END $$;
 
 CREATE TABLE IF NOT EXISTS servers (
   id SERIAL PRIMARY KEY,

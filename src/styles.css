@@ -62,6 +62,21 @@ body {
   opacity: 0;
 }
 
+.auth-panel.auth-swipe-in {
+  animation: authSwipeIn 240ms ease;
+}
+
+@keyframes authSwipeIn {
+  from {
+    transform: translateX(-48px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 .auth-panel h1 {
   margin-top: 0;
   margin-bottom: 8px;
@@ -99,6 +114,55 @@ body {
   gap: 8px;
 }
 
+.auth-form.auth-anim-out-left {
+  animation: authFormOutLeft 170ms ease forwards;
+}
+
+.auth-form.auth-anim-out-right {
+  animation: authFormOutRight 170ms ease forwards;
+}
+
+.auth-form.auth-anim-in-left {
+  animation: authFormInLeft 180ms ease forwards;
+}
+
+.auth-form.auth-anim-in-right {
+  animation: authFormInRight 180ms ease forwards;
+}
+
+.remember-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.remember-row input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+}
+
+.auth-actions {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.auth-actions button {
+  border: 1px solid #4a5368;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #2d3441;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.auth-actions button:hover {
+  background: #3a4255;
+}
+
 .auth-form input,
 .message-form input {
   border: 1px solid #4a546c;
@@ -110,8 +174,7 @@ body {
 }
 
 .auth-form button,
-.message-form button,
-#logout-btn {
+.message-form button {
   margin-top: 10px;
   border: none;
   border-radius: 8px;
@@ -123,14 +186,57 @@ body {
 }
 
 .auth-form button:hover,
-.message-form button:hover,
-#logout-btn:hover {
+.message-form button:hover {
   background: var(--accent-dark);
 }
 
 .auth-hidden,
 .hidden {
   display: none;
+}
+
+@keyframes authFormOutLeft {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+}
+
+@keyframes authFormOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+
+@keyframes authFormInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes authFormInRight {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .message {
@@ -152,6 +258,10 @@ body {
   animation: chatSwipeIn 260ms ease;
 }
 
+.chat-panel.chat-swipe-out {
+  animation: chatSwipeOut 240ms ease forwards;
+}
+
 @keyframes chatSwipeIn {
   from {
     transform: translateX(64px);
@@ -160,6 +270,17 @@ body {
   to {
     transform: translateX(0);
     opacity: 1;
+  }
+}
+
+@keyframes chatSwipeOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(48px);
+    opacity: 0;
   }
 }
 
@@ -704,6 +825,364 @@ body {
   background: #4a5368;
 }
 
+.account-panel {
+  margin-top: auto;
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #44506a;
+  border-radius: 10px;
+  background: #232936;
+}
+
+.account-info {
+  min-width: 0;
+}
+
+.account-username {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-email {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-settings-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #3a4255;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.account-settings-btn:hover {
+  background: #4a5368;
+}
+
+.account-settings-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 170px;
+  z-index: 70;
+  background: #2d3441;
+  border: 1px solid #4a5368;
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+}
+
+.account-settings-menu button {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  background: #3a4153;
+  color: var(--text);
+  text-align: left;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.account-settings-menu button:hover {
+  background: #4a5368;
+}
+
+.account-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.58);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.account-modal.hidden {
+  display: none;
+}
+
+.account-settings-menu.hidden {
+  display: none;
+}
+
+.account-modal-card {
+  width: min(500px, 96vw);
+  background: #2b323f;
+  border: 1px solid #4a5368;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.account-modal.is-opening {
+  animation: popupOverlayIn 160ms ease forwards;
+}
+
+.account-modal.is-opening .account-modal-card {
+  animation: popupCardIn 170ms ease forwards;
+}
+
+.account-modal.is-closing {
+  animation: popupOverlayOut 140ms ease forwards;
+}
+
+.account-modal.is-closing .account-modal-card {
+  animation: popupCardOut 140ms ease forwards;
+}
+
+.account-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.account-modal-header h3 {
+  margin: 0;
+}
+
+.account-modal-header button,
+#account-save-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #3b4458;
+  color: var(--text);
+  cursor: pointer;
+}
+
+#account-save-btn {
+  background: var(--accent);
+  color: #0c1a16;
+  font-weight: 700;
+}
+
+.account-delete-btn {
+  margin-top: 8px;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #6a2f3a;
+  color: #ffe5e5;
+  cursor: pointer;
+}
+
+.account-delete-btn:hover {
+  background: #7a3947;
+}
+
+.account-form {
+  display: grid;
+  gap: 8px;
+}
+
+.account-form input {
+  border: 1px solid #4a546c;
+  background: #1f2430;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.account-form-message {
+  margin: 10px 2px 2px;
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.friend-requests-list {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.friend-request-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  background: #31394b;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.friend-request-meta {
+  min-width: 0;
+}
+
+.friend-request-name {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.friend-request-email {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.friend-request-action {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.friend-request-accept {
+  background: #2d8d74;
+  color: #eafff8;
+}
+
+.friend-request-reject {
+  background: #6a2f3a;
+  color: #ffe5e5;
+}
+
+.app-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  background: rgba(0, 0, 0, 0.58);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.app-dialog.hidden {
+  display: none;
+}
+
+.app-dialog-card {
+  width: min(420px, 96vw);
+  background: #2b323f;
+  border: 1px solid #4a5368;
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.app-dialog.is-opening {
+  animation: popupOverlayIn 160ms ease forwards;
+}
+
+.app-dialog.is-opening .app-dialog-card {
+  animation: popupCardIn 170ms ease forwards;
+}
+
+.app-dialog.is-closing {
+  animation: popupOverlayOut 140ms ease forwards;
+}
+
+.app-dialog.is-closing .app-dialog-card {
+  animation: popupCardOut 140ms ease forwards;
+}
+
+.app-dialog-card h3 {
+  margin: 0;
+}
+
+#app-dialog-message {
+  margin: 0;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+#app-dialog-input {
+  border: 1px solid #4a546c;
+  background: #1f2430;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.app-dialog-actions button {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+#app-dialog-cancel-btn {
+  background: #3b4458;
+  color: var(--text);
+}
+
+#app-dialog-ok-btn {
+  background: var(--accent);
+  color: #0c1a16;
+  font-weight: 700;
+}
+
+@keyframes popupOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes popupOverlayOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes popupCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes popupCardOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+
 @media (max-width: 980px) {
   .chat-panel {
     grid-template-columns: 80px 200px 1fr 200px;
@@ -794,10 +1273,6 @@ body {
     justify-content: center;
   }
 
-  #logout-btn {
-    padding: 8px 10px;
-  }
-
   .messages-column {
     padding: 10px;
     z-index: 1;
@@ -854,6 +1329,10 @@ body {
     grid-template-columns: 1fr;
     min-height: 0;
     gap: 8px;
+  }
+
+  .account-panel {
+    margin-top: 12px;
   }
 
   #vc-participants-list {

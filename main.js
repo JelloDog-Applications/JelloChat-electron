@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const db = require('./db');
+const { sendMail } = require('./mailer');
 
 const WS_PORT = Number(process.env.WS_PORT || 3131);
 
@@ -13,6 +14,61 @@ let currentUserId = null;
 const authTokens = new Map();
 const wsClients = new Map();
 let realtimeServer;
+
+function hashToken(rawToken) {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
+
+function buildPublicUrl(pathname) {
+  const base = String(process.env.APP_PUBLIC_URL || 'http://localhost:3000').trim().replace(/\/+$/, '');
+  return `${base}${pathname}`;
+}
+
+async function sendVerificationEmail(email, username, rawToken) {
+  const verifyUrl = buildPublicUrl(`/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`);
+  return sendMail({
+    to: email,
+    subject: 'Verify your JelloChat email',
+    text: `Hi ${username},\n\nVerify your email:\n${verifyUrl}\n\nThis link expires in 24 hours.`,
+    html: `<p>Hi ${username},</p><p>Verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 24 hours.</p>`
+  });
+}
+
+async function sendPasswordResetEmail(email, username, rawToken) {
+  const resetUrl = buildPublicUrl(`/reset-password?token=${encodeURIComponent(rawToken)}`);
+  return sendMail({
+    to: email,
+    subject: 'Reset your JelloChat password',
+    text: `Hi ${username},\n\nReset your password:\n${resetUrl}\n\nThis link expires in 1 hour.`,
+    html: `<p>Hi ${username},</p><p>Reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`
+  });
+}
+
+async function issueEmailVerification(userId, email, username) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  await db.query(
+    `UPDATE users
+     SET email_verification_token_hash = $1,
+         email_verification_expires_at = NOW() + INTERVAL '24 hours'
+     WHERE id = $2`,
+    [tokenHash, userId]
+  );
+  return sendVerificationEmail(email, username, rawToken);
+}
+
+async function issuePasswordReset(userId, email, username) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  await db.query(
+    `UPDATE users
+     SET password_reset_token_hash = $1,
+         password_reset_expires_at = NOW() + INTERVAL '1 hour'
+     WHERE id = $2`,
+    [tokenHash, userId]
+  );
+  return sendPasswordResetEmail(email, username, rawToken);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -59,6 +115,58 @@ function generateInviteCode() {
     .replace(/[^a-zA-Z0-9]/g, '')
     .slice(0, 8)
     .toUpperCase();
+}
+
+function baseUsername(input) {
+  const raw = String(input || '').trim().replace(/\s+/g, ' ');
+  return raw.replace(/#\d{4}$/i, '');
+}
+
+function hasDiscriminator(username) {
+  return /#\d{4}$/i.test(String(username || '').trim());
+}
+
+async function usernameExists(username, excludeUserId = null) {
+  if (excludeUserId) {
+    const result = await db.query('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) AND id <> $2 LIMIT 1', [
+      username,
+      excludeUserId
+    ]);
+    return result.rows.length > 0;
+  }
+
+  const result = await db.query('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1', [username]);
+  return result.rows.length > 0;
+}
+
+function randomDiscriminator() {
+  return String(Math.floor(Math.random() * 10_000)).padStart(4, '0');
+}
+
+async function allocateUniqueUsername(requestedUsername, excludeUserId = null) {
+  const requested = String(requestedUsername || '').trim();
+  if (hasDiscriminator(requested)) {
+    const normalized = requested.slice(0, 50);
+    const taken = await usernameExists(normalized, excludeUserId);
+    if (!taken) {
+      return { username: normalized, changed: false };
+    }
+  }
+
+  const base = baseUsername(requested);
+  if (base.length < 2) {
+    throw new Error('Username must be at least 2 characters.');
+  }
+  const withTagBase = base.slice(0, 45);
+  for (let i = 0; i < 30; i += 1) {
+    const candidate = `${withTagBase}#${randomDiscriminator()}`;
+    const taken = await usernameExists(candidate, excludeUserId);
+    if (!taken) {
+      return { username: candidate, changed: true };
+    }
+  }
+
+  throw new Error('Could not allocate a unique username. Please try again.');
 }
 
 function sendWs(ws, payload) {
@@ -260,12 +368,15 @@ ipcMain.handle('realtime:getConfig', async () => {
 });
 
 ipcMain.handle('auth:register', async (_event, payload) => {
-  const username = String(payload?.username || '').trim();
+  const requestedUsername = String(payload?.username || '').trim();
   const email = String(payload?.email || '').trim().toLowerCase();
   const password = String(payload?.password || '');
 
-  if (!username || !email || !password) {
+  if (!requestedUsername || !email || !password) {
     return { ok: false, message: 'Username, email, and password are required.' };
+  }
+  if (baseUsername(requestedUsername).length < 2 || baseUsername(requestedUsername).length > 50) {
+    return { ok: false, message: 'Username must be between 2 and 50 characters.' };
   }
 
   if (password.length < 6) {
@@ -278,10 +389,11 @@ ipcMain.handle('auth:register', async (_event, payload) => {
       return { ok: false, message: 'Email already in use.' };
     }
 
+    const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email',
-      [username, email, passwordHash]
+      'INSERT INTO users (username, email, password_hash, email_verified) VALUES ($1, $2, $3, FALSE) RETURNING id, username, email',
+      [allocated.username, email, passwordHash]
     );
 
     const newUser = result.rows[0];
@@ -296,9 +408,19 @@ ipcMain.handle('auth:register', async (_event, payload) => {
       );
     }
 
-    currentUserId = newUser.id;
-    const realtimeToken = issueAuthToken(newUser.id);
-    return { ok: true, user: newUser, realtimeToken };
+    const mailResult = await issueEmailVerification(newUser.id, newUser.email, newUser.username);
+    if (!mailResult.ok) {
+      return { ok: false, message: `Account created but verification email failed: ${mailResult.message}` };
+    }
+
+    return {
+      ok: true,
+      needsVerification: true,
+      assignedUsername: newUser.username,
+      message: allocated.changed
+        ? `Account created. Username set to ${newUser.username}. Check your email to verify your account before logging in.`
+        : 'Account created. Check your email to verify your account before logging in.'
+    };
   } catch (error) {
     return { ok: false, message: `Registration failed: ${error.message}` };
   }
@@ -313,7 +435,7 @@ ipcMain.handle('auth:login', async (_event, payload) => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, password_hash FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, password_hash, email_verified FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return { ok: false, message: 'Invalid email or password.' };
     }
@@ -322,6 +444,13 @@ ipcMain.handle('auth:login', async (_event, payload) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return { ok: false, message: 'Invalid email or password.' };
+    }
+    if (!user.email_verified) {
+      return {
+        ok: false,
+        verificationRequired: true,
+        message: 'Please verify your email before logging in.'
+      };
     }
 
     currentUserId = user.id;
@@ -342,6 +471,228 @@ ipcMain.handle('auth:logout', async () => {
   }
   currentUserId = null;
   return { ok: true };
+});
+
+ipcMain.handle('auth:getSession', async () => {
+  if (!currentUserId) {
+    return { ok: false, message: 'No active session.' };
+  }
+
+  try {
+    const result = await db.query('SELECT id, username, email FROM users WHERE id = $1', [currentUserId]);
+    if (result.rows.length === 0) {
+      currentUserId = null;
+      return { ok: false, message: 'Session not found.' };
+    }
+    const user = result.rows[0];
+    const realtimeToken = issueAuthToken(user.id);
+    return { ok: true, user, realtimeToken };
+  } catch (error) {
+    return { ok: false, message: `Failed to restore session: ${error.message}` };
+  }
+});
+
+ipcMain.handle('auth:resendVerification', async (_event, payload) => {
+  const email = String(payload?.email || '').trim().toLowerCase();
+  if (!email) {
+    return { ok: false, message: 'Email is required.' };
+  }
+
+  try {
+    const userResult = await db.query('SELECT id, username, email, email_verified FROM users WHERE email = $1', [email]);
+    if (userResult.rows.length === 0) {
+      return { ok: true, message: 'If this email exists, a verification email has been sent.' };
+    }
+    const user = userResult.rows[0];
+    if (user.email_verified) {
+      return { ok: true, message: 'Email is already verified.' };
+    }
+    await issueEmailVerification(user.id, user.email, user.username);
+    return { ok: true, message: 'Verification email sent.' };
+  } catch (error) {
+    return { ok: false, message: `Failed to resend verification: ${error.message}` };
+  }
+});
+
+ipcMain.handle('auth:verifyEmail', async (_event, payload) => {
+  const token = String(payload?.token || '').trim();
+  if (!token) {
+    return { ok: false, message: 'Token is required.' };
+  }
+
+  try {
+    const tokenHash = hashToken(token);
+    const updated = await db.query(
+      `UPDATE users
+       SET email_verified = TRUE,
+           email_verification_token_hash = NULL,
+           email_verification_expires_at = NULL
+       WHERE email_verification_token_hash = $1
+         AND email_verification_expires_at > NOW()
+       RETURNING id`,
+      [tokenHash]
+    );
+    if (updated.rows.length === 0) {
+      return { ok: false, message: 'Verification token is invalid or expired.' };
+    }
+    return { ok: true, message: 'Email verified successfully.' };
+  } catch (error) {
+    return { ok: false, message: `Failed to verify email: ${error.message}` };
+  }
+});
+
+ipcMain.handle('auth:requestPasswordReset', async (_event, payload) => {
+  const email = String(payload?.email || '').trim().toLowerCase();
+  if (!email) {
+    return { ok: false, message: 'Email is required.' };
+  }
+
+  try {
+    const userResult = await db.query('SELECT id, username, email FROM users WHERE email = $1', [email]);
+    if (userResult.rows.length > 0) {
+      const user = userResult.rows[0];
+      await issuePasswordReset(user.id, user.email, user.username);
+    }
+    return { ok: true, message: 'If this email exists, a password reset link has been sent.' };
+  } catch (error) {
+    return { ok: false, message: `Failed to request password reset: ${error.message}` };
+  }
+});
+
+ipcMain.handle('auth:confirmPasswordReset', async (_event, payload) => {
+  const token = String(payload?.token || '').trim();
+  const newPassword = String(payload?.newPassword || '');
+  if (!token || !newPassword) {
+    return { ok: false, message: 'Token and new password are required.' };
+  }
+  if (newPassword.length < 6) {
+    return { ok: false, message: 'Password must be at least 6 characters.' };
+  }
+
+  try {
+    const tokenHash = hashToken(token);
+    const result = await db.query(
+      `SELECT id
+       FROM users
+       WHERE password_reset_token_hash = $1
+         AND password_reset_expires_at > NOW()`,
+      [tokenHash]
+    );
+    if (result.rows.length === 0) {
+      return { ok: false, message: 'Reset token is invalid or expired.' };
+    }
+
+    const userId = result.rows[0].id;
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await db.query(
+      `UPDATE users
+       SET password_hash = $1,
+           password_reset_token_hash = NULL,
+           password_reset_expires_at = NULL
+       WHERE id = $2`,
+      [passwordHash, userId]
+    );
+    clearAuthTokensForUser(userId);
+    return { ok: true, message: 'Password has been reset.' };
+  } catch (error) {
+    return { ok: false, message: `Failed to reset password: ${error.message}` };
+  }
+});
+
+ipcMain.handle('auth:updateAccount', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const requestedUsername = String(payload?.username || '').trim();
+  const email = String(payload?.email || '').trim().toLowerCase();
+  const currentPassword = String(payload?.currentPassword || '');
+  const newPassword = String(payload?.newPassword || '');
+
+  if (!requestedUsername || !email) {
+    return { ok: false, message: 'Username and email are required.' };
+  }
+  if (baseUsername(requestedUsername).length < 2 || baseUsername(requestedUsername).length > 50) {
+    return { ok: false, message: 'Username must be between 2 and 50 characters.' };
+  }
+  if (!email.includes('@')) {
+    return { ok: false, message: 'Valid email is required.' };
+  }
+  if ((currentPassword && !newPassword) || (!currentPassword && newPassword)) {
+    return { ok: false, message: 'Current and new password are required together.' };
+  }
+  if (newPassword && newPassword.length < 6) {
+    return { ok: false, message: 'New password must be at least 6 characters.' };
+  }
+
+  try {
+    const existing = await db.query('SELECT id, username, email, password_hash FROM users WHERE id = $1', [currentUserId]);
+    if (existing.rows.length === 0) {
+      return { ok: false, message: 'User not found.' };
+    }
+    const user = existing.rows[0];
+
+    if (email !== user.email) {
+      const duplicate = await db.query('SELECT id FROM users WHERE email = $1 AND id <> $2', [email, currentUserId]);
+      if (duplicate.rows.length > 0) {
+        return { ok: false, message: 'Email already in use.' };
+      }
+    }
+
+    let passwordHash = user.password_hash;
+    if (newPassword) {
+      const valid = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!valid) {
+        return { ok: false, message: 'Current password is incorrect.' };
+      }
+      passwordHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    const allocated = await allocateUniqueUsername(requestedUsername, currentUserId);
+    const updated = await db.query(
+      'UPDATE users SET username = $1, email = $2, password_hash = $3 WHERE id = $4 RETURNING id, username, email',
+      [allocated.username, email, passwordHash, currentUserId]
+    );
+
+    return {
+      ok: true,
+      user: updated.rows[0],
+      message: allocated.changed ? `Username updated to ${updated.rows[0].username}.` : 'Account updated.'
+    };
+  } catch (error) {
+    return { ok: false, message: `Failed to update account: ${error.message}` };
+  }
+});
+
+ipcMain.handle('auth:deleteAccount', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const currentPassword = String(payload?.currentPassword || '');
+  if (!currentPassword) {
+    return { ok: false, message: 'Current password is required.' };
+  }
+
+  try {
+    const existing = await db.query('SELECT id, password_hash FROM users WHERE id = $1', [currentUserId]);
+    if (existing.rows.length === 0) {
+      return { ok: false, message: 'User not found.' };
+    }
+
+    const valid = await bcrypt.compare(currentPassword, existing.rows[0].password_hash);
+    if (!valid) {
+      return { ok: false, message: 'Current password is incorrect.' };
+    }
+
+    const deletedUserId = currentUserId;
+    await db.query('DELETE FROM users WHERE id = $1', [deletedUserId]);
+    clearAuthTokensForUser(deletedUserId);
+    currentUserId = null;
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Failed to delete account: ${error.message}` };
+  }
 });
 
 ipcMain.handle('chat:getServers', async () => {
@@ -582,11 +933,11 @@ ipcMain.handle('chat:getBannedUsers', async (_event, payload) => {
     }
 
     const result = await db.query(
-      `SELECT b.user_id, u.username, u.email, b.reason, b.created_at
-       FROM server_bans b
-       JOIN users u ON u.id = b.user_id
-       WHERE b.server_id = $1
-       ORDER BY b.created_at DESC`,
+      `SELECT b.user_id, u.username, b.reason, b.created_at
+         FROM server_bans b
+         JOIN users u ON u.id = b.user_id
+         WHERE b.server_id = $1
+         ORDER BY b.created_at DESC`,
       [serverId]
     );
     return { ok: true, bannedUsers: result.rows };
@@ -933,7 +1284,7 @@ ipcMain.handle('friends:list', async () => {
 
   try {
     const result = await db.query(
-      `SELECT u.id, u.username, u.email
+      `SELECT u.id, u.username
        FROM friendships f
        JOIN users u ON u.id = f.friend_user_id
        WHERE f.user_id = $1
@@ -955,7 +1306,7 @@ ipcMain.handle('friends:getRequests', async () => {
 
   try {
     const result = await db.query(
-      `SELECT fr.id, fr.sender_user_id, u.username, u.email, fr.created_at
+      `SELECT fr.id, fr.sender_user_id, u.username, fr.created_at
        FROM friend_requests fr
        JOIN users u ON u.id = fr.sender_user_id
        WHERE fr.receiver_user_id = $1 AND fr.status = 'pending'

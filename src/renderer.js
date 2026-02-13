@@ -9,9 +9,13 @@
   registerForm: document.getElementById('register-form'),
   loginEmail: document.getElementById('login-email'),
   loginPassword: document.getElementById('login-password'),
+  rememberMe: document.getElementById('remember-me'),
   registerUsername: document.getElementById('register-username'),
   registerEmail: document.getElementById('register-email'),
   registerPassword: document.getElementById('register-password'),
+  resendVerificationBtn: document.getElementById('resend-verification-btn'),
+  forgotPasswordBtn: document.getElementById('forgot-password-btn'),
+  verifyTokenBtn: document.getElementById('verify-token-btn'),
   serversList: document.getElementById('servers-list'),
   serverOptionsMenu: document.getElementById('server-options-menu'),
   serverTabGeneral: document.getElementById('server-tab-general'),
@@ -48,9 +52,32 @@
   createServerBtn: document.getElementById('create-server-btn'),
   addFriendBtn: document.getElementById('add-friend-btn'),
   friendRequestsBtn: document.getElementById('friend-requests-btn'),
+  friendRequestsModal: document.getElementById('friend-requests-modal'),
+  friendRequestsCloseBtn: document.getElementById('friend-requests-close-btn'),
+  friendRequestsList: document.getElementById('friend-requests-list'),
   joinInviteBtn: document.getElementById('join-invite-btn'),
   createInviteBtn: document.getElementById('create-invite-btn'),
-  createChannelBtn: document.getElementById('create-channel-btn')
+  createChannelBtn: document.getElementById('create-channel-btn'),
+  accountUsername: document.getElementById('account-username'),
+  accountEmail: document.getElementById('account-email'),
+  accountSettingsBtn: document.getElementById('account-settings-btn'),
+  accountSettingsMenu: document.getElementById('account-settings-menu'),
+  accountMyAccountBtn: document.getElementById('account-my-account-btn'),
+  accountModal: document.getElementById('account-modal'),
+  accountModalCloseBtn: document.getElementById('account-modal-close-btn'),
+  accountForm: document.getElementById('account-form'),
+  accountUsernameInput: document.getElementById('account-username-input'),
+  accountEmailInput: document.getElementById('account-email-input'),
+  accountCurrentPasswordInput: document.getElementById('account-current-password-input'),
+  accountNewPasswordInput: document.getElementById('account-new-password-input'),
+  accountFormMessage: document.getElementById('account-form-message'),
+  accountDeleteBtn: document.getElementById('account-delete-btn'),
+  appDialog: document.getElementById('app-dialog'),
+  appDialogTitle: document.getElementById('app-dialog-title'),
+  appDialogMessage: document.getElementById('app-dialog-message'),
+  appDialogInput: document.getElementById('app-dialog-input'),
+  appDialogCancelBtn: document.getElementById('app-dialog-cancel-btn'),
+  appDialogOkBtn: document.getElementById('app-dialog-ok-btn')
 };
 
 const state = {
@@ -81,6 +108,12 @@ const state = {
   isVoiceMuted: false,
   isVoiceDeafened: false
 };
+
+const dialogState = {
+  resolver: null
+};
+
+let authSwitchTimer = null;
 
 function getSelectedChannel() {
   return state.channels.find((channel) => channel.id === state.selectedChannelId) || null;
@@ -292,6 +325,143 @@ function leaveVoiceView(disconnect = true) {
   syncVoicePanelVisibility();
 }
 
+function renderAccountPanel() {
+  ui.accountUsername.textContent = state.user?.username || 'User';
+  ui.accountEmail.textContent = state.user?.email || '';
+}
+
+function closeAccountSettingsMenu() {
+  ui.accountSettingsMenu.classList.add('hidden');
+}
+
+function toggleAccountSettingsMenu() {
+  ui.accountSettingsMenu.classList.toggle('hidden');
+}
+
+function setAccountFormMessage(message, isError = false) {
+  ui.accountFormMessage.textContent = message;
+  ui.accountFormMessage.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+function animateShowOverlay(element) {
+  if (!element) {
+    return;
+  }
+  if (element.__popupTimer) {
+    clearTimeout(element.__popupTimer);
+    element.__popupTimer = null;
+  }
+  element.classList.remove('hidden');
+  element.classList.remove('is-closing');
+  element.classList.add('is-opening');
+  element.__popupTimer = setTimeout(() => {
+    element.classList.remove('is-opening');
+    element.__popupTimer = null;
+  }, 180);
+}
+
+function animateHideOverlay(element) {
+  if (!element || element.classList.contains('hidden')) {
+    return;
+  }
+  if (element.__popupTimer) {
+    clearTimeout(element.__popupTimer);
+    element.__popupTimer = null;
+  }
+  element.classList.remove('is-opening');
+  element.classList.add('is-closing');
+  element.__popupTimer = setTimeout(() => {
+    element.classList.add('hidden');
+    element.classList.remove('is-closing');
+    element.__popupTimer = null;
+  }, 150);
+}
+
+function closeAccountModal() {
+  animateHideOverlay(ui.accountModal);
+  setAccountFormMessage('');
+  ui.accountCurrentPasswordInput.value = '';
+  ui.accountNewPasswordInput.value = '';
+}
+
+function closeFriendRequestsModal() {
+  animateHideOverlay(ui.friendRequestsModal);
+  ui.friendRequestsList.innerHTML = '';
+}
+
+function openFriendRequestsModal() {
+  animateShowOverlay(ui.friendRequestsModal);
+}
+
+function renderFriendRequests(requests) {
+  ui.friendRequestsList.innerHTML = '';
+  if (!requests.length) {
+    const empty = document.createElement('div');
+    empty.className = 'friend-request-email';
+    empty.textContent = 'No pending friend requests.';
+    ui.friendRequestsList.appendChild(empty);
+    return;
+  }
+
+  for (const request of requests) {
+    const row = document.createElement('div');
+    row.className = 'friend-request-item';
+
+    const meta = document.createElement('div');
+    meta.className = 'friend-request-meta';
+    meta.innerHTML = `<div class="friend-request-name">${request.username}</div>`;
+
+    const acceptBtn = document.createElement('button');
+    acceptBtn.className = 'friend-request-action friend-request-accept';
+    acceptBtn.type = 'button';
+    acceptBtn.title = 'Accept';
+    acceptBtn.textContent = '+';
+    acceptBtn.addEventListener('click', async () => {
+      const result = await window.api.friends.respondRequest({ requestId: request.id, action: 'accept' });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      const next = await window.api.friends.getRequests();
+      if (next.ok) {
+        renderFriendRequests(next.requests || []);
+      }
+      await loadFriends();
+      ui.channelTitle.textContent = 'Friend request accepted.';
+    });
+
+    const rejectBtn = document.createElement('button');
+    rejectBtn.className = 'friend-request-action friend-request-reject';
+    rejectBtn.type = 'button';
+    rejectBtn.title = 'Reject';
+    rejectBtn.textContent = '⊘';
+    rejectBtn.addEventListener('click', async () => {
+      const result = await window.api.friends.respondRequest({ requestId: request.id, action: 'reject' });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      const next = await window.api.friends.getRequests();
+      if (next.ok) {
+        renderFriendRequests(next.requests || []);
+      }
+      ui.channelTitle.textContent = 'Friend request rejected.';
+    });
+
+    row.append(meta, acceptBtn, rejectBtn);
+    ui.friendRequestsList.appendChild(row);
+  }
+}
+
+function openAccountModal() {
+  ui.accountUsernameInput.value = state.user?.username || '';
+  ui.accountEmailInput.value = state.user?.email || '';
+  ui.accountCurrentPasswordInput.value = '';
+  ui.accountNewPasswordInput.value = '';
+  setAccountFormMessage('');
+  animateShowOverlay(ui.accountModal);
+}
+
 async function openVoiceView(roomLabel, channelId, tokenData) {
   const sdk = window.LivekitClient;
   if (!sdk) {
@@ -351,18 +521,143 @@ function setAuthMessage(message, isError = false) {
   ui.authMessage.style.color = isError ? 'var(--danger)' : 'var(--muted)';
 }
 
+function closeAppDialog() {
+  animateHideOverlay(ui.appDialog);
+  ui.appDialogInput.classList.add('hidden');
+  ui.appDialogInput.value = '';
+}
+
+function openAppDialog({ title, message, mode = 'alert', defaultValue = '', okLabel = 'OK', cancelLabel = 'Cancel' }) {
+  if (dialogState.resolver) {
+    dialogState.resolver(null);
+    dialogState.resolver = null;
+  }
+
+  ui.appDialogTitle.textContent = title || 'Dialog';
+  ui.appDialogMessage.textContent = message || '';
+  ui.appDialogOkBtn.textContent = okLabel;
+  ui.appDialogCancelBtn.textContent = cancelLabel;
+
+  const needsInput = mode === 'prompt';
+  const needsCancel = mode !== 'alert';
+  ui.appDialogInput.classList.toggle('hidden', !needsInput);
+  if (needsInput) {
+    ui.appDialogInput.value = defaultValue || '';
+  }
+  ui.appDialogCancelBtn.classList.toggle('hidden', !needsCancel);
+  animateShowOverlay(ui.appDialog);
+  if (needsInput) {
+    ui.appDialogInput.focus();
+    ui.appDialogInput.select();
+  } else {
+    ui.appDialogOkBtn.focus();
+  }
+
+  return new Promise((resolve) => {
+    dialogState.resolver = resolve;
+  });
+}
+
+async function showMessageDialog(title, message) {
+  const result = await openAppDialog({ title, message, mode: 'alert', okLabel: 'OK' });
+  return result;
+}
+
+async function showConfirmDialog(title, message, okLabel = 'OK', cancelLabel = 'Cancel') {
+  const result = await openAppDialog({ title, message, mode: 'confirm', okLabel, cancelLabel });
+  return result === true;
+}
+
+async function showPromptDialog(title, message, defaultValue = '') {
+  const result = await openAppDialog({ title, message, mode: 'prompt', defaultValue, okLabel: 'Submit', cancelLabel: 'Cancel' });
+  if (typeof result !== 'string') {
+    return null;
+  }
+  return result;
+}
+
 function showLogin() {
-  ui.loginForm.classList.remove('auth-hidden');
-  ui.registerForm.classList.add('auth-hidden');
   ui.showLoginBtn.classList.add('tab-active');
   ui.showRegisterBtn.classList.remove('tab-active');
+  switchAuthForms(ui.registerForm, ui.loginForm, 'left');
 }
 
 function showRegister() {
-  ui.registerForm.classList.remove('auth-hidden');
-  ui.loginForm.classList.add('auth-hidden');
   ui.showRegisterBtn.classList.add('tab-active');
   ui.showLoginBtn.classList.remove('tab-active');
+  switchAuthForms(ui.loginForm, ui.registerForm, 'right');
+}
+
+function resetAuthAnimationClasses(form) {
+  form.classList.remove('auth-anim-out-left', 'auth-anim-out-right', 'auth-anim-in-left', 'auth-anim-in-right');
+}
+
+function switchAuthForms(fromForm, toForm, direction) {
+  if (fromForm === toForm || !fromForm || !toForm) {
+    return;
+  }
+
+  if (fromForm.classList.contains('auth-hidden')) {
+    resetAuthAnimationClasses(fromForm);
+    resetAuthAnimationClasses(toForm);
+    toForm.classList.remove('auth-hidden');
+    return;
+  }
+
+  if (authSwitchTimer) {
+    clearTimeout(authSwitchTimer);
+    authSwitchTimer = null;
+  }
+
+  const toOut = direction === 'left' ? 'auth-anim-out-right' : 'auth-anim-out-left';
+  const toIn = direction === 'left' ? 'auth-anim-in-left' : 'auth-anim-in-right';
+
+  resetAuthAnimationClasses(fromForm);
+  resetAuthAnimationClasses(toForm);
+  fromForm.classList.remove('auth-hidden');
+  fromForm.classList.add(toOut);
+
+  authSwitchTimer = setTimeout(() => {
+    fromForm.classList.add('auth-hidden');
+    resetAuthAnimationClasses(fromForm);
+
+    toForm.classList.remove('auth-hidden');
+    toForm.classList.add(toIn);
+
+    authSwitchTimer = setTimeout(() => {
+      resetAuthAnimationClasses(toForm);
+      authSwitchTimer = null;
+    }, 190);
+  }, 170);
+}
+
+async function handleAuthDeepLinks() {
+  const pathname = String(window.location.pathname || '');
+  const params = new URLSearchParams(window.location.search || '');
+  const token = String(params.get('token') || '').trim();
+
+  if (pathname === '/reset-password' && token) {
+    openAuth();
+    showLogin();
+    const newPassword = await showPromptDialog('Reset Password', 'Enter your new password (min 6 characters):', '');
+    if (!newPassword) {
+      setAuthMessage('Password reset canceled.', true);
+      return;
+    }
+
+    const result = await window.api.auth.confirmPasswordReset({
+      token,
+      newPassword
+    });
+    setAuthMessage(result.message || (result.ok ? 'Password reset successfully.' : 'Failed to reset password.'), !result.ok);
+
+    if (result.ok) {
+      try {
+        window.history.replaceState({}, '', '/');
+      } catch (_error) {
+      }
+    }
+  }
 }
 
 function openChat() {
@@ -392,7 +687,85 @@ function openAuth() {
   closeMobileDrawers();
   closeServerOptions();
   closeUserOptions();
+  closeAccountSettingsMenu();
+  closeAccountModal();
+  closeFriendRequestsModal();
   showLogin();
+}
+
+function animateLogoutTransition() {
+  return new Promise((resolve) => {
+    if (ui.chatPanel.classList.contains('hidden')) {
+      openAuth();
+      resolve();
+      return;
+    }
+
+    ui.chatPanel.classList.add('chat-swipe-out');
+
+    setTimeout(() => {
+      ui.chatPanel.classList.remove('chat-swipe-out');
+      ui.chatPanel.classList.add('hidden');
+      ui.authPanel.classList.remove('hidden');
+      ui.authPanel.classList.add('auth-swipe-in');
+      ui.appShell.classList.remove('chat-mode');
+      showLogin();
+
+      setTimeout(() => {
+        ui.authPanel.classList.remove('auth-swipe-in');
+      }, 250);
+
+      resolve();
+    }, 240);
+  });
+}
+
+async function performLogout(serverLogout = true) {
+  await animateLogoutTransition();
+  leaveVoiceView();
+  if (serverLogout) {
+    await window.api.auth.logout();
+  }
+  if (window.api.auth.setRemember && !ui.rememberMe.checked) {
+    window.api.auth.setRemember(false);
+  }
+  if (state.ws) {
+    state.ws.close();
+  }
+
+  state.user = null;
+  state.servers = [];
+  state.channels = [];
+  state.selectedServerId = null;
+  state.selectedChannelId = null;
+  state.selectedDmUser = null;
+  state.currentUserId = null;
+  state.subscribedChannelId = null;
+  state.realtimeToken = null;
+  state.canCreateChannels = false;
+  state.onlineUsers = [];
+  state.friends = [];
+  state.mobileServersOpen = false;
+  state.mobileUsersOpen = false;
+  state.serverOptionsServerId = null;
+  state.selectedModerationUserId = null;
+  state.activeVoiceChannelId = null;
+
+  ui.serversList.innerHTML = '';
+  ui.channelsList.innerHTML = '';
+  ui.messagesList.innerHTML = '';
+  ui.onlineUsersList.innerHTML = '';
+  ui.friendsList.innerHTML = '';
+  ui.channelTitle.textContent = 'Select a channel';
+  ui.serverTitle.textContent = 'Channels';
+  updateChannelCreateButton();
+  updateMobileDrawers();
+  closeServerOptions();
+  closeUserOptions();
+  closeAccountSettingsMenu();
+  closeAccountModal();
+  closeFriendRequestsModal();
+  renderAccountPanel();
 }
 
 function updateChannelCreateButton() {
@@ -460,7 +833,7 @@ function renderBannedUsers() {
     item.className = 'banned-user-item';
 
     const meta = document.createElement('div');
-    meta.innerHTML = `<div>${user.username}</div><div class=\"banned-user-meta\">${user.email || ''}</div>`;
+    meta.innerHTML = `<div>${user.username}</div>`;
 
     const unbanBtn = document.createElement('button');
     unbanBtn.className = 'unban-btn';
@@ -732,7 +1105,7 @@ function renderMessages(messages) {
       editButton.type = 'button';
       editButton.textContent = 'Edit';
       editButton.addEventListener('click', async () => {
-        const updated = window.prompt('Edit message', msg.content);
+        const updated = await showPromptDialog('Edit Message', 'Update your message:', msg.content);
         if (updated === null) {
           return;
         }
@@ -757,7 +1130,7 @@ function renderMessages(messages) {
       deleteButton.type = 'button';
       deleteButton.textContent = 'Delete';
       deleteButton.addEventListener('click', async () => {
-        const confirmed = window.confirm('Delete this message?');
+        const confirmed = await showConfirmDialog('Delete Message', 'Delete this message?', 'Delete', 'Cancel');
         if (!confirmed) {
           return;
         }
@@ -1109,6 +1482,45 @@ async function loadFriends() {
 
 ui.showLoginBtn.addEventListener('click', showLogin);
 ui.showRegisterBtn.addEventListener('click', showRegister);
+ui.resendVerificationBtn.addEventListener('click', async () => {
+  const email = await showPromptDialog('Resend Verification', 'Enter your email for a new verification link:');
+  if (!email) {
+    return;
+  }
+  const result = await window.api.auth.resendVerification({ email });
+  setAuthMessage(result.message || (result.ok ? 'Verification email sent.' : 'Failed to resend verification.'), !result.ok);
+});
+ui.forgotPasswordBtn.addEventListener('click', async () => {
+  const email = await showPromptDialog('Forgot Password', 'Enter your email for a password reset link:');
+  if (!email) {
+    return;
+  }
+  const request = await window.api.auth.requestPasswordReset({ email });
+  if (!request.ok) {
+    setAuthMessage(request.message, true);
+    return;
+  }
+
+  const token = await showPromptDialog('Reset Token', 'Paste reset token from email (or cancel to do later):');
+  if (!token) {
+    setAuthMessage(request.message || 'Password reset email sent.');
+    return;
+  }
+  const newPassword = await showPromptDialog('New Password', 'Enter new password (min 6 characters):');
+  if (!newPassword) {
+    return;
+  }
+  const confirm = await window.api.auth.confirmPasswordReset({ token, newPassword });
+  setAuthMessage(confirm.message || (confirm.ok ? 'Password reset successfully.' : 'Failed to reset password.'), !confirm.ok);
+});
+ui.verifyTokenBtn.addEventListener('click', async () => {
+  const token = await showPromptDialog('Verify Email Token', 'Paste your verification token:');
+  if (!token) {
+    return;
+  }
+  const result = await window.api.auth.verifyEmail({ token });
+  setAuthMessage(result.message || (result.ok ? 'Email verified successfully.' : 'Failed to verify email.'), !result.ok);
+});
 ui.serverTabGeneral.addEventListener('click', () => setServerOptionsTab('general'));
 ui.serverTabBanned.addEventListener('click', async () => {
   setServerOptionsTab('banned');
@@ -1138,6 +1550,58 @@ document.addEventListener('click', (event) => {
       closeUserOptions();
     }
   }
+
+  if (!ui.accountSettingsMenu.classList.contains('hidden')) {
+    const isInside = ui.accountSettingsMenu.contains(event.target);
+    const clickedGear = ui.accountSettingsBtn.contains(event.target);
+    if (!isInside && !clickedGear) {
+      closeAccountSettingsMenu();
+    }
+  }
+});
+
+ui.appDialogCancelBtn.addEventListener('click', () => {
+  if (!dialogState.resolver) {
+    closeAppDialog();
+    return;
+  }
+  const resolve = dialogState.resolver;
+  dialogState.resolver = null;
+  closeAppDialog();
+  resolve(null);
+});
+
+ui.appDialogOkBtn.addEventListener('click', () => {
+  if (!dialogState.resolver) {
+    closeAppDialog();
+    return;
+  }
+  const resolve = dialogState.resolver;
+  dialogState.resolver = null;
+  const hasInput = !ui.appDialogInput.classList.contains('hidden');
+  const value = hasInput ? ui.appDialogInput.value : true;
+  closeAppDialog();
+  resolve(value);
+});
+
+ui.appDialog.addEventListener('click', (event) => {
+  if (event.target === ui.appDialog) {
+    if (!dialogState.resolver) {
+      closeAppDialog();
+      return;
+    }
+    const resolve = dialogState.resolver;
+    dialogState.resolver = null;
+    closeAppDialog();
+    resolve(null);
+  }
+});
+
+ui.appDialogInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    ui.appDialogOkBtn.click();
+  }
 });
 
 ui.leaveServerBtn.addEventListener('click', async () => {
@@ -1146,7 +1610,7 @@ ui.leaveServerBtn.addEventListener('click', async () => {
     return;
   }
 
-  const confirmed = window.confirm('Leave this server?');
+  const confirmed = await showConfirmDialog('Leave Server', 'Leave this server?', 'Leave', 'Cancel');
   if (!confirmed) {
     return;
   }
@@ -1188,7 +1652,7 @@ ui.kickUserBtn.addEventListener('click', async () => {
     return;
   }
 
-  const confirmed = window.confirm('Kick this user from the server?');
+  const confirmed = await showConfirmDialog('Kick User', 'Kick this user from the server?', 'Kick', 'Cancel');
   if (!confirmed) {
     return;
   }
@@ -1212,8 +1676,8 @@ ui.banUserBtn.addEventListener('click', async () => {
     return;
   }
 
-  const reason = window.prompt('Ban reason (optional):', '') || '';
-  const confirmed = window.confirm('Ban this user from the server?');
+  const reason = (await showPromptDialog('Ban User', 'Ban reason (optional):', '')) || '';
+  const confirmed = await showConfirmDialog('Ban User', 'Ban this user from the server?', 'Ban', 'Cancel');
   if (!confirmed) {
     return;
   }
@@ -1230,6 +1694,89 @@ ui.banUserBtn.addEventListener('click', async () => {
 
   closeUserOptions();
   await loadServerPresence(state.selectedServerId);
+});
+
+ui.accountSettingsBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  toggleAccountSettingsMenu();
+});
+
+ui.accountMyAccountBtn.addEventListener('click', () => {
+  closeAccountSettingsMenu();
+  openAccountModal();
+});
+
+ui.accountModalCloseBtn.addEventListener('click', closeAccountModal);
+ui.accountModal.addEventListener('click', (event) => {
+  if (event.target === ui.accountModal) {
+    closeAccountModal();
+  }
+});
+
+ui.friendRequestsCloseBtn.addEventListener('click', closeFriendRequestsModal);
+ui.friendRequestsModal.addEventListener('click', (event) => {
+  if (event.target === ui.friendRequestsModal) {
+    closeFriendRequestsModal();
+  }
+});
+
+ui.accountForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const username = ui.accountUsernameInput.value.trim();
+  const email = ui.accountEmailInput.value.trim().toLowerCase();
+  const currentPassword = ui.accountCurrentPasswordInput.value;
+  const newPassword = ui.accountNewPasswordInput.value;
+
+  if ((currentPassword && !newPassword) || (!currentPassword && newPassword)) {
+    setAccountFormMessage('Current and new password are required together.', true);
+    return;
+  }
+
+  const response = await window.api.auth.updateAccount({
+    username,
+    email,
+    currentPassword,
+    newPassword
+  });
+
+  if (!response.ok) {
+    setAccountFormMessage(response.message || 'Failed to update account.', true);
+    return;
+  }
+
+  state.user = response.user;
+  renderAccountPanel();
+  setAccountFormMessage(response.message || 'Account updated.');
+  ui.accountCurrentPasswordInput.value = '';
+  ui.accountNewPasswordInput.value = '';
+});
+
+ui.accountDeleteBtn.addEventListener('click', async () => {
+  const currentPassword =
+    ui.accountCurrentPasswordInput.value ||
+    (await showPromptDialog('Delete Account', 'Enter current password to delete account:', ''));
+  if (!currentPassword) {
+    setAccountFormMessage('Current password is required to delete account.', true);
+    return;
+  }
+
+  const confirmed = await showConfirmDialog(
+    'Delete Account',
+    'Delete account permanently? This cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  const response = await window.api.auth.deleteAccount({ currentPassword });
+  if (!response.ok) {
+    setAccountFormMessage(response.message || 'Failed to delete account.', true);
+    return;
+  }
+
+  await performLogout(false);
 });
 
 ui.vcMuteBtn.addEventListener('click', async () => {
@@ -1257,7 +1804,7 @@ ui.vcCloseBtn.addEventListener('click', () => {
 });
 
 ui.createServerBtn.addEventListener('click', async () => {
-  const name = window.prompt('Server name');
+  const name = await showPromptDialog('Create Server', 'Server name:');
   if (!name) {
     return;
   }
@@ -1272,7 +1819,7 @@ ui.createServerBtn.addEventListener('click', async () => {
 });
 
 ui.addFriendBtn.addEventListener('click', async () => {
-  const target = window.prompt('Enter username or email to add as friend');
+  const target = await showPromptDialog('Add Friend', 'Enter username or email to add as friend:');
   if (!target) {
     return;
   }
@@ -1293,42 +1840,12 @@ ui.friendRequestsBtn.addEventListener('click', async () => {
     return;
   }
 
-  const requests = response.requests || [];
-  if (requests.length === 0) {
-    window.alert('No pending friend requests.');
-    return;
-  }
-
-  const listText = requests.map((r) => `${r.id}: ${r.username}`).join('\n');
-  const rawId = window.prompt(`Pending requests:\n${listText}\n\nEnter request id to respond:`);
-  if (!rawId) {
-    return;
-  }
-
-  const requestId = Number(rawId);
-  if (!requestId) {
-    ui.channelTitle.textContent = 'Invalid request id.';
-    return;
-  }
-
-  const actionRaw = window.prompt('Type "accept" or "reject":', 'accept');
-  if (!actionRaw) {
-    return;
-  }
-
-  const action = actionRaw.toLowerCase();
-  const result = await window.api.friends.respondRequest({ requestId, action });
-  if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
-    return;
-  }
-
-  await loadFriends();
-  ui.channelTitle.textContent = `Friend request ${action}ed.`;
+  renderFriendRequests(response.requests || []);
+  openFriendRequestsModal();
 });
 
 ui.joinInviteBtn.addEventListener('click', async () => {
-  const codeInput = window.prompt('Enter invite code');
+  const codeInput = await showPromptDialog('Join by Invite', 'Enter invite code:');
   if (!codeInput) {
     return;
   }
@@ -1373,7 +1890,7 @@ ui.createInviteBtn.addEventListener('click', async () => {
     } catch (_error) {
     }
   }
-  window.alert(`Invite code: ${code}${code ? '\n(Copied to clipboard when possible.)' : ''}`);
+  await showMessageDialog('Invite Code', `Invite code: ${code}${code ? '\n(Copied to clipboard when possible.)' : ''}`);
 });
 
   ui.createChannelBtn.addEventListener('click', async () => {
@@ -1386,12 +1903,12 @@ ui.createInviteBtn.addEventListener('click', async () => {
     return;
   }
 
-  const name = window.prompt('Channel name (without #)');
+  const name = await showPromptDialog('Create Channel', 'Channel name (without #):');
   if (!name) {
     return;
   }
 
-  const isVoice = window.confirm('Create as voice channel? OK = Voice, Cancel = Text');
+  const isVoice = await showConfirmDialog('Channel Type', 'Create as voice channel?', 'Voice', 'Text');
   const type = isVoice ? 'voice' : 'text';
 
   const result = await window.api.chat.createChannel({
@@ -1411,6 +1928,10 @@ ui.createInviteBtn.addEventListener('click', async () => {
 ui.loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
+  if (window.api.auth.setRemember) {
+    window.api.auth.setRemember(Boolean(ui.rememberMe.checked));
+  }
+
   const result = await window.api.auth.login({
     email: ui.loginEmail.value,
     password: ui.loginPassword.value
@@ -1422,6 +1943,7 @@ ui.loginForm.addEventListener('submit', async (event) => {
   }
 
   state.user = result.user;
+  renderAccountPanel();
   setAuthMessage('');
   await openChat();
   await loadServers();
@@ -1445,7 +1967,14 @@ ui.registerForm.addEventListener('submit', async (event) => {
     return;
   }
 
+  if (result.needsVerification) {
+    showLogin();
+    setAuthMessage(result.message || 'Verify your email before logging in.');
+    return;
+  }
+
   state.user = result.user;
+  renderAccountPanel();
   setAuthMessage('');
   await openChat();
   await loadServers();
@@ -1496,42 +2025,7 @@ ui.messageForm.addEventListener('submit', async (event) => {
 });
 
 ui.logoutBtn.addEventListener('click', async () => {
-  leaveVoiceView();
-  await window.api.auth.logout();
-  if (state.ws) {
-    state.ws.close();
-  }
-
-  state.user = null;
-  state.servers = [];
-  state.channels = [];
-  state.selectedServerId = null;
-  state.selectedChannelId = null;
-  state.selectedDmUser = null;
-  state.currentUserId = null;
-  state.subscribedChannelId = null;
-  state.realtimeToken = null;
-  state.canCreateChannels = false;
-  state.onlineUsers = [];
-  state.friends = [];
-  state.mobileServersOpen = false;
-  state.mobileUsersOpen = false;
-  state.serverOptionsServerId = null;
-  state.selectedModerationUserId = null;
-  state.activeVoiceChannelId = null;
-
-  ui.serversList.innerHTML = '';
-  ui.channelsList.innerHTML = '';
-  ui.messagesList.innerHTML = '';
-  ui.onlineUsersList.innerHTML = '';
-  ui.friendsList.innerHTML = '';
-  ui.channelTitle.textContent = 'Select a channel';
-  ui.serverTitle.textContent = 'Channels';
-  updateChannelCreateButton();
-  updateMobileDrawers();
-  closeServerOptions();
-  closeUserOptions();
-  openAuth();
+  await performLogout(true);
 });
 
 window.addEventListener('resize', () => {
@@ -1546,7 +2040,38 @@ updateChannelCreateButton();
 updateMobileDrawers();
 closeServerOptions();
 closeUserOptions();
+closeAccountSettingsMenu();
+renderAccountPanel();
 updateVoiceButtons();
 setVcStatus('Not connected');
 renderVoiceParticipants();
 showLogin();
+
+handleAuthDeepLinks().catch(() => {});
+
+(async function tryRestoreSession() {
+  try {
+    if (window.api.auth.getRemember) {
+      ui.rememberMe.checked = window.api.auth.getRemember();
+      if (!ui.rememberMe.checked) {
+        return;
+      }
+    }
+
+    const result = await window.api.auth.getSession();
+    if (!result?.ok) {
+      return;
+    }
+
+    state.user = result.user;
+    renderAccountPanel();
+    setAuthMessage('');
+    await openChat();
+    await loadServers();
+    await loadFriends();
+    if (result.realtimeToken) {
+      await ensureRealtime(result.realtimeToken);
+    }
+  } catch (_error) {
+  }
+})();

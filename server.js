@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const db = require('./db');
+const { sendMail } = require('./mailer');
 
 const WEB_PORT = Number(process.env.WEB_PORT || 3000);
 
@@ -15,6 +16,61 @@ app.use(express.static(path.join(__dirname, 'src')));
 
 const authTokens = new Map();
 const wsClients = new Map();
+
+function hashToken(rawToken) {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
+
+function buildPublicUrl(pathname) {
+  const base = String(process.env.APP_PUBLIC_URL || `http://localhost:${WEB_PORT}`).trim().replace(/\/+$/, '');
+  return `${base}${pathname}`;
+}
+
+async function sendVerificationEmail(email, username, rawToken) {
+  const verifyUrl = buildPublicUrl(`/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`);
+  return sendMail({
+    to: email,
+    subject: 'Verify your JelloChat email',
+    text: `Hi ${username},\n\nVerify your email:\n${verifyUrl}\n\nThis link expires in 24 hours.`,
+    html: `<p>Hi ${username},</p><p>Verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 24 hours.</p>`
+  });
+}
+
+async function sendPasswordResetEmail(email, username, rawToken) {
+  const resetUrl = buildPublicUrl(`/reset-password?token=${encodeURIComponent(rawToken)}`);
+  return sendMail({
+    to: email,
+    subject: 'Reset your JelloChat password',
+    text: `Hi ${username},\n\nReset your password:\n${resetUrl}\n\nThis link expires in 1 hour.`,
+    html: `<p>Hi ${username},</p><p>Reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`
+  });
+}
+
+async function issueEmailVerification(userId, email, username) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  await db.query(
+    `UPDATE users
+     SET email_verification_token_hash = $1,
+         email_verification_expires_at = NOW() + INTERVAL '24 hours'
+     WHERE id = $2`,
+    [tokenHash, userId]
+  );
+  return sendVerificationEmail(email, username, rawToken);
+}
+
+async function issuePasswordReset(userId, email, username) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  await db.query(
+    `UPDATE users
+     SET password_reset_token_hash = $1,
+         password_reset_expires_at = NOW() + INTERVAL '1 hour'
+     WHERE id = $2`,
+    [tokenHash, userId]
+  );
+  return sendPasswordResetEmail(email, username, rawToken);
+}
 
 function issueAuthToken(userId) {
   const token = crypto.randomBytes(24).toString('hex');
@@ -37,6 +93,58 @@ function generateInviteCode() {
     .replace(/[^a-zA-Z0-9]/g, '')
     .slice(0, 8)
     .toUpperCase();
+}
+
+function baseUsername(input) {
+  const raw = String(input || '').trim().replace(/\s+/g, ' ');
+  return raw.replace(/#\d{4}$/i, '');
+}
+
+function hasDiscriminator(username) {
+  return /#\d{4}$/i.test(String(username || '').trim());
+}
+
+async function usernameExists(username, excludeUserId = null) {
+  if (excludeUserId) {
+    const result = await db.query('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) AND id <> $2 LIMIT 1', [
+      username,
+      excludeUserId
+    ]);
+    return result.rows.length > 0;
+  }
+
+  const result = await db.query('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1', [username]);
+  return result.rows.length > 0;
+}
+
+function randomDiscriminator() {
+  return String(Math.floor(Math.random() * 10_000)).padStart(4, '0');
+}
+
+async function allocateUniqueUsername(requestedUsername, excludeUserId = null) {
+  const requested = String(requestedUsername || '').trim();
+  if (hasDiscriminator(requested)) {
+    const normalized = requested.slice(0, 50);
+    const taken = await usernameExists(normalized, excludeUserId);
+    if (!taken) {
+      return { username: normalized, changed: false };
+    }
+  }
+
+  const base = baseUsername(requested);
+  if (base.length < 2) {
+    throw new Error('Username must be at least 2 characters.');
+  }
+  const withTagBase = base.slice(0, 45);
+  for (let i = 0; i < 30; i += 1) {
+    const candidate = `${withTagBase}#${randomDiscriminator()}`;
+    const taken = await usernameExists(candidate, excludeUserId);
+    if (!taken) {
+      return { username: candidate, changed: true };
+    }
+  }
+
+  throw new Error('Could not allocate a unique username. Please try again.');
 }
 
 function getOnlineUserIds() {
@@ -207,12 +315,16 @@ async function getMessageAccess(userId, messageId) {
 }
 
 app.post('/api/auth/register', async (req, res) => {
-  const username = String(req.body?.username || '').trim();
+  const requestedUsername = String(req.body?.username || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
 
-  if (!username || !email || !password) {
+  if (!requestedUsername || !email || !password) {
     res.status(400).json({ ok: false, message: 'Username, email, and password are required.' });
+    return;
+  }
+  if (baseUsername(requestedUsername).length < 2 || baseUsername(requestedUsername).length > 50) {
+    res.status(400).json({ ok: false, message: 'Username must be between 2 and 50 characters.' });
     return;
   }
   if (password.length < 6) {
@@ -227,10 +339,11 @@ app.post('/api/auth/register', async (req, res) => {
       return;
     }
 
+    const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const created = await db.query(
-      'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email',
-      [username, email, passwordHash]
+      'INSERT INTO users (username, email, password_hash, email_verified) VALUES ($1, $2, $3, FALSE) RETURNING id, username, email',
+      [allocated.username, email, passwordHash]
     );
     const user = created.rows[0];
 
@@ -245,8 +358,20 @@ app.post('/api/auth/register', async (req, res) => {
       );
     }
 
-    const realtimeToken = issueAuthToken(user.id);
-    res.json({ ok: true, user, realtimeToken });
+    const mailResult = await issueEmailVerification(user.id, user.email, user.username);
+    if (!mailResult.ok) {
+      res.status(500).json({ ok: false, message: `Account created but verification email failed: ${mailResult.message}` });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      needsVerification: true,
+      assignedUsername: user.username,
+      message: allocated.changed
+        ? `Account created. Username set to ${user.username}. Check your email to verify your account before logging in.`
+        : 'Account created. Check your email to verify your account before logging in.'
+    });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Registration failed: ${error.message}` });
   }
@@ -262,7 +387,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, password_hash FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, password_hash, email_verified FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       res.status(401).json({ ok: false, message: 'Invalid email or password.' });
       return;
@@ -272,6 +397,14 @@ app.post('/api/auth/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       res.status(401).json({ ok: false, message: 'Invalid email or password.' });
+      return;
+    }
+    if (!user.email_verified) {
+      res.status(403).json({
+        ok: false,
+        verificationRequired: true,
+        message: 'Please verify your email before logging in.'
+      });
       return;
     }
 
@@ -289,6 +422,268 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/logout', authMiddleware, async (req, res) => {
   authTokens.delete(req.authToken);
   res.json({ ok: true });
+});
+
+app.get('/api/auth/session', authMiddleware, async (req, res) => {
+  try {
+    const userResult = await db.query('SELECT id, username, email FROM users WHERE id = $1', [req.userId]);
+    if (userResult.rows.length === 0) {
+      res.status(401).json({ ok: false, message: 'Session not found.' });
+      return;
+    }
+    const user = userResult.rows[0];
+    const realtimeToken = issueAuthToken(user.id);
+    res.json({ ok: true, user, realtimeToken });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to restore session: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/resend-verification', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!email) {
+    res.status(400).json({ ok: false, message: 'Email is required.' });
+    return;
+  }
+
+  try {
+    const userResult = await db.query('SELECT id, username, email, email_verified FROM users WHERE email = $1', [email]);
+    if (userResult.rows.length === 0) {
+      res.json({ ok: true, message: 'If this email exists, a verification email has been sent.' });
+      return;
+    }
+    const user = userResult.rows[0];
+    if (user.email_verified) {
+      res.json({ ok: true, message: 'Email is already verified.' });
+      return;
+    }
+    await issueEmailVerification(user.id, user.email, user.username);
+    res.json({ ok: true, message: 'Verification email sent.' });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to resend verification: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/verify-email', async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  if (!token) {
+    res.status(400).json({ ok: false, message: 'Token is required.' });
+    return;
+  }
+
+  try {
+    const tokenHash = hashToken(token);
+    const updated = await db.query(
+      `UPDATE users
+       SET email_verified = TRUE,
+           email_verification_token_hash = NULL,
+           email_verification_expires_at = NULL
+       WHERE email_verification_token_hash = $1
+         AND email_verification_expires_at > NOW()
+       RETURNING id`,
+      [tokenHash]
+    );
+
+    if (updated.rows.length === 0) {
+      res.status(400).json({ ok: false, message: 'Verification token is invalid or expired.' });
+      return;
+    }
+
+    res.json({ ok: true, message: 'Email verified successfully.' });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to verify email: ${error.message}` });
+  }
+});
+
+app.get('/api/auth/verify-email', async (req, res) => {
+  const token = String(req.query?.token || '').trim();
+  if (!token) {
+    res.status(400).type('text/plain').send('Missing verification token.');
+    return;
+  }
+
+  try {
+    const tokenHash = hashToken(token);
+    const updated = await db.query(
+      `UPDATE users
+       SET email_verified = TRUE,
+           email_verification_token_hash = NULL,
+           email_verification_expires_at = NULL
+       WHERE email_verification_token_hash = $1
+         AND email_verification_expires_at > NOW()
+       RETURNING id`,
+      [tokenHash]
+    );
+
+    if (updated.rows.length === 0) {
+      res.status(400).type('text/plain').send('Verification token is invalid or expired.');
+      return;
+    }
+
+    res.type('text/plain').send('Email verified. You can return to JelloChat and log in.');
+  } catch (error) {
+    res.status(500).type('text/plain').send(`Failed to verify email: ${error.message}`);
+  }
+});
+
+app.post('/api/auth/password-reset/request', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!email) {
+    res.status(400).json({ ok: false, message: 'Email is required.' });
+    return;
+  }
+
+  try {
+    const userResult = await db.query('SELECT id, username, email FROM users WHERE email = $1', [email]);
+    if (userResult.rows.length > 0) {
+      const user = userResult.rows[0];
+      await issuePasswordReset(user.id, user.email, user.username);
+    }
+    res.json({ ok: true, message: 'If this email exists, a password reset link has been sent.' });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to request password reset: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/password-reset/confirm', async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  const newPassword = String(req.body?.newPassword || '');
+  if (!token || !newPassword) {
+    res.status(400).json({ ok: false, message: 'Token and new password are required.' });
+    return;
+  }
+  if (newPassword.length < 6) {
+    res.status(400).json({ ok: false, message: 'Password must be at least 6 characters.' });
+    return;
+  }
+
+  try {
+    const tokenHash = hashToken(token);
+    const result = await db.query(
+      `SELECT id
+       FROM users
+       WHERE password_reset_token_hash = $1
+         AND password_reset_expires_at > NOW()`,
+      [tokenHash]
+    );
+    if (result.rows.length === 0) {
+      res.status(400).json({ ok: false, message: 'Reset token is invalid or expired.' });
+      return;
+    }
+
+    const userId = result.rows[0].id;
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await db.query(
+      `UPDATE users
+       SET password_hash = $1,
+           password_reset_token_hash = NULL,
+           password_reset_expires_at = NULL
+       WHERE id = $2`,
+      [passwordHash, userId]
+    );
+    clearAuthTokensForUser(userId);
+    res.json({ ok: true, message: 'Password has been reset.' });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to reset password: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/account', authMiddleware, async (req, res) => {
+  const requestedUsername = String(req.body?.username || '').trim();
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+
+  if (!requestedUsername || !email) {
+    res.status(400).json({ ok: false, message: 'Username and email are required.' });
+    return;
+  }
+  if (baseUsername(requestedUsername).length < 2 || baseUsername(requestedUsername).length > 50) {
+    res.status(400).json({ ok: false, message: 'Username must be between 2 and 50 characters.' });
+    return;
+  }
+  if (!email.includes('@')) {
+    res.status(400).json({ ok: false, message: 'Valid email is required.' });
+    return;
+  }
+  if ((currentPassword && !newPassword) || (!currentPassword && newPassword)) {
+    res.status(400).json({ ok: false, message: 'Current and new password are required together.' });
+    return;
+  }
+  if (newPassword && newPassword.length < 6) {
+    res.status(400).json({ ok: false, message: 'New password must be at least 6 characters.' });
+    return;
+  }
+
+  try {
+    const existing = await db.query('SELECT id, username, email, password_hash FROM users WHERE id = $1', [req.userId]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+    const user = existing.rows[0];
+
+    if (email !== user.email) {
+      const duplicate = await db.query('SELECT id FROM users WHERE email = $1 AND id <> $2', [email, req.userId]);
+      if (duplicate.rows.length > 0) {
+        res.status(409).json({ ok: false, message: 'Email already in use.' });
+        return;
+      }
+    }
+
+    let passwordHash = user.password_hash;
+    if (newPassword) {
+      const valid = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!valid) {
+        res.status(401).json({ ok: false, message: 'Current password is incorrect.' });
+        return;
+      }
+      passwordHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    const allocated = await allocateUniqueUsername(requestedUsername, req.userId);
+    const updated = await db.query(
+      'UPDATE users SET username = $1, email = $2, password_hash = $3 WHERE id = $4 RETURNING id, username, email',
+      [allocated.username, email, passwordHash, req.userId]
+    );
+
+    res.json({
+      ok: true,
+      user: updated.rows[0],
+      message: allocated.changed ? `Username updated to ${updated.rows[0].username}.` : 'Account updated.'
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update account: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/account/delete', authMiddleware, async (req, res) => {
+  const currentPassword = String(req.body?.currentPassword || '');
+  if (!currentPassword) {
+    res.status(400).json({ ok: false, message: 'Current password is required.' });
+    return;
+  }
+
+  try {
+    const existing = await db.query('SELECT id, password_hash FROM users WHERE id = $1', [req.userId]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+
+    const valid = await bcrypt.compare(currentPassword, existing.rows[0].password_hash);
+    if (!valid) {
+      res.status(401).json({ ok: false, message: 'Current password is incorrect.' });
+      return;
+    }
+
+    await db.query('DELETE FROM users WHERE id = $1', [req.userId]);
+    clearAuthTokensForUser(req.userId);
+    authTokens.delete(req.authToken);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to delete account: ${error.message}` });
+  }
 });
 
 app.get('/api/chat/servers', authMiddleware, async (req, res) => {
@@ -517,11 +912,11 @@ app.get('/api/chat/servers/:serverId/bans', authMiddleware, async (req, res) => 
     }
 
     const result = await db.query(
-      `SELECT b.user_id, u.username, u.email, b.reason, b.created_at
-       FROM server_bans b
-       JOIN users u ON u.id = b.user_id
-       WHERE b.server_id = $1
-       ORDER BY b.created_at DESC`,
+      `SELECT b.user_id, u.username, b.reason, b.created_at
+         FROM server_bans b
+         JOIN users u ON u.id = b.user_id
+         WHERE b.server_id = $1
+         ORDER BY b.created_at DESC`,
       [serverId]
     );
     res.json({ ok: true, bannedUsers: result.rows });
@@ -846,7 +1241,7 @@ app.get('/api/chat/servers/:serverId/presence', authMiddleware, async (req, res)
 app.get('/api/friends', authMiddleware, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT u.id, u.username, u.email
+      `SELECT u.id, u.username
        FROM friendships f
        JOIN users u ON u.id = f.friend_user_id
        WHERE f.user_id = $1
@@ -942,7 +1337,7 @@ app.post('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => 
 app.get('/api/friends/requests', authMiddleware, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT fr.id, fr.sender_user_id, u.username, u.email, fr.created_at
+      `SELECT fr.id, fr.sender_user_id, u.username, fr.created_at
        FROM friend_requests fr
        JOIN users u ON u.id = fr.sender_user_id
        WHERE fr.receiver_user_id = $1 AND fr.status = 'pending'

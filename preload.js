@@ -7,7 +7,14 @@ contextBridge.exposeInMainWorld('api', {
   auth: {
     register: (payload) => ipcRenderer.invoke('auth:register', payload),
     login: (payload) => ipcRenderer.invoke('auth:login', payload),
-    logout: () => ipcRenderer.invoke('auth:logout')
+    getSession: () => ipcRenderer.invoke('auth:getSession'),
+    logout: () => ipcRenderer.invoke('auth:logout'),
+    resendVerification: (payload) => ipcRenderer.invoke('auth:resendVerification', payload),
+    verifyEmail: (payload) => ipcRenderer.invoke('auth:verifyEmail', payload),
+    requestPasswordReset: (payload) => ipcRenderer.invoke('auth:requestPasswordReset', payload),
+    confirmPasswordReset: (payload) => ipcRenderer.invoke('auth:confirmPasswordReset', payload),
+    updateAccount: (payload) => ipcRenderer.invoke('auth:updateAccount', payload),
+    deleteAccount: (payload) => ipcRenderer.invoke('auth:deleteAccount', payload)
   },
   chat: {
     getServers: () => ipcRenderer.invoke('chat:getServers'),
