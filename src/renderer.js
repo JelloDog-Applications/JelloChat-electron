@@ -87,15 +87,7 @@ function getSelectedChannel() {
 }
 
 function shouldShowVoicePanel() {
-  const selected = getSelectedChannel();
-  return Boolean(
-    state.voiceRoom &&
-      state.activeVoiceChannelId &&
-      !state.selectedDmUser &&
-      selected &&
-      selected.type === 'voice' &&
-      selected.id === state.activeVoiceChannelId
-  );
+  return Boolean(state.voiceRoom && state.activeVoiceChannelId);
 }
 
 function syncVoicePanelVisibility() {
