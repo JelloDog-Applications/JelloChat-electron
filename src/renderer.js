@@ -817,9 +817,10 @@ async function loadDmMessages(partnerUserId, partnerUsername) {
 function renderChannels() {
   ui.channelsList.innerHTML = '';
   for (const channel of state.channels) {
+    const channelType = String(channel.type || 'text').toLowerCase();
     const item = document.createElement('li');
     const button = document.createElement('button');
-    const label = channel.type === 'voice' ? `VC ${channel.name}` : `# ${channel.name}`;
+    const label = channelType === 'voice' ? `VC ${channel.name}` : `# ${channel.name}`;
     button.textContent = label;
     if (channel.id === state.selectedChannelId) {
       button.classList.add('active');
@@ -829,7 +830,7 @@ function renderChannels() {
       state.selectedChannelId = channel.id;
       state.selectedDmUser = null;
       renderChannels();
-      if (channel.type === 'voice') {
+      if (channelType === 'voice') {
         state.subscribedChannelId = null;
         await joinVoiceChannel(channel);
         await loadMessages(channel.id);
@@ -858,7 +859,10 @@ async function loadChannels(serverId, resetSelection = true) {
   }
 
   const previousSelected = state.selectedChannelId;
-  state.channels = response.channels;
+  state.channels = (response.channels || []).map((channel) => ({
+    ...channel,
+    type: String(channel.type || 'text').toLowerCase()
+  }));
   state.canCreateChannels = Boolean(response.canCreateChannels);
   updateChannelCreateButton();
 
@@ -1372,7 +1376,7 @@ ui.createInviteBtn.addEventListener('click', async () => {
   window.alert(`Invite code: ${code}${code ? '\n(Copied to clipboard when possible.)' : ''}`);
 });
 
-ui.createChannelBtn.addEventListener('click', async () => {
+  ui.createChannelBtn.addEventListener('click', async () => {
   if (!state.selectedServerId) {
     ui.channelTitle.textContent = 'Select a server first.';
     return;
@@ -1387,15 +1391,8 @@ ui.createChannelBtn.addEventListener('click', async () => {
     return;
   }
 
-  const kindRaw = window.prompt('Channel type: "text" or "voice"', 'text');
-  if (!kindRaw) {
-    return;
-  }
-  const type = kindRaw.trim().toLowerCase();
-  if (!['text', 'voice'].includes(type)) {
-    ui.channelTitle.textContent = 'Channel type must be "text" or "voice".';
-    return;
-  }
+  const isVoice = window.confirm('Create as voice channel? OK = Voice, Cancel = Text');
+  const type = isVoice ? 'voice' : 'text';
 
   const result = await window.api.chat.createChannel({
     serverId: state.selectedServerId,
