@@ -87,9 +87,20 @@
           <section id="vc-panel" class="vc-panel hidden">
             <div class="vc-panel-header">
               <h3 id="vc-room-title">Voice Channel</h3>
-              <button id="vc-close-btn" type="button">Leave VC</button>
+              <div class="vc-controls">
+                <button id="vc-mute-btn" type="button">Mute</button>
+                <button id="vc-deafen-btn" type="button">Deafen</button>
+                <button id="vc-close-btn" type="button">Leave VC</button>
+              </div>
             </div>
-            <iframe id="vc-frame" title="Voice Channel" allow="camera; microphone; autoplay; fullscreen"></iframe>
+            <div class="vc-stage">
+              <p id="vc-status" class="vc-status">Not connected</p>
+              <div class="vc-participants">
+                <h4>In Voice</h4>
+                <ul id="vc-participants-list" class="list compact-list"></ul>
+              </div>
+            </div>
+            <div id="vc-audio-sink" class="vc-audio-sink" aria-hidden="true"></div>
           </section>
           <div id="messages-list" class="messages-list"></div>
           <form id="message-form" class="message-form">
@@ -118,6 +129,7 @@
     </main>
 
     <script src="./api.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.15.7/dist/livekit-client.umd.min.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

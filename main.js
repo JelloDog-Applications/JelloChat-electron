@@ -3,7 +3,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
-const { AccessToken } = require('livekit-server-sdk');
+const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const db = require('./db');
 
 const WS_PORT = Number(process.env.WS_PORT || 3131);
@@ -121,7 +121,47 @@ async function canUsersDm(userAId, userBId) {
   return sharedServer.rows.length > 0;
 }
 
-function createVoiceToken({ identity, name, roomName }) {
+async function createVoiceToken({ identity, name, roomName }) {
+  const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
+  const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
+  let livekitUrl = String(process.env.LIVEKIT_URL || '').trim();
+  if (livekitUrl.startsWith('http://')) {
+    livekitUrl = livekitUrl.replace(/^http:\/\//, 'ws://');
+  } else if (livekitUrl.startsWith('https://')) {
+    livekitUrl = livekitUrl.replace(/^https:\/\//, 'wss://');
+  } else if (livekitUrl && !/^wss?:\/\//i.test(livekitUrl)) {
+    livekitUrl = `wss://${livekitUrl}`;
+  }
+  if (!apiKey || !apiSecret || !livekitUrl) {
+    throw new Error('LiveKit environment variables are not configured.');
+  }
+
+  const token = new AccessToken(apiKey, apiSecret, { identity, name, ttl: 60 * 60 });
+  token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+  const jwt = await token.toJwt();
+  let debug = null;
+  if (String(process.env.VC_DEBUG || '').toLowerCase() === '1' || String(process.env.VC_DEBUG || '').toLowerCase() === 'true') {
+    try {
+      const payload = JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString('utf8'));
+      debug = { iss: payload.iss, exp: payload.exp, sub: payload.sub, room: payload.video?.room || null };
+    } catch (_error) {
+      debug = null;
+    }
+  }
+  return { token: jwt, livekitUrl, debug };
+}
+
+function getLivekitHostForServerApi(livekitUrl) {
+  const parsed = new URL(livekitUrl);
+  if (parsed.protocol === 'ws:') {
+    parsed.protocol = 'http:';
+  } else if (parsed.protocol === 'wss:') {
+    parsed.protocol = 'https:';
+  }
+  return parsed.origin;
+}
+
+async function listVoiceParticipants(roomName) {
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
   const livekitUrl = process.env.LIVEKIT_URL;
@@ -129,9 +169,13 @@ function createVoiceToken({ identity, name, roomName }) {
     throw new Error('LiveKit environment variables are not configured.');
   }
 
-  const token = new AccessToken(apiKey, apiSecret, { identity, name, ttl: '1h' });
-  token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
-  return { token: token.toJwt(), livekitUrl };
+  const host = getLivekitHostForServerApi(livekitUrl);
+  const roomService = new RoomServiceClient(host, apiKey, apiSecret);
+  const participants = await roomService.listParticipants(roomName);
+  return participants.map((participant) => ({
+    identity: participant.identity,
+    name: participant.name || participant.identity
+  }));
 }
 
 async function isServerOwner(userId, serverId) {
@@ -683,7 +727,7 @@ ipcMain.handle('vc:getToken', async (_event, payload) => {
 
     const user = await db.query('SELECT username FROM users WHERE id = $1', [currentUserId]);
     const roomName = `server-${serverId}-channel-${channelId}`;
-    const voice = createVoiceToken({
+    const voice = await createVoiceToken({
       identity: String(currentUserId),
       name: user.rows[0]?.username || `user-${currentUserId}`,
       roomName
@@ -693,10 +737,50 @@ ipcMain.handle('vc:getToken', async (_event, payload) => {
       ok: true,
       roomName,
       livekitUrl: voice.livekitUrl,
-      token: voice.token
+      token: voice.token,
+      debug: voice.debug
     };
   } catch (error) {
     return { ok: false, message: `Failed to create voice token: ${error.message}` };
+  }
+});
+
+ipcMain.handle('vc:getParticipants', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const serverId = Number(payload?.serverId);
+  const channelId = Number(payload?.channelId);
+  if (!serverId || !channelId) {
+    return { ok: false, message: 'Valid server and channel are required.' };
+  }
+
+  try {
+    const membership = await db.query(
+      'SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2',
+      [serverId, currentUserId]
+    );
+    if (membership.rows.length === 0) {
+      return { ok: false, message: 'Access denied.' };
+    }
+
+    const channel = await db.query(
+      'SELECT id, type FROM channels WHERE id = $1 AND server_id = $2',
+      [channelId, serverId]
+    );
+    if (channel.rows.length === 0) {
+      return { ok: false, message: 'Channel not found.' };
+    }
+    if (channel.rows[0].type !== 'voice') {
+      return { ok: false, message: 'This channel is not a voice channel.' };
+    }
+
+    const roomName = `server-${serverId}-channel-${channelId}`;
+    const participants = await listVoiceParticipants(roomName);
+    return { ok: true, participants };
+  } catch (error) {
+    return { ok: false, message: `Failed to fetch voice participants: ${error.message}` };
   }
 });
 

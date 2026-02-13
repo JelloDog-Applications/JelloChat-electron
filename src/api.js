@@ -98,7 +98,8 @@
       sendMessage: (payload) => request('POST', `/api/dm/${payload.partnerUserId}/messages`, payload)
     },
     vc: {
-      getToken: (payload) => request('POST', '/api/vc/token', payload)
+      getToken: (payload) => request('POST', '/api/vc/token', payload),
+      getParticipants: (payload) => request('POST', '/api/vc/participants', payload)
     },
     friends: {
       list: () => request('GET', '/api/friends'),

@@ -33,7 +33,8 @@ contextBridge.exposeInMainWorld('api', {
     sendMessage: (payload) => ipcRenderer.invoke('dm:sendMessage', payload)
   },
   vc: {
-    getToken: (payload) => ipcRenderer.invoke('vc:getToken', payload)
+    getToken: (payload) => ipcRenderer.invoke('vc:getToken', payload),
+    getParticipants: (payload) => ipcRenderer.invoke('vc:getParticipants', payload)
   },
   friends: {
     list: () => ipcRenderer.invoke('friends:list'),

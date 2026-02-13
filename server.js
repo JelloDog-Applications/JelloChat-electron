@@ -4,7 +4,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
-const { AccessToken } = require('livekit-server-sdk');
+const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const db = require('./db');
 
 const WEB_PORT = Number(process.env.WEB_PORT || 3000);
@@ -129,7 +129,47 @@ async function canUsersDm(userAId, userBId) {
   return sharedServer.rows.length > 0;
 }
 
-function createVoiceToken({ identity, name, roomName }) {
+async function createVoiceToken({ identity, name, roomName }) {
+  const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
+  const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
+  let livekitUrl = String(process.env.LIVEKIT_URL || '').trim();
+  if (livekitUrl.startsWith('http://')) {
+    livekitUrl = livekitUrl.replace(/^http:\/\//, 'ws://');
+  } else if (livekitUrl.startsWith('https://')) {
+    livekitUrl = livekitUrl.replace(/^https:\/\//, 'wss://');
+  } else if (livekitUrl && !/^wss?:\/\//i.test(livekitUrl)) {
+    livekitUrl = `wss://${livekitUrl}`;
+  }
+  if (!apiKey || !apiSecret || !livekitUrl) {
+    throw new Error('LiveKit environment variables are not configured.');
+  }
+
+  const token = new AccessToken(apiKey, apiSecret, { identity, name, ttl: 60 * 60 });
+  token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+  const jwt = await token.toJwt();
+  let debug = null;
+  if (String(process.env.VC_DEBUG || '').toLowerCase() === '1' || String(process.env.VC_DEBUG || '').toLowerCase() === 'true') {
+    try {
+      const payload = JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString('utf8'));
+      debug = { iss: payload.iss, exp: payload.exp, sub: payload.sub, room: payload.video?.room || null };
+    } catch (_error) {
+      debug = null;
+    }
+  }
+  return { token: jwt, livekitUrl, debug };
+}
+
+function getLivekitHostForServerApi(livekitUrl) {
+  const parsed = new URL(livekitUrl);
+  if (parsed.protocol === 'ws:') {
+    parsed.protocol = 'http:';
+  } else if (parsed.protocol === 'wss:') {
+    parsed.protocol = 'https:';
+  }
+  return parsed.origin;
+}
+
+async function listVoiceParticipants(roomName) {
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
   const livekitUrl = process.env.LIVEKIT_URL;
@@ -137,9 +177,13 @@ function createVoiceToken({ identity, name, roomName }) {
     throw new Error('LiveKit environment variables are not configured.');
   }
 
-  const token = new AccessToken(apiKey, apiSecret, { identity, name, ttl: '1h' });
-  token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
-  return { token: token.toJwt(), livekitUrl };
+  const host = getLivekitHostForServerApi(livekitUrl);
+  const roomService = new RoomServiceClient(host, apiKey, apiSecret);
+  const participants = await roomService.listParticipants(roomName);
+  return participants.map((participant) => ({
+    identity: participant.identity,
+    name: participant.name || participant.identity
+  }));
 }
 
 async function isServerOwner(userId, serverId) {
@@ -608,7 +652,7 @@ app.post('/api/vc/token', authMiddleware, async (req, res) => {
 
     const user = await db.query('SELECT username FROM users WHERE id = $1', [req.userId]);
     const roomName = `server-${serverId}-channel-${channelId}`;
-    const voice = createVoiceToken({
+    const voice = await createVoiceToken({
       identity: String(req.userId),
       name: user.rows[0]?.username || `user-${req.userId}`,
       roomName
@@ -618,10 +662,44 @@ app.post('/api/vc/token', authMiddleware, async (req, res) => {
       ok: true,
       roomName,
       livekitUrl: voice.livekitUrl,
-      token: voice.token
+      token: voice.token,
+      debug: voice.debug
     });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to create voice token: ${error.message}` });
+  }
+});
+
+app.post('/api/vc/participants', authMiddleware, async (req, res) => {
+  const serverId = Number(req.body?.serverId);
+  const channelId = Number(req.body?.channelId);
+  if (!serverId || !channelId) {
+    res.status(400).json({ ok: false, message: 'Valid server and channel are required.' });
+    return;
+  }
+
+  try {
+    const membership = await canAccessServer(req.userId, serverId);
+    if (!membership) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+
+    const channel = await db.query('SELECT id, type FROM channels WHERE id = $1 AND server_id = $2', [channelId, serverId]);
+    if (channel.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Channel not found.' });
+      return;
+    }
+    if (channel.rows[0].type !== 'voice') {
+      res.status(400).json({ ok: false, message: 'This channel is not a voice channel.' });
+      return;
+    }
+
+    const roomName = `server-${serverId}-channel-${channelId}`;
+    const participants = await listVoiceParticipants(roomName);
+    res.json({ ok: true, participants });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to fetch voice participants: ${error.message}` });
   }
 });
 

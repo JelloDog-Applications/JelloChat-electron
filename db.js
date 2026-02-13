@@ -40,12 +40,12 @@ function loadEnv() {
 
   for (const envPath of candidates) {
     if (fs.existsSync(envPath)) {
-      dotenv.config({ path: envPath });
+      dotenv.config({ path: envPath, override: true });
       return envPath;
     }
   }
 
-  dotenv.config();
+  dotenv.config({ override: true });
   return null;
 }
 

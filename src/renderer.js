@@ -27,8 +27,12 @@
   channelTitle: document.getElementById('channel-title'),
   vcPanel: document.getElementById('vc-panel'),
   vcRoomTitle: document.getElementById('vc-room-title'),
-  vcFrame: document.getElementById('vc-frame'),
+  vcStatus: document.getElementById('vc-status'),
+  vcAudioSink: document.getElementById('vc-audio-sink'),
+  vcMuteBtn: document.getElementById('vc-mute-btn'),
+  vcDeafenBtn: document.getElementById('vc-deafen-btn'),
   vcCloseBtn: document.getElementById('vc-close-btn'),
+  vcParticipantsList: document.getElementById('vc-participants-list'),
   messagesList: document.getElementById('messages-list'),
   mobileServersToggle: document.getElementById('mobile-servers-toggle'),
   mobileUsersToggle: document.getElementById('mobile-users-toggle'),
@@ -70,11 +74,32 @@ const state = {
   selectedModerationUserId: null,
   serverOptionsTab: 'general',
   bannedUsers: [],
-  activeVoiceChannelId: null
+  activeVoiceChannelId: null,
+  voiceRoom: null,
+  voiceAudioEls: new Map(),
+  voiceActiveSpeakerIds: new Set(),
+  isVoiceMuted: false,
+  isVoiceDeafened: false
 };
 
 function getSelectedChannel() {
   return state.channels.find((channel) => channel.id === state.selectedChannelId) || null;
+}
+
+function shouldShowVoicePanel() {
+  const selected = getSelectedChannel();
+  return Boolean(
+    state.voiceRoom &&
+      state.activeVoiceChannelId &&
+      !state.selectedDmUser &&
+      selected &&
+      selected.type === 'voice' &&
+      selected.id === state.activeVoiceChannelId
+  );
+}
+
+function syncVoicePanelVisibility() {
+  ui.vcPanel.classList.toggle('hidden', !shouldShowVoicePanel());
 }
 
 function pickDefaultChannelId(channels) {
@@ -85,23 +110,248 @@ function pickDefaultChannelId(channels) {
   return (textChannel || channels[0]).id;
 }
 
-function leaveVoiceView() {
-  state.activeVoiceChannelId = null;
-  if (ui.vcFrame.src && ui.vcFrame.src !== 'about:blank') {
-    ui.vcFrame.src = 'about:blank';
+function getParticipantDisplayName(participant) {
+  let metadataName = null;
+  if (participant?.metadata) {
+    try {
+      metadataName = JSON.parse(participant.metadata || '{}')?.username || null;
+    } catch (_error) {
+      metadataName = null;
+    }
   }
-  ui.vcPanel.classList.add('hidden');
-  ui.messagesList.classList.remove('hidden');
-  ui.messageForm.classList.remove('hidden');
+  return participant?.name || metadataName || participant?.identity || 'Unknown';
 }
 
-function openVoiceView(roomLabel, joinUrl, channelId) {
-  state.activeVoiceChannelId = channelId;
-  ui.vcRoomTitle.textContent = roomLabel;
-  ui.vcFrame.src = joinUrl;
-  ui.vcPanel.classList.remove('hidden');
-  ui.messagesList.classList.add('hidden');
-  ui.messageForm.classList.add('hidden');
+function isParticipantMuted(participant) {
+  const publications = Array.from(participant.audioTrackPublications?.values?.() || []);
+  if (!publications.length) {
+    return true;
+  }
+  return publications.every((pub) => pub.isMuted);
+}
+
+function renderVoiceParticipants() {
+  ui.vcParticipantsList.innerHTML = '';
+  if (!state.voiceRoom) {
+    const item = document.createElement('li');
+    item.textContent = 'Not connected.';
+    ui.vcParticipantsList.appendChild(item);
+    return;
+  }
+
+  const participants = [state.voiceRoom.localParticipant, ...Array.from(state.voiceRoom.remoteParticipants.values())];
+  if (!participants.length) {
+    const item = document.createElement('li');
+    item.textContent = 'No one is in this VC yet.';
+    ui.vcParticipantsList.appendChild(item);
+    return;
+  }
+
+  for (const participant of participants) {
+    const item = document.createElement('li');
+    item.className = 'vc-participant';
+    if (state.voiceActiveSpeakerIds.has(participant.identity)) {
+      item.classList.add('vc-speaking');
+    }
+
+    const name = document.createElement('span');
+    name.textContent = getParticipantDisplayName(participant);
+
+    const badges = document.createElement('span');
+    badges.className = 'vc-badges';
+    const parts = [];
+    if (participant.isLocal) {
+      parts.push('You');
+      if (state.isVoiceMuted) {
+        parts.push('Muted');
+      }
+      if (state.isVoiceDeafened) {
+        parts.push('Deafened');
+      }
+    } else if (isParticipantMuted(participant)) {
+      parts.push('Muted');
+    }
+    badges.textContent = parts.join(' · ');
+
+    item.append(name, badges);
+    ui.vcParticipantsList.appendChild(item);
+  }
+}
+
+function setVcStatus(message) {
+  ui.vcStatus.textContent = message;
+}
+
+function canUseMicrophoneApi() {
+  const hasMediaDevices = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+  const isLocalhost =
+    typeof location !== 'undefined' &&
+    (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1');
+  const secureOk = typeof window !== 'undefined' ? window.isSecureContext || isLocalhost : false;
+  return Boolean(hasMediaDevices && secureOk);
+}
+
+function updateVoiceButtons() {
+  ui.vcMuteBtn.classList.toggle('vc-control-on', state.isVoiceMuted);
+  ui.vcDeafenBtn.classList.toggle('vc-control-on', state.isVoiceDeafened);
+  ui.vcMuteBtn.textContent = state.isVoiceMuted ? 'Unmute' : 'Mute';
+  ui.vcDeafenBtn.textContent = state.isVoiceDeafened ? 'Undeafen' : 'Deafen';
+}
+
+function detachAllVoiceAudio() {
+  for (const [, audioEl] of state.voiceAudioEls) {
+    try {
+      audioEl.remove();
+    } catch (_error) {
+    }
+  }
+  state.voiceAudioEls.clear();
+}
+
+function setAudioSinkMuted(muted) {
+  for (const [, audioEl] of state.voiceAudioEls) {
+    audioEl.muted = muted;
+  }
+}
+
+function attachRemoteAudio(track, participant) {
+  if (track.kind !== 'audio') {
+    return;
+  }
+
+  const key = `${participant.identity}:${track.sid}`;
+  if (state.voiceAudioEls.has(key)) {
+    return;
+  }
+
+  const audioEl = track.attach();
+  audioEl.autoplay = true;
+  audioEl.playsInline = true;
+  audioEl.muted = state.isVoiceDeafened;
+  ui.vcAudioSink.appendChild(audioEl);
+  state.voiceAudioEls.set(key, audioEl);
+}
+
+function detachRemoteAudio(track, participant) {
+  if (!track || track.kind !== 'audio') {
+    return;
+  }
+  const key = `${participant.identity}:${track.sid}`;
+  const audioEl = state.voiceAudioEls.get(key);
+  if (!audioEl) {
+    return;
+  }
+  try {
+    track.detach(audioEl);
+  } catch (_error) {
+  }
+  audioEl.remove();
+  state.voiceAudioEls.delete(key);
+}
+
+function wireRoomEvents(room) {
+  const RoomEvent = window.LivekitClient?.RoomEvent;
+  if (!RoomEvent) {
+    return;
+  }
+
+  room.on(RoomEvent.ParticipantConnected, () => renderVoiceParticipants());
+  room.on(RoomEvent.ParticipantDisconnected, () => renderVoiceParticipants());
+  room.on(RoomEvent.TrackMuted, () => renderVoiceParticipants());
+  room.on(RoomEvent.TrackUnmuted, () => renderVoiceParticipants());
+  room.on(RoomEvent.LocalTrackPublished, () => renderVoiceParticipants());
+  room.on(RoomEvent.LocalTrackUnpublished, () => renderVoiceParticipants());
+  room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+    state.voiceActiveSpeakerIds = new Set((speakers || []).map((participant) => participant.identity));
+    renderVoiceParticipants();
+  });
+  room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+    attachRemoteAudio(track, participant);
+    renderVoiceParticipants();
+  });
+  room.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
+    detachRemoteAudio(track, participant);
+    renderVoiceParticipants();
+  });
+  room.on(RoomEvent.Disconnected, () => {
+    if (state.voiceRoom === room) {
+      leaveVoiceView(false);
+      ui.channelTitle.textContent = 'Voice disconnected.';
+    }
+  });
+}
+
+function leaveVoiceView(disconnect = true) {
+  if (disconnect && state.voiceRoom) {
+    try {
+      state.voiceRoom.disconnect();
+    } catch (_error) {
+    }
+  }
+  state.voiceRoom = null;
+  detachAllVoiceAudio();
+  state.voiceActiveSpeakerIds = new Set();
+  state.isVoiceMuted = false;
+  state.isVoiceDeafened = false;
+  updateVoiceButtons();
+  setVcStatus('Not connected');
+  renderVoiceParticipants();
+  state.activeVoiceChannelId = null;
+  syncVoicePanelVisibility();
+}
+
+async function openVoiceView(roomLabel, channelId, tokenData) {
+  const sdk = window.LivekitClient;
+  if (!sdk) {
+    setVcStatus('Voice SDK failed to load.');
+    ui.channelTitle.textContent = 'Voice SDK failed to load.';
+    return;
+  }
+
+  const { Room } = sdk;
+  if (!Room) {
+    setVcStatus('Voice SDK unavailable.');
+    ui.channelTitle.textContent = 'Voice SDK unavailable.';
+    return;
+  }
+
+  if (state.voiceRoom) {
+    leaveVoiceView();
+  }
+
+  ui.channelTitle.textContent = `Connecting to ${roomLabel}...`;
+  updateVoiceButtons();
+
+  try {
+    const room = new Room({ adaptiveStream: true, dynacast: true });
+    wireRoomEvents(room);
+    await room.connect(tokenData.livekitUrl, tokenData.token, { autoSubscribe: true });
+    state.voiceRoom = room;
+    state.activeVoiceChannelId = channelId;
+    ui.vcRoomTitle.textContent = roomLabel;
+    syncVoicePanelVisibility();
+    if (canUseMicrophoneApi()) {
+      await room.localParticipant.setMicrophoneEnabled(true);
+      state.isVoiceMuted = false;
+      setVcStatus(`Connected to ${roomLabel}`);
+    } else {
+      state.isVoiceMuted = true;
+      await room.localParticipant.setMicrophoneEnabled(false);
+      setVcStatus(`Connected to ${roomLabel} (listen-only: use HTTPS/localhost for mic)`);
+    }
+    updateVoiceButtons();
+    renderVoiceParticipants();
+  } catch (error) {
+    state.voiceRoom = null;
+    state.activeVoiceChannelId = null;
+    syncVoicePanelVisibility();
+    const iss = tokenData?.debug?.iss ? ` iss=${tokenData.debug.iss}` : '';
+    const room = tokenData?.debug?.room ? ` room=${tokenData.debug.room}` : '';
+    const url = tokenData?.livekitUrl ? ` url=${tokenData.livekitUrl}` : '';
+    setVcStatus(`Failed to join voice: ${error.message}${iss}${room}${url}`);
+    ui.channelTitle.textContent = `Failed to join VC: ${error.message}`;
+    renderVoiceParticipants();
+  }
 }
 
 function setAuthMessage(message, isError = false) {
@@ -319,11 +569,6 @@ function subscribeToSelectedChannel() {
     return;
   }
 
-  const selected = getSelectedChannel();
-  if (!selected || selected.type === 'voice') {
-    return;
-  }
-
   if (state.subscribedChannelId && state.subscribedChannelId !== state.selectedChannelId) {
     sendRealtime({ type: 'unsubscribe', channelId: state.subscribedChannelId });
   }
@@ -332,14 +577,21 @@ function subscribeToSelectedChannel() {
   sendRealtime({ type: 'subscribe', channelId: state.selectedChannelId });
 }
 
-function buildVoiceJoinUrl(livekitUrl, token) {
-  return `https://meet.livekit.io/custom?liveKitUrl=${encodeURIComponent(livekitUrl)}&token=${encodeURIComponent(token)}`;
-}
-
 async function joinVoiceChannel(channel) {
   if (!state.selectedServerId) {
     ui.channelTitle.textContent = 'Select a server first.';
     return;
+  }
+
+  const connectionState = String(state.voiceRoom?.state || state.voiceRoom?.connectionState || '').toLowerCase();
+  const isConnected = connectionState.includes('connected');
+  if (state.voiceRoom && state.activeVoiceChannelId === channel.id && isConnected) {
+    ui.channelTitle.textContent = `VC: ${channel.name}`;
+    syncVoicePanelVisibility();
+    return;
+  }
+  if (state.voiceRoom && !isConnected) {
+    leaveVoiceView(false);
   }
 
   const result = await window.api.vc.getToken({
@@ -351,9 +603,49 @@ async function joinVoiceChannel(channel) {
     return;
   }
 
-  const joinUrl = buildVoiceJoinUrl(result.livekitUrl, result.token);
+  if (result.debug?.iss) {
+    setVcStatus(`Token iss=${result.debug.iss} room=${result.debug.room || '-'}`);
+  }
+
   ui.channelTitle.textContent = `VC: ${channel.name}`;
-  openVoiceView(`Voice Channel: ${channel.name}`, joinUrl, channel.id);
+  await openVoiceView(`Voice Channel: ${channel.name}`, channel.id, result);
+}
+
+async function toggleVoiceMute() {
+  if (!state.voiceRoom) {
+    return;
+  }
+  if (!canUseMicrophoneApi()) {
+    state.isVoiceMuted = true;
+    updateVoiceButtons();
+    setVcStatus('Microphone unavailable here. Use HTTPS or localhost.');
+    return;
+  }
+  state.isVoiceMuted = !state.isVoiceMuted;
+  const micEnabled = !state.isVoiceMuted && !state.isVoiceDeafened;
+  await state.voiceRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+  updateVoiceButtons();
+  renderVoiceParticipants();
+}
+
+async function toggleVoiceDeafen() {
+  if (!state.voiceRoom) {
+    return;
+  }
+  const micApiAvailable = canUseMicrophoneApi();
+  state.isVoiceDeafened = !state.isVoiceDeafened;
+  if (state.isVoiceDeafened) {
+    state.isVoiceMuted = true;
+  }
+  const micEnabled = micApiAvailable && !state.isVoiceMuted && !state.isVoiceDeafened;
+  await state.voiceRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+  if (!micApiAvailable) {
+    state.isVoiceMuted = true;
+    setVcStatus('Microphone unavailable here. Use HTTPS or localhost.');
+  }
+  setAudioSinkMuted(state.isVoiceDeafened);
+  updateVoiceButtons();
+  renderVoiceParticipants();
 }
 
 async function ensureRealtime(token) {
@@ -504,7 +796,6 @@ function renderMessages(messages) {
 }
 
 async function loadMessages(channelId) {
-  leaveVoiceView();
   const response = await window.api.chat.getMessages(channelId);
   if (!response.ok) {
     ui.channelTitle.textContent = response.message;
@@ -517,7 +808,6 @@ async function loadMessages(channelId) {
 }
 
 async function loadDmMessages(partnerUserId, partnerUsername) {
-  leaveVoiceView();
   const response = await window.api.dm.getMessages({ partnerUserId });
   if (!response.ok) {
     ui.channelTitle.textContent = response.message;
@@ -529,6 +819,7 @@ async function loadDmMessages(partnerUserId, partnerUsername) {
   state.currentUserId = response.currentUserId;
   ui.channelTitle.textContent = `@ ${state.selectedDmUser.username}`;
   renderMessages(response.messages || []);
+  syncVoicePanelVisibility();
 }
 
 function renderChannels() {
@@ -548,8 +839,8 @@ function renderChannels() {
       renderChannels();
       if (channel.type === 'voice') {
         state.subscribedChannelId = null;
-        ui.messagesList.innerHTML = '';
         await joinVoiceChannel(channel);
+        await loadMessages(channel.id);
       } else {
         ui.channelTitle.textContent = `# ${channel.name}`;
         await loadMessages(channel.id);
@@ -557,6 +848,7 @@ function renderChannels() {
       if (window.innerWidth <= 700) {
         closeMobileDrawers();
       }
+      syncVoicePanelVisibility();
     });
 
     item.appendChild(button);
@@ -592,21 +884,18 @@ async function loadChannels(serverId, resetSelection = true) {
     const selected = getSelectedChannel();
     if (selected?.type === 'voice') {
       ui.channelTitle.textContent = `VC: ${selected.name}`;
-      ui.messagesList.innerHTML = '';
       state.subscribedChannelId = null;
-      if (state.activeVoiceChannelId !== selected.id) {
-        leaveVoiceView();
-      }
+      await loadMessages(state.selectedChannelId);
     } else {
       await loadMessages(state.selectedChannelId);
       ui.channelTitle.textContent = selected ? `# ${selected.name}` : 'Select a channel';
     }
   } else {
-    leaveVoiceView();
     ui.channelTitle.textContent = 'No channels available';
     ui.messagesList.innerHTML = '';
     state.subscribedChannelId = null;
   }
+  syncVoicePanelVisibility();
 }
 
 function attachServerButtonInteractions(button, serverId) {
@@ -947,6 +1236,22 @@ ui.banUserBtn.addEventListener('click', async () => {
   await loadServerPresence(state.selectedServerId);
 });
 
+ui.vcMuteBtn.addEventListener('click', async () => {
+  try {
+    await toggleVoiceMute();
+  } catch (error) {
+    ui.channelTitle.textContent = `Failed to toggle mute: ${error.message}`;
+  }
+});
+
+ui.vcDeafenBtn.addEventListener('click', async () => {
+  try {
+    await toggleVoiceDeafen();
+  } catch (error) {
+    ui.channelTitle.textContent = `Failed to toggle deafen: ${error.message}`;
+  }
+});
+
 ui.vcCloseBtn.addEventListener('click', () => {
   leaveVoiceView();
   const selected = getSelectedChannel();
@@ -1188,12 +1493,6 @@ ui.messageForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  const selected = getSelectedChannel();
-  if (selected?.type === 'voice') {
-    ui.channelTitle.textContent = 'Use VC channels for calls. Text chat is disabled in voice channels.';
-    return;
-  }
-
   const result = await window.api.chat.sendMessage({
     channelId: state.selectedChannelId,
     content
@@ -1258,4 +1557,7 @@ updateChannelCreateButton();
 updateMobileDrawers();
 closeServerOptions();
 closeUserOptions();
+updateVoiceButtons();
+setVcStatus('Not connected');
+renderVoiceParticipants();
 showLogin();

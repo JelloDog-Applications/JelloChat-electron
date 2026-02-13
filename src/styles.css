@@ -362,15 +362,17 @@ body {
 
 .vc-panel {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto;
   gap: 10px;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
   margin-top: 12px;
   border: 1px solid #46506b;
   border-radius: 10px;
   padding: 10px;
   background: #2a3040;
+  max-height: 300px;
+  overflow: hidden;
 }
 
 .vc-panel-header {
@@ -386,6 +388,13 @@ body {
   color: var(--muted);
 }
 
+.vc-controls {
+  display: flex;
+  gap: 8px;
+}
+
+#vc-mute-btn,
+#vc-deafen-btn,
 #vc-close-btn {
   border: none;
   border-radius: 8px;
@@ -395,17 +404,76 @@ body {
   cursor: pointer;
 }
 
+#vc-mute-btn:hover,
+#vc-deafen-btn:hover,
 #vc-close-btn:hover {
   background: #4a546c;
 }
 
-#vc-frame {
-  width: 100%;
-  height: 100%;
-  min-height: 360px;
-  border: none;
+.vc-control-on {
+  background: #2d8d74 !important;
+  color: #eafff8 !important;
+}
+
+.vc-stage {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) 1fr;
+  gap: 10px;
+  min-height: 220px;
+}
+
+.vc-participants {
+  background: #242a38;
+  border: 1px solid #3f4860;
   border-radius: 8px;
-  background: #1f2430;
+  padding: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vc-status {
+  margin: 0;
+  border: 1px solid #3f4860;
+  border-radius: 8px;
+  background: #242a38;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.vc-participants h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#vc-participants-list {
+  margin: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.vc-participant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vc-badges {
+  display: flex;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.vc-speaking {
+  box-shadow: 0 0 0 2px rgba(82, 210, 115, 0.35) inset;
+  border-radius: 8px;
+}
+
+.vc-audio-sink {
+  display: none;
 }
 
 .msg {
@@ -751,7 +819,12 @@ body {
     width: 100%;
   }
 
-  #vc-frame {
-    min-height: 300px;
+  .vc-panel {
+    max-height: none;
+  }
+
+  .vc-stage {
+    grid-template-columns: 1fr;
+    min-height: 0;
   }
 }
