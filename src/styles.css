@@ -391,6 +391,7 @@ body {
 .vc-controls {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 #vc-mute-btn,
@@ -402,6 +403,7 @@ body {
   background: #3b4458;
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 #vc-mute-btn:hover,
@@ -439,6 +441,8 @@ body {
   padding: 8px 10px;
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .vc-participants h4 {
@@ -820,11 +824,49 @@ body {
   }
 
   .vc-panel {
+    padding: 8px;
     max-height: none;
+  }
+
+  .vc-panel-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vc-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  #vc-mute-btn,
+  #vc-deafen-btn,
+  #vc-close-btn {
+    width: 100%;
+    padding: 10px 8px;
+    font-size: 12px;
+    margin: 0;
+    text-align: center;
   }
 
   .vc-stage {
     grid-template-columns: 1fr;
     min-height: 0;
+    gap: 8px;
+  }
+
+  #vc-participants-list {
+    max-height: 140px;
+  }
+}
+
+@media (max-width: 420px) {
+  .vc-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #vc-close-btn {
+    grid-column: 1 / -1;
   }
 }
