@@ -8,9 +8,10 @@
     "dev": "electron .",
     "web": "node server.js",
     "build:win": "electron-builder --win nsis",
-    "cap:sync": "npx cap sync android",
+    "sync:android-assets": "node scripts/sync-android-assets.js",
+    "cap:sync": "npm run sync:android-assets && npx cap sync android",
     "cap:open": "npx cap open android",
-    "build:apk": "npx cap sync android && npx cap open android"
+    "build:apk": "npm run cap:sync && npx cap open android"
   },
   "dependencies": {
     "@capacitor/core": "^7.6.0",

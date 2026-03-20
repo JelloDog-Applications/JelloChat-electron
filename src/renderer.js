@@ -2217,16 +2217,24 @@ async function showPrivacyPolicyDialog() {
   await showMessageDialog('Privacy Policy', html, { html: true });
 }
 
+function getPublicPageUrl(pathname) {
+  if (typeof location !== 'undefined' && location.protocol !== 'file:') {
+    return pathname;
+  }
+  const base = String(localStorage?.getItem('jellochat_api_base') || 'http://localhost:3000').trim().replace(/\/+$/, '');
+  return `${base}${pathname}`;
+}
+
 ui.viewTosBtn?.addEventListener('click', async (event) => {
   event.preventDefault();
   event.stopPropagation();
-  await showTermsOfServiceDialog();
+  window.open(getPublicPageUrl('/terms-of-service'), '_blank', 'noopener');
 });
 
 ui.viewPrivacyBtn?.addEventListener('click', async (event) => {
   event.preventDefault();
   event.stopPropagation();
-  await showPrivacyPolicyDialog();
+  window.open(getPublicPageUrl('/privacy-policy'), '_blank', 'noopener');
 });
 
 ui.registerForm.addEventListener('submit', async (event) => {

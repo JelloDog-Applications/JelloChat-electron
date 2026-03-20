@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.PermissionRequest;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebChromeClient;
@@ -41,6 +42,9 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
+        getBridge().getWebView().clearCache(true);
+        getBridge().getWebView().clearHistory();
+        getBridge().getWebView().getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
         getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
         ensureAudioPermission();
         handleAuthIntent(getIntent());
@@ -99,7 +103,7 @@ public class MainActivity extends BridgeActivity {
                 return APP_WEB_BASE_URL + path + (query == null || query.isEmpty() ? "" : "?" + query);
             }
             if ("/verify-email".equals(path)) {
-                return APP_WEB_BASE_URL + "/api/auth/verify-email" + (query == null || query.isEmpty() ? "" : "?" + query);
+                return APP_WEB_BASE_URL + path + (query == null || query.isEmpty() ? "" : "?" + query);
             }
             return null;
         }

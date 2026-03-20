@@ -13,7 +13,6 @@ const WEB_PORT = Number(process.env.WEB_PORT || 3000);
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'src')));
 
 function readPolicyMarkdown(filename) {
   const filePath = path.join(__dirname, filename);
@@ -22,6 +21,95 @@ function readPolicyMarkdown(filename) {
   } catch (_error) {
     return null;
   }
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function inlineMarkdownToHtml(text) {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+function renderMarkdownPage(title, markdown) {
+  const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+  const htmlParts = [];
+  let listItems = [];
+
+  function flushList() {
+    if (!listItems.length) {
+      return;
+    }
+    htmlParts.push(`<ul>${listItems.join('')}</ul>`);
+    listItems = [];
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushList();
+      continue;
+    }
+
+    if (trimmed.startsWith('# ')) {
+      flushList();
+      htmlParts.push(`<h1>${inlineMarkdownToHtml(trimmed.slice(2))}</h1>`);
+      continue;
+    }
+    if (trimmed.startsWith('## ')) {
+      flushList();
+      htmlParts.push(`<h2>${inlineMarkdownToHtml(trimmed.slice(3))}</h2>`);
+      continue;
+    }
+    if (trimmed.startsWith('- ')) {
+      listItems.push(`<li>${inlineMarkdownToHtml(trimmed.slice(2))}</li>`);
+      continue;
+    }
+
+    flushList();
+    htmlParts.push(`<p>${inlineMarkdownToHtml(trimmed)}</p>`);
+  }
+
+  flushList();
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #0f172a; color: #e5e7eb; margin: 0; }
+      main { width: min(92vw, 820px); margin: 40px auto; background: #111827; border: 1px solid #334155; border-radius: 16px; padding: 28px; }
+      h1, h2 { color: #f8fafc; }
+      h1 { margin-top: 0; font-size: 2rem; }
+      h2 { margin-top: 1.6rem; font-size: 1.2rem; }
+      p, li { line-height: 1.65; color: #cbd5e1; }
+      ul { padding-left: 1.5rem; }
+      a { color: #7dd3fc; }
+      code { background: #1e293b; color: #e2e8f0; padding: 0.1rem 0.35rem; border-radius: 6px; }
+      .nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+      .nav a { text-decoration: none; background: #1e293b; border: 1px solid #334155; padding: 10px 14px; border-radius: 10px; color: #e2e8f0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <nav class="nav">
+        <a href="${buildPublicUrl('/')}">Back to JelloChat</a>
+        <a href="${buildPublicUrl('/privacy-policy')}">Privacy Policy</a>
+        <a href="${buildPublicUrl('/terms-of-service')}">Terms of Service</a>
+      </nav>
+      ${htmlParts.join('\n')}
+    </main>
+  </body>
+</html>`;
 }
 
 app.get('/api/legal/privacy-policy', (_req, res) => {
@@ -53,6 +141,49 @@ function buildPublicUrl(pathname) {
   const base = String(process.env.APP_PUBLIC_URL || `http://localhost:${WEB_PORT}`).trim().replace(/\/+$/, '');
   return `${base}${pathname}`;
 }
+
+function buildAndroidDownloadUrl() {
+  const configured = String(process.env.APP_ANDROID_DOWNLOAD_URL || '').trim();
+  if (configured) {
+    return configured;
+  }
+  return buildPublicUrl('/download/android');
+}
+
+function isAndroidRequest(req) {
+  const userAgent = String(req.get('user-agent') || '').toLowerCase();
+  return userAgent.includes('android');
+}
+
+function shouldRedirectAndroidToDownload(req) {
+  if (req.method !== 'GET' || !isAndroidRequest(req)) {
+    return false;
+  }
+
+  const pathname = String(req.path || '');
+  if (
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/auth-link') ||
+    pathname.startsWith('/download/android') ||
+    pathname.startsWith('/reset-password') ||
+    pathname.startsWith('/verify-email')
+  ) {
+    return false;
+  }
+
+  return pathname === '/' || pathname === '/index.html';
+}
+
+app.use((req, res, next) => {
+  if (!shouldRedirectAndroidToDownload(req)) {
+    next();
+    return;
+  }
+
+  res.redirect(buildAndroidDownloadUrl());
+});
+
+app.use(express.static(path.join(__dirname, 'src')));
 
 function buildAuthWebUrl(mode, rawToken) {
   if (mode === 'verify') {
@@ -158,6 +289,58 @@ app.get('/reset-password', (_req, res) => {
 
 app.get('/verify-email', (_req, res) => {
   res.sendFile(path.join(__dirname, 'src', 'index.html'));
+});
+
+app.get('/privacy-policy', (_req, res) => {
+  const text = readPolicyMarkdown('PRIVACY_POLICY.md');
+  if (!text) {
+    res.status(500).type('text/plain').send('Privacy Policy file not found.');
+    return;
+  }
+  res.type('html').send(renderMarkdownPage('JelloChat Privacy Policy', text));
+});
+
+app.get('/terms-of-service', (_req, res) => {
+  const text = readPolicyMarkdown('TERMS_OF_SERVICE.md');
+  if (!text) {
+    res.status(500).type('text/plain').send('Terms of Service file not found.');
+    return;
+  }
+  res.type('html').send(renderMarkdownPage('JelloChat Terms of Service', text));
+});
+
+app.get('/download/android', (req, res) => {
+  const apkUrl = String(process.env.APP_ANDROID_DOWNLOAD_URL || '').trim();
+  const continueUrl = buildPublicUrl('/');
+
+  res.type('html').send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Get JelloChat for Android</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #0f172a; color: #e5e7eb; margin: 0; min-height: 100vh; display: grid; place-items: center; }
+      main { width: min(92vw, 520px); background: #111827; border: 1px solid #334155; border-radius: 16px; padding: 24px; }
+      h1 { margin-top: 0; font-size: 1.6rem; }
+      p { line-height: 1.5; color: #cbd5e1; }
+      a { display: block; text-align: center; margin-top: 12px; padding: 12px 16px; border-radius: 10px; text-decoration: none; font-weight: 600; }
+      .primary { background: #22c55e; color: #052e16; }
+      .secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+      .hint { font-size: 0.95rem; color: #94a3b8; margin-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Get the Android app</h1>
+      <p>You are on an Android device, so JelloChat works best in the app.</p>
+      ${apkUrl
+        ? `<a class="primary" href="${apkUrl}">Download Android App</a>`
+        : '<p class="hint">Set APP_ANDROID_DOWNLOAD_URL on the server to point this button at your APK or Play Store listing.</p>'}
+      <a class="secondary" href="${continueUrl}">Continue to website</a>
+    </main>
+  </body>
+</html>`);
 });
 
 async function issueEmailVerification(userId, email, username) {
