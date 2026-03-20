@@ -766,7 +766,18 @@ async function handleAuthDeepLinks() {
     const result = await window.api.auth.verifyEmail({ token });
     setAuthMessage(result.message || (result.ok ? 'Email verified successfully.' : 'Failed to verify email.'), !result.ok);
 
+    await showMessageDialog(
+      result.ok ? 'Email Verified' : 'Verification Failed',
+      result.message || (result.ok ? 'Your email has been verified. You can log in now.' : 'Your verification link is invalid or expired.')
+    );
+
     if (result.ok) {
+      try {
+        window.history.replaceState({}, '', '/');
+      } catch (_error) {
+      }
+      ui.loginEmailInput.focus();
+    } else {
       try {
         window.history.replaceState({}, '', '/');
       } catch (_error) {
