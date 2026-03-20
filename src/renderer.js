@@ -2093,15 +2093,24 @@ ui.loginForm.addEventListener('submit', async (event) => {
   }
 });
 
-async function showTermsOfServiceDialog() {
-  if (!window.api?.legal?.getTermsOfService) {
-    setAuthMessage('Terms of Service is not available.', true);
-    return;
+async function fetchLegalDoc(path) {
+  if (window.api?.legal) {
+    const fn = path === 'terms-of-service' ? window.api.legal.getTermsOfService : window.api.legal.getPrivacyPolicy;
+    return fn ? await fn() : null;
   }
+  try {
+    const base = typeof location !== 'undefined' && location.protocol === 'file:' ? (localStorage?.getItem('jellochat_api_base') || 'http://localhost:3000') : '';
+    const res = await fetch(`${base}/api/legal/${path}`);
+    return await res.json();
+  } catch (e) {
+    return { ok: false, message: e.message || 'Failed to load.' };
+  }
+}
 
-  const result = await window.api.legal.getTermsOfService();
+async function showTermsOfServiceDialog() {
+  const result = await fetchLegalDoc('terms-of-service');
   if (!result?.ok) {
-    setAuthMessage(result?.message || 'Failed to load Terms of Service.', true);
+    setAuthMessage(result?.message || 'Terms of Service is not available.', true);
     return;
   }
 
@@ -2111,14 +2120,9 @@ async function showTermsOfServiceDialog() {
 }
 
 async function showPrivacyPolicyDialog() {
-  if (!window.api?.legal?.getPrivacyPolicy) {
-    setAuthMessage('Privacy Policy is not available.', true);
-    return;
-  }
-
-  const result = await window.api.legal.getPrivacyPolicy();
+  const result = await fetchLegalDoc('privacy-policy');
   if (!result?.ok) {
-    setAuthMessage(result?.message || 'Failed to load Privacy Policy.', true);
+    setAuthMessage(result?.message || 'Privacy Policy is not available.', true);
     return;
   }
 

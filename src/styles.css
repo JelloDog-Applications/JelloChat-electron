@@ -112,6 +112,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .auth-form.auth-anim-out-left {
@@ -155,16 +156,22 @@ body {
 
 .auth-legal-item {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  cursor: pointer;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   line-height: 1.35;
 }
 
 .auth-legal-item input[type='checkbox'] {
   width: 15px;
   height: 15px;
-  margin-top: 2px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.auth-legal-item label {
+  cursor: pointer;
+  margin: 0;
 }
 
 .auth-legal-link-btn {
@@ -208,11 +215,15 @@ body {
 
 .password-input-wrap {
   position: relative;
+  min-width: 0;
+  width: 100%;
 }
 
 .password-input-wrap input {
   width: 100%;
+  min-width: 0;
   padding-right: 42px;
+  box-sizing: border-box;
 }
 
 .password-toggle-btn {
@@ -1491,4 +1502,36 @@ body {
   #vc-close-btn {
     grid-column: 1 / -1;
   }
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-wrapper input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.toggle-password {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.auth-card {
+  min-height: 500px;
+  transition: all 0.2s ease;
+}
+
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }

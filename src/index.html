@@ -50,20 +50,16 @@
           <label>Date of Birth (13+ only)</label>
           <input id="register-dob" type="date" required />
           <div class="auth-legal">
-            <label class="auth-legal-item">
+            <div class="auth-legal-item">
               <input id="accept-tos" type="checkbox" />
-              <span>
-                I agree to the
-                <button id="view-tos-btn" type="button" class="auth-legal-link-btn">Terms of Service</button>.
-              </span>
-            </label>
-            <label class="auth-legal-item">
+              <label for="accept-tos">I agree to the</label>
+              <button id="view-tos-btn" type="button" class="auth-legal-link-btn">Terms of Service</button>.
+            </div>
+            <div class="auth-legal-item">
               <input id="accept-privacy" type="checkbox" />
-              <span>
-                I agree to the
-                <button id="view-privacy-btn" type="button" class="auth-legal-link-btn">Privacy Policy</button>.
-              </span>
-            </label>
+              <label for="accept-privacy">I agree to the</label>
+              <button id="view-privacy-btn" type="button" class="auth-legal-link-btn">Privacy Policy</button>.
+            </div>
           </div>
           <button type="submit">Create account</button>
         </form>
