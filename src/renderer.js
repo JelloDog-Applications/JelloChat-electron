@@ -13,6 +13,7 @@
   registerUsername: document.getElementById('register-username'),
   registerEmail: document.getElementById('register-email'),
   registerPassword: document.getElementById('register-password'),
+  registerDob: document.getElementById('register-dob'),
   resendVerificationBtn: document.getElementById('resend-verification-btn'),
   forgotPasswordBtn: document.getElementById('forgot-password-btn'),
   verifyTokenBtn: document.getElementById('verify-token-btn'),
@@ -70,8 +71,13 @@
   accountEmailInput: document.getElementById('account-email-input'),
   accountCurrentPasswordInput: document.getElementById('account-current-password-input'),
   accountNewPasswordInput: document.getElementById('account-new-password-input'),
+  accountDobInput: document.getElementById('account-dob-input'),
   accountFormMessage: document.getElementById('account-form-message'),
   accountDeleteBtn: document.getElementById('account-delete-btn'),
+  dobModal: document.getElementById('dob-modal'),
+  dobForm: document.getElementById('dob-form'),
+  dobInput: document.getElementById('dob-input'),
+  dobFormMessage: document.getElementById('dob-form-message'),
   appDialog: document.getElementById('app-dialog'),
   appDialogTitle: document.getElementById('app-dialog-title'),
   appDialogMessage: document.getElementById('app-dialog-message'),
@@ -106,7 +112,8 @@ const state = {
   voiceAudioEls: new Map(),
   voiceActiveSpeakerIds: new Set(),
   isVoiceMuted: false,
-  isVoiceDeafened: false
+  isVoiceDeafened: false,
+  isDobRequired: false
 };
 
 const dialogState = {
@@ -343,6 +350,24 @@ function setAccountFormMessage(message, isError = false) {
   ui.accountFormMessage.style.color = isError ? 'var(--danger)' : 'var(--muted)';
 }
 
+function setDobFormMessage(message, isError = false) {
+  ui.dobFormMessage.textContent = message;
+  ui.dobFormMessage.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+function normalizeDob(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : raw;
+}
+
+function userNeedsDob(user) {
+  return !normalizeDob(user?.date_of_birth);
+}
+
 function animateShowOverlay(element) {
   if (!element) {
     return;
@@ -456,10 +481,38 @@ function renderFriendRequests(requests) {
 function openAccountModal() {
   ui.accountUsernameInput.value = state.user?.username || '';
   ui.accountEmailInput.value = state.user?.email || '';
+  ui.accountDobInput.value = normalizeDob(state.user?.date_of_birth);
   ui.accountCurrentPasswordInput.value = '';
   ui.accountNewPasswordInput.value = '';
   setAccountFormMessage('');
   animateShowOverlay(ui.accountModal);
+}
+
+function openDobModal() {
+  if (!ui.dobModal) {
+    return;
+  }
+  ui.dobInput.value = normalizeDob(state.user?.date_of_birth);
+  setDobFormMessage('');
+  animateShowOverlay(ui.dobModal);
+}
+
+function closeDobModal() {
+  if (!ui.dobModal) {
+    return;
+  }
+  animateHideOverlay(ui.dobModal);
+}
+
+async function enforceDobIfMissing() {
+  if (!userNeedsDob(state.user)) {
+    state.isDobRequired = false;
+    closeDobModal();
+    return true;
+  }
+  state.isDobRequired = true;
+  openDobModal();
+  return false;
 }
 
 async function openVoiceView(roomLabel, channelId, tokenData) {
@@ -576,6 +629,28 @@ async function showPromptDialog(title, message, defaultValue = '') {
   return result;
 }
 
+function setupPasswordToggles() {
+  const toggleButtons = document.querySelectorAll('.password-toggle-btn');
+  for (const button of toggleButtons) {
+    const targetId = button.getAttribute('data-target');
+    if (!targetId) {
+      continue;
+    }
+    const input = document.getElementById(targetId);
+    if (!input) {
+      continue;
+    }
+    button.classList.toggle('is-visible', input.type !== 'password');
+    button.addEventListener('click', () => {
+      const nextType = input.type === 'password' ? 'text' : 'password';
+      input.type = nextType;
+      const isVisible = nextType !== 'password';
+      button.classList.toggle('is-visible', isVisible);
+      button.setAttribute('aria-label', nextType === 'password' ? 'Show password' : 'Hide password');
+    });
+  }
+}
+
 function showLogin() {
   ui.showLoginBtn.classList.add('tab-active');
   ui.showRegisterBtn.classList.remove('tab-active');
@@ -690,6 +765,7 @@ function openAuth() {
   closeAccountSettingsMenu();
   closeAccountModal();
   closeFriendRequestsModal();
+  closeDobModal();
   showLogin();
 }
 
@@ -750,6 +826,7 @@ async function performLogout(serverLogout = true) {
   state.serverOptionsServerId = null;
   state.selectedModerationUserId = null;
   state.activeVoiceChannelId = null;
+  state.isDobRequired = false;
 
   ui.serversList.innerHTML = '';
   ui.channelsList.innerHTML = '';
@@ -765,6 +842,7 @@ async function performLogout(serverLogout = true) {
   closeAccountSettingsMenu();
   closeAccountModal();
   closeFriendRequestsModal();
+  closeDobModal();
   renderAccountPanel();
 }
 
@@ -1724,8 +1802,14 @@ ui.accountForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const username = ui.accountUsernameInput.value.trim();
   const email = ui.accountEmailInput.value.trim().toLowerCase();
+  const dateOfBirth = normalizeDob(ui.accountDobInput.value);
   const currentPassword = ui.accountCurrentPasswordInput.value;
   const newPassword = ui.accountNewPasswordInput.value;
+
+  if (!dateOfBirth) {
+    setAccountFormMessage('Date of birth is required.', true);
+    return;
+  }
 
   if ((currentPassword && !newPassword) || (!currentPassword && newPassword)) {
     setAccountFormMessage('Current and new password are required together.', true);
@@ -1735,6 +1819,7 @@ ui.accountForm.addEventListener('submit', async (event) => {
   const response = await window.api.auth.updateAccount({
     username,
     email,
+    dateOfBirth,
     currentPassword,
     newPassword
   });
@@ -1746,9 +1831,38 @@ ui.accountForm.addEventListener('submit', async (event) => {
 
   state.user = response.user;
   renderAccountPanel();
+  ui.accountDobInput.value = normalizeDob(state.user?.date_of_birth);
+  if (!userNeedsDob(state.user)) {
+    state.isDobRequired = false;
+    closeDobModal();
+  }
   setAccountFormMessage(response.message || 'Account updated.');
   ui.accountCurrentPasswordInput.value = '';
   ui.accountNewPasswordInput.value = '';
+});
+
+ui.dobForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const dateOfBirth = normalizeDob(ui.dobInput.value);
+  if (!dateOfBirth) {
+    setDobFormMessage('Date of birth is required.', true);
+    return;
+  }
+
+  const response = await window.api.auth.updateAccount({
+    username: state.user?.username || '',
+    email: state.user?.email || '',
+    dateOfBirth
+  });
+  if (!response.ok) {
+    setDobFormMessage(response.message || 'Failed to save date of birth.', true);
+    return;
+  }
+
+  state.user = response.user;
+  state.isDobRequired = false;
+  renderAccountPanel();
+  closeDobModal();
 });
 
 ui.accountDeleteBtn.addEventListener('click', async () => {
@@ -1946,6 +2060,7 @@ ui.loginForm.addEventListener('submit', async (event) => {
   renderAccountPanel();
   setAuthMessage('');
   await openChat();
+  await enforceDobIfMissing();
   await loadServers();
   await loadFriends();
   if (result.realtimeToken) {
@@ -1959,7 +2074,8 @@ ui.registerForm.addEventListener('submit', async (event) => {
   const result = await window.api.auth.register({
     username: ui.registerUsername.value,
     email: ui.registerEmail.value,
-    password: ui.registerPassword.value
+    password: ui.registerPassword.value,
+    dateOfBirth: normalizeDob(ui.registerDob.value)
   });
 
   if (!result.ok) {
@@ -1977,6 +2093,7 @@ ui.registerForm.addEventListener('submit', async (event) => {
   renderAccountPanel();
   setAuthMessage('');
   await openChat();
+  await enforceDobIfMissing();
   await loadServers();
   await loadFriends();
   if (result.realtimeToken) {
@@ -2045,6 +2162,8 @@ renderAccountPanel();
 updateVoiceButtons();
 setVcStatus('Not connected');
 renderVoiceParticipants();
+setupPasswordToggles();
+closeDobModal();
 showLogin();
 
 handleAuthDeepLinks().catch(() => {});
@@ -2067,6 +2186,7 @@ handleAuthDeepLinks().catch(() => {});
     renderAccountPanel();
     setAuthMessage('');
     await openChat();
+    await enforceDobIfMissing();
     await loadServers();
     await loadFriends();
     if (result.realtimeToken) {

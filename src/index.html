@@ -22,7 +22,12 @@
           <label>Email</label>
           <input id="login-email" type="email" required />
           <label>Password</label>
-          <input id="login-password" type="password" required />
+          <div class="password-input-wrap">
+            <input id="login-password" type="password" required />
+            <button class="password-toggle-btn" type="button" data-target="login-password" aria-label="Show password">
+              <span class="eye-icon" aria-hidden="true"></span>
+            </button>
+          </div>
           <label class="remember-row">
             <input id="remember-me" type="checkbox" checked />
             <span>Remember me</span>
@@ -36,7 +41,14 @@
           <label>Email</label>
           <input id="register-email" type="email" required />
           <label>Password</label>
-          <input id="register-password" type="password" minlength="6" required />
+          <div class="password-input-wrap">
+            <input id="register-password" type="password" minlength="6" required />
+            <button class="password-toggle-btn" type="button" data-target="register-password" aria-label="Show password">
+              <span class="eye-icon" aria-hidden="true"></span>
+            </button>
+          </div>
+          <label>Date of Birth</label>
+          <input id="register-dob" type="date" required />
           <button type="submit">Create account</button>
         </form>
 
@@ -157,9 +169,21 @@
               <label for="account-email-input">Email</label>
               <input id="account-email-input" type="email" />
               <label for="account-current-password-input">Current Password</label>
-              <input id="account-current-password-input" type="password" autocomplete="current-password" />
+              <div class="password-input-wrap">
+                <input id="account-current-password-input" type="password" autocomplete="current-password" />
+                <button class="password-toggle-btn" type="button" data-target="account-current-password-input" aria-label="Show password">
+                  <span class="eye-icon" aria-hidden="true"></span>
+                </button>
+              </div>
               <label for="account-new-password-input">New Password</label>
-              <input id="account-new-password-input" type="password" minlength="6" autocomplete="new-password" />
+              <div class="password-input-wrap">
+                <input id="account-new-password-input" type="password" minlength="6" autocomplete="new-password" />
+                <button class="password-toggle-btn" type="button" data-target="account-new-password-input" aria-label="Show password">
+                  <span class="eye-icon" aria-hidden="true"></span>
+                </button>
+              </div>
+              <label for="account-dob-input">Date of Birth</label>
+              <input id="account-dob-input" type="date" />
               <button id="account-save-btn" type="submit">Save Changes</button>
             </form>
             <button id="account-delete-btn" class="account-delete-btn" type="button">Delete Account</button>
@@ -177,19 +201,34 @@
           </div>
         </section>
 
-        <section id="app-dialog" class="app-dialog hidden">
-          <div class="app-dialog-card">
-            <h3 id="app-dialog-title">Dialog</h3>
-            <p id="app-dialog-message"></p>
-            <input id="app-dialog-input" type="text" class="hidden" />
-            <div class="app-dialog-actions">
-              <button id="app-dialog-cancel-btn" type="button">Cancel</button>
-              <button id="app-dialog-ok-btn" type="button">OK</button>
+        <section id="dob-modal" class="account-modal hidden">
+          <div class="account-modal-card">
+            <div class="account-modal-header">
+              <h3>Enter Date of Birth</h3>
             </div>
+            <form id="dob-form" class="account-form">
+              <p class="account-form-message">Please add your date of birth to continue.</p>
+              <label for="dob-input">Date of Birth</label>
+              <input id="dob-input" type="date" required />
+              <button id="dob-save-btn" type="submit">Save</button>
+              <p id="dob-form-message" class="account-form-message"></p>
+            </form>
           </div>
         </section>
 
         <button id="mobile-drawer-backdrop" class="mobile-drawer-backdrop" type="button" aria-label="Close panels"></button>
+      </section>
+
+      <section id="app-dialog" class="app-dialog hidden">
+        <div class="app-dialog-card">
+          <h3 id="app-dialog-title">Dialog</h3>
+          <p id="app-dialog-message"></p>
+          <input id="app-dialog-input" type="text" class="hidden" />
+          <div class="app-dialog-actions">
+            <button id="app-dialog-cancel-btn" type="button">Cancel</button>
+            <button id="app-dialog-ok-btn" type="button">OK</button>
+          </div>
+        </div>
       </section>
     </main>
 

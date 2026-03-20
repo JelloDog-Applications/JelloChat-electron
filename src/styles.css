@@ -173,6 +173,71 @@ body {
   font-size: 14px;
 }
 
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap input {
+  width: 100%;
+  padding-right: 42px;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  border-radius: 6px;
+  background: #3b4458;
+  color: var(--text);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.password-toggle-btn:hover {
+  background: #4a546c;
+}
+
+.eye-icon {
+  width: 14px;
+  height: 10px;
+  border: 2px solid #d6def4;
+  border-radius: 999px / 70%;
+  position: relative;
+}
+
+.eye-icon::before {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #d6def4;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.eye-icon::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 15px;
+  background: #d6def4;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(50deg);
+  border-radius: 2px;
+}
+
+.password-toggle-btn.is-visible .eye-icon::after {
+  display: none;
+}
+
 .auth-form button,
 .message-form button {
   margin-top: 10px;
@@ -996,6 +1061,10 @@ body {
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 14px;
+}
+
+.account-form .password-input-wrap input {
+  width: 100%;
 }
 
 .account-form-message {

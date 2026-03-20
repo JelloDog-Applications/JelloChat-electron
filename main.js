@@ -169,6 +169,27 @@ async function allocateUniqueUsername(requestedUsername, excludeUserId = null) {
   throw new Error('Could not allocate a unique username. Please try again.');
 }
 
+function normalizeDateOfBirthInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return null;
+  }
+  const parsed = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const min = new Date('1900-01-01T00:00:00Z');
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  if (parsed < min || parsed > today) {
+    return null;
+  }
+  return raw;
+}
+
 function sendWs(ws, payload) {
   if (ws.readyState === 1) {
     ws.send(JSON.stringify(payload));
@@ -371,6 +392,7 @@ ipcMain.handle('auth:register', async (_event, payload) => {
   const requestedUsername = String(payload?.username || '').trim();
   const email = String(payload?.email || '').trim().toLowerCase();
   const password = String(payload?.password || '');
+  const dateOfBirth = normalizeDateOfBirthInput(payload?.dateOfBirth);
 
   if (!requestedUsername || !email || !password) {
     return { ok: false, message: 'Username, email, and password are required.' };
@@ -382,6 +404,9 @@ ipcMain.handle('auth:register', async (_event, payload) => {
   if (password.length < 6) {
     return { ok: false, message: 'Password must be at least 6 characters.' };
   }
+  if (!dateOfBirth) {
+    return { ok: false, message: 'Valid date of birth is required.' };
+  }
 
   try {
     const exists = await db.query('SELECT id FROM users WHERE email = $1', [email]);
@@ -392,8 +417,8 @@ ipcMain.handle('auth:register', async (_event, payload) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (username, email, password_hash, email_verified) VALUES ($1, $2, $3, FALSE) RETURNING id, username, email',
-      [allocated.username, email, passwordHash]
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified) VALUES ($1, $2, $3, $4, FALSE) RETURNING id, username, email, date_of_birth',
+      [allocated.username, email, passwordHash, dateOfBirth]
     );
 
     const newUser = result.rows[0];
@@ -435,7 +460,7 @@ ipcMain.handle('auth:login', async (_event, payload) => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, password_hash, email_verified FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return { ok: false, message: 'Invalid email or password.' };
     }
@@ -457,7 +482,7 @@ ipcMain.handle('auth:login', async (_event, payload) => {
     const realtimeToken = issueAuthToken(user.id);
     return {
       ok: true,
-      user: { id: user.id, username: user.username, email: user.email },
+      user: { id: user.id, username: user.username, email: user.email, date_of_birth: user.date_of_birth },
       realtimeToken
     };
   } catch (error) {
@@ -479,7 +504,7 @@ ipcMain.handle('auth:getSession', async () => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email FROM users WHERE id = $1', [currentUserId]);
+    const result = await db.query('SELECT id, username, email, date_of_birth FROM users WHERE id = $1', [currentUserId]);
     if (result.rows.length === 0) {
       currentUserId = null;
       return { ok: false, message: 'Session not found.' };
@@ -606,6 +631,7 @@ ipcMain.handle('auth:updateAccount', async (_event, payload) => {
 
   const requestedUsername = String(payload?.username || '').trim();
   const email = String(payload?.email || '').trim().toLowerCase();
+  const requestedDateOfBirth = normalizeDateOfBirthInput(payload?.dateOfBirth);
   const currentPassword = String(payload?.currentPassword || '');
   const newPassword = String(payload?.newPassword || '');
 
@@ -626,7 +652,7 @@ ipcMain.handle('auth:updateAccount', async (_event, payload) => {
   }
 
   try {
-    const existing = await db.query('SELECT id, username, email, password_hash FROM users WHERE id = $1', [currentUserId]);
+    const existing = await db.query('SELECT id, username, email, password_hash, date_of_birth FROM users WHERE id = $1', [currentUserId]);
     if (existing.rows.length === 0) {
       return { ok: false, message: 'User not found.' };
     }
@@ -648,10 +674,15 @@ ipcMain.handle('auth:updateAccount', async (_event, payload) => {
       passwordHash = await bcrypt.hash(newPassword, 10);
     }
 
+    const nextDateOfBirth = requestedDateOfBirth || user.date_of_birth;
+    if (!nextDateOfBirth) {
+      return { ok: false, message: 'Date of birth is required.' };
+    }
+
     const allocated = await allocateUniqueUsername(requestedUsername, currentUserId);
     const updated = await db.query(
-      'UPDATE users SET username = $1, email = $2, password_hash = $3 WHERE id = $4 RETURNING id, username, email',
-      [allocated.username, email, passwordHash, currentUserId]
+      'UPDATE users SET username = $1, email = $2, password_hash = $3, date_of_birth = $4 WHERE id = $5 RETURNING id, username, email, date_of_birth',
+      [allocated.username, email, passwordHash, nextDateOfBirth, currentUserId]
     );
 
     return {

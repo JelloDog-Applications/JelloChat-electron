@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(50) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  date_of_birth DATE,
   email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   email_verification_token_hash TEXT,
   email_verification_expires_at TIMESTAMPTZ,
@@ -25,6 +26,9 @@ ADD COLUMN IF NOT EXISTS password_reset_token_hash TEXT;
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 
 DO $$
 DECLARE

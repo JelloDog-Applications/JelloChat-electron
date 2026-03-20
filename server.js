@@ -147,6 +147,27 @@ async function allocateUniqueUsername(requestedUsername, excludeUserId = null) {
   throw new Error('Could not allocate a unique username. Please try again.');
 }
 
+function normalizeDateOfBirthInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return null;
+  }
+  const parsed = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const min = new Date('1900-01-01T00:00:00Z');
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  if (parsed < min || parsed > today) {
+    return null;
+  }
+  return raw;
+}
+
 function getOnlineUserIds() {
   const ids = new Set();
   for (const [, meta] of wsClients) {
@@ -318,6 +339,7 @@ app.post('/api/auth/register', async (req, res) => {
   const requestedUsername = String(req.body?.username || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
+  const dateOfBirth = normalizeDateOfBirthInput(req.body?.dateOfBirth);
 
   if (!requestedUsername || !email || !password) {
     res.status(400).json({ ok: false, message: 'Username, email, and password are required.' });
@@ -331,6 +353,10 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(400).json({ ok: false, message: 'Password must be at least 6 characters.' });
     return;
   }
+  if (!dateOfBirth) {
+    res.status(400).json({ ok: false, message: 'Valid date of birth is required.' });
+    return;
+  }
 
   try {
     const exists = await db.query('SELECT id FROM users WHERE email = $1', [email]);
@@ -342,8 +368,8 @@ app.post('/api/auth/register', async (req, res) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const created = await db.query(
-      'INSERT INTO users (username, email, password_hash, email_verified) VALUES ($1, $2, $3, FALSE) RETURNING id, username, email',
-      [allocated.username, email, passwordHash]
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified) VALUES ($1, $2, $3, $4, FALSE) RETURNING id, username, email, date_of_birth',
+      [allocated.username, email, passwordHash, dateOfBirth]
     );
     const user = created.rows[0];
 
@@ -387,7 +413,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, password_hash, email_verified FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       res.status(401).json({ ok: false, message: 'Invalid email or password.' });
       return;
@@ -411,7 +437,7 @@ app.post('/api/auth/login', async (req, res) => {
     const realtimeToken = issueAuthToken(user.id);
     res.json({
       ok: true,
-      user: { id: user.id, username: user.username, email: user.email },
+      user: { id: user.id, username: user.username, email: user.email, date_of_birth: user.date_of_birth },
       realtimeToken
     });
   } catch (error) {
@@ -426,7 +452,7 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
 
 app.get('/api/auth/session', authMiddleware, async (req, res) => {
   try {
-    const userResult = await db.query('SELECT id, username, email FROM users WHERE id = $1', [req.userId]);
+    const userResult = await db.query('SELECT id, username, email, date_of_birth FROM users WHERE id = $1', [req.userId]);
     if (userResult.rows.length === 0) {
       res.status(401).json({ ok: false, message: 'Session not found.' });
       return;
@@ -591,6 +617,7 @@ app.post('/api/auth/password-reset/confirm', async (req, res) => {
 app.post('/api/auth/account', authMiddleware, async (req, res) => {
   const requestedUsername = String(req.body?.username || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
+  const requestedDateOfBirth = normalizeDateOfBirthInput(req.body?.dateOfBirth);
   const currentPassword = String(req.body?.currentPassword || '');
   const newPassword = String(req.body?.newPassword || '');
 
@@ -616,7 +643,7 @@ app.post('/api/auth/account', authMiddleware, async (req, res) => {
   }
 
   try {
-    const existing = await db.query('SELECT id, username, email, password_hash FROM users WHERE id = $1', [req.userId]);
+    const existing = await db.query('SELECT id, username, email, password_hash, date_of_birth FROM users WHERE id = $1', [req.userId]);
     if (existing.rows.length === 0) {
       res.status(404).json({ ok: false, message: 'User not found.' });
       return;
@@ -641,10 +668,16 @@ app.post('/api/auth/account', authMiddleware, async (req, res) => {
       passwordHash = await bcrypt.hash(newPassword, 10);
     }
 
+    const nextDateOfBirth = requestedDateOfBirth || user.date_of_birth;
+    if (!nextDateOfBirth) {
+      res.status(400).json({ ok: false, message: 'Date of birth is required.' });
+      return;
+    }
+
     const allocated = await allocateUniqueUsername(requestedUsername, req.userId);
     const updated = await db.query(
-      'UPDATE users SET username = $1, email = $2, password_hash = $3 WHERE id = $4 RETURNING id, username, email',
-      [allocated.username, email, passwordHash, req.userId]
+      'UPDATE users SET username = $1, email = $2, password_hash = $3, date_of_birth = $4 WHERE id = $5 RETURNING id, username, email, date_of_birth',
+      [allocated.username, email, passwordHash, nextDateOfBirth, req.userId]
     );
 
     res.json({
