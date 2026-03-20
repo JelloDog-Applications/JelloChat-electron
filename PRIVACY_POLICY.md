@@ -2,6 +2,8 @@
 
 Last updated: February 13, 2026
 
+**Experimental Service.** JelloChat is an experimental service. Features, availability, and data practices may change without notice.
+
 ## 1. Overview
 JelloChat ("we", "our", "us") provides chat, community, and voice features. This Privacy Policy explains what data we collect, how we use it, and your choices.
 
@@ -60,5 +62,5 @@ Your information may be processed in countries other than your own, subject to a
 We may update this policy. We will update the "Last updated" date when changes are made.
 
 ## 12. Contact
-For privacy questions, contact: `privacy@jellochat.example`
+For privacy questions, contact: privacy@jellodog.com
 

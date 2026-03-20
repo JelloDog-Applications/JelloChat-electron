@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
+const fs = require('fs');
 const db = require('./db');
 const { sendMail } = require('./mailer');
 
@@ -188,6 +189,15 @@ function normalizeDateOfBirthInput(value) {
     return null;
   }
   return raw;
+}
+
+function isAtLeast13YearsOld(dateStr) {
+  if (!dateStr) return false;
+  const birth = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(birth.getTime())) return false;
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 13);
+  return birth <= cutoff;
 }
 
 function sendWs(ws, payload) {
@@ -406,6 +416,9 @@ ipcMain.handle('auth:register', async (_event, payload) => {
   }
   if (!dateOfBirth) {
     return { ok: false, message: 'Valid date of birth is required.' };
+  }
+  if (!isAtLeast13YearsOld(dateOfBirth)) {
+    return { ok: false, message: 'You must be at least 13 years old to register.' };
   }
 
   try {
@@ -678,6 +691,9 @@ ipcMain.handle('auth:updateAccount', async (_event, payload) => {
     if (!nextDateOfBirth) {
       return { ok: false, message: 'Date of birth is required.' };
     }
+    if (!isAtLeast13YearsOld(nextDateOfBirth)) {
+      return { ok: false, message: 'You must be at least 13 years old.' };
+    }
 
     const allocated = await allocateUniqueUsername(requestedUsername, currentUserId);
     const updated = await db.query(
@@ -724,6 +740,31 @@ ipcMain.handle('auth:deleteAccount', async (_event, payload) => {
   } catch (error) {
     return { ok: false, message: `Failed to delete account: ${error.message}` };
   }
+});
+
+function readPolicyMarkdown(filename) {
+  const filePath = path.join(__dirname, filename);
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (_error) {
+    return null;
+  }
+}
+
+ipcMain.handle('legal:getPrivacyPolicy', async () => {
+  const text = readPolicyMarkdown('PRIVACY_POLICY.md');
+  if (!text) {
+    return { ok: false, message: 'Privacy Policy file not found.' };
+  }
+  return { ok: true, text };
+});
+
+ipcMain.handle('legal:getTermsOfService', async () => {
+  const text = readPolicyMarkdown('TERMS_OF_SERVICE.md');
+  if (!text) {
+    return { ok: false, message: 'Terms of Service file not found.' };
+  }
+  return { ok: true, text };
 });
 
 ipcMain.handle('chat:getServers', async () => {

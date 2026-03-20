@@ -48,5 +48,9 @@ contextBridge.exposeInMainWorld('api', {
     getRequests: () => ipcRenderer.invoke('friends:getRequests'),
     sendRequest: (payload) => ipcRenderer.invoke('friends:sendRequest', payload),
     respondRequest: (payload) => ipcRenderer.invoke('friends:respondRequest', payload)
+  },
+  legal: {
+    getPrivacyPolicy: () => ipcRenderer.invoke('legal:getPrivacyPolicy'),
+    getTermsOfService: () => ipcRenderer.invoke('legal:getTermsOfService')
   }
 });

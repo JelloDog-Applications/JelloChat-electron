@@ -137,6 +137,10 @@
       getRequests: () => request('GET', '/api/friends/requests'),
       sendRequest: (payload) => request('POST', '/api/friends/requests', payload),
       respondRequest: (payload) => request('POST', `/api/friends/requests/${payload.requestId}/respond`, payload)
+    },
+    legal: {
+      getPrivacyPolicy: () => request('GET', '/api/legal/privacy-policy'),
+      getTermsOfService: () => request('GET', '/api/legal/terms-of-service')
     }
   };
 })();

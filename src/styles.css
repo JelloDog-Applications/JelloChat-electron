@@ -144,6 +144,39 @@ body {
   height: 15px;
 }
 
+.auth-legal {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auth-legal-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  line-height: 1.35;
+}
+
+.auth-legal-item input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+}
+
+.auth-legal-link-btn {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .auth-actions {
   margin-top: 10px;
   display: grid;
@@ -1151,6 +1184,8 @@ body {
   padding: 14px;
   display: grid;
   gap: 10px;
+  max-height: 82vh;
+  overflow: auto;
 }
 
 .app-dialog.is-opening {
@@ -1173,10 +1208,49 @@ body {
   margin: 0;
 }
 
-#app-dialog-message {
+#app-dialog-message,
+.app-dialog-body {
   margin: 0;
   color: var(--muted);
-  white-space: pre-wrap;
+  white-space: normal;
+  max-height: 60vh;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-dialog-body h1,
+.app-dialog-body h2,
+.app-dialog-body h3 {
+  color: var(--text);
+  margin: 1em 0 0.5em;
+  font-size: 1.1em;
+}
+
+.app-dialog-body h1 { font-size: 1.25em; }
+.app-dialog-body h2 { font-size: 1.15em; }
+
+.app-dialog-body p {
+  margin: 0.5em 0;
+}
+
+.app-dialog-body ul {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.app-dialog-body li {
+  margin: 0.25em 0;
+}
+
+.app-dialog-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.app-dialog-body a {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 #app-dialog-input {

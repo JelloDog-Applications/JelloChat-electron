@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
+const fs = require('fs');
 const db = require('./db');
 const { sendMail } = require('./mailer');
 
@@ -13,6 +14,33 @@ const WEB_PORT = Number(process.env.WEB_PORT || 3000);
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'src')));
+
+function readPolicyMarkdown(filename) {
+  const filePath = path.join(__dirname, filename);
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (_error) {
+    return null;
+  }
+}
+
+app.get('/api/legal/privacy-policy', (_req, res) => {
+  const text = readPolicyMarkdown('PRIVACY_POLICY.md');
+  if (!text) {
+    res.status(500).json({ ok: false, message: 'Privacy Policy file not found.' });
+    return;
+  }
+  res.json({ ok: true, text });
+});
+
+app.get('/api/legal/terms-of-service', (_req, res) => {
+  const text = readPolicyMarkdown('TERMS_OF_SERVICE.md');
+  if (!text) {
+    res.status(500).json({ ok: false, message: 'Terms of Service file not found.' });
+    return;
+  }
+  res.json({ ok: true, text });
+});
 
 const authTokens = new Map();
 const wsClients = new Map();
@@ -166,6 +194,15 @@ function normalizeDateOfBirthInput(value) {
     return null;
   }
   return raw;
+}
+
+function isAtLeast13YearsOld(dateStr) {
+  if (!dateStr) return false;
+  const birth = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(birth.getTime())) return false;
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 13);
+  return birth <= cutoff;
 }
 
 function getOnlineUserIds() {
@@ -355,6 +392,10 @@ app.post('/api/auth/register', async (req, res) => {
   }
   if (!dateOfBirth) {
     res.status(400).json({ ok: false, message: 'Valid date of birth is required.' });
+    return;
+  }
+  if (!isAtLeast13YearsOld(dateOfBirth)) {
+    res.status(400).json({ ok: false, message: 'You must be at least 13 years old to register.' });
     return;
   }
 
@@ -671,6 +712,10 @@ app.post('/api/auth/account', authMiddleware, async (req, res) => {
     const nextDateOfBirth = requestedDateOfBirth || user.date_of_birth;
     if (!nextDateOfBirth) {
       res.status(400).json({ ok: false, message: 'Date of birth is required.' });
+      return;
+    }
+    if (!isAtLeast13YearsOld(nextDateOfBirth)) {
+      res.status(400).json({ ok: false, message: 'You must be at least 13 years old.' });
       return;
     }
 

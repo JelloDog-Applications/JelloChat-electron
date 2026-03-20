@@ -1,4 +1,4 @@
-﻿const ui = {
+const ui = {
   appShell: document.querySelector('.app-shell'),
   authPanel: document.getElementById('auth-panel'),
   chatPanel: document.getElementById('chat-panel'),
@@ -14,6 +14,10 @@
   registerEmail: document.getElementById('register-email'),
   registerPassword: document.getElementById('register-password'),
   registerDob: document.getElementById('register-dob'),
+  acceptTosCheckbox: document.getElementById('accept-tos'),
+  acceptPrivacyCheckbox: document.getElementById('accept-privacy'),
+  viewTosBtn: document.getElementById('view-tos-btn'),
+  viewPrivacyBtn: document.getElementById('view-privacy-btn'),
   resendVerificationBtn: document.getElementById('resend-verification-btn'),
   forgotPasswordBtn: document.getElementById('forgot-password-btn'),
   verifyTokenBtn: document.getElementById('verify-token-btn'),
@@ -364,6 +368,15 @@ function normalizeDob(value) {
   return match ? match[1] : raw;
 }
 
+function isAtLeast13YearsOld(dateStr) {
+  if (!dateStr) return false;
+  const birth = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(birth.getTime())) return false;
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 13);
+  return birth <= cutoff;
+}
+
 function userNeedsDob(user) {
   return !normalizeDob(user?.date_of_birth);
 }
@@ -580,14 +593,18 @@ function closeAppDialog() {
   ui.appDialogInput.value = '';
 }
 
-function openAppDialog({ title, message, mode = 'alert', defaultValue = '', okLabel = 'OK', cancelLabel = 'Cancel' }) {
+function openAppDialog({ title, message, mode = 'alert', defaultValue = '', okLabel = 'OK', cancelLabel = 'Cancel', html = false }) {
   if (dialogState.resolver) {
     dialogState.resolver(null);
     dialogState.resolver = null;
   }
 
   ui.appDialogTitle.textContent = title || 'Dialog';
-  ui.appDialogMessage.textContent = message || '';
+  if (html) {
+    ui.appDialogMessage.innerHTML = message || '';
+  } else {
+    ui.appDialogMessage.textContent = message || '';
+  }
   ui.appDialogOkBtn.textContent = okLabel;
   ui.appDialogCancelBtn.textContent = cancelLabel;
 
@@ -611,8 +628,8 @@ function openAppDialog({ title, message, mode = 'alert', defaultValue = '', okLa
   });
 }
 
-async function showMessageDialog(title, message) {
-  const result = await openAppDialog({ title, message, mode: 'alert', okLabel: 'OK' });
+async function showMessageDialog(title, message, options = {}) {
+  const result = await openAppDialog({ title, message, mode: 'alert', okLabel: 'OK', ...options });
   return result;
 }
 
@@ -1810,6 +1827,10 @@ ui.accountForm.addEventListener('submit', async (event) => {
     setAccountFormMessage('Date of birth is required.', true);
     return;
   }
+  if (!isAtLeast13YearsOld(dateOfBirth)) {
+    setAccountFormMessage('You must be at least 13 years old.', true);
+    return;
+  }
 
   if ((currentPassword && !newPassword) || (!currentPassword && newPassword)) {
     setAccountFormMessage('Current and new password are required together.', true);
@@ -1846,6 +1867,10 @@ ui.dobForm.addEventListener('submit', async (event) => {
   const dateOfBirth = normalizeDob(ui.dobInput.value);
   if (!dateOfBirth) {
     setDobFormMessage('Date of birth is required.', true);
+    return;
+  }
+  if (!isAtLeast13YearsOld(dateOfBirth)) {
+    setDobFormMessage('You must be at least 13 years old.', true);
     return;
   }
 
@@ -2068,14 +2093,71 @@ ui.loginForm.addEventListener('submit', async (event) => {
   }
 });
 
+async function showTermsOfServiceDialog() {
+  if (!window.api?.legal?.getTermsOfService) {
+    setAuthMessage('Terms of Service is not available.', true);
+    return;
+  }
+
+  const result = await window.api.legal.getTermsOfService();
+  if (!result?.ok) {
+    setAuthMessage(result?.message || 'Failed to load Terms of Service.', true);
+    return;
+  }
+
+  const raw = result.text || result.policy || '';
+  const html = typeof window.marked !== 'undefined' ? await window.marked.parse(raw) : raw.replace(/\n/g, '<br>');
+  await showMessageDialog('Terms of Service', html, { html: true });
+}
+
+async function showPrivacyPolicyDialog() {
+  if (!window.api?.legal?.getPrivacyPolicy) {
+    setAuthMessage('Privacy Policy is not available.', true);
+    return;
+  }
+
+  const result = await window.api.legal.getPrivacyPolicy();
+  if (!result?.ok) {
+    setAuthMessage(result?.message || 'Failed to load Privacy Policy.', true);
+    return;
+  }
+
+  const raw = result.text || result.policy || '';
+  const html = typeof window.marked !== 'undefined' ? await window.marked.parse(raw) : raw.replace(/\n/g, '<br>');
+  await showMessageDialog('Privacy Policy', html, { html: true });
+}
+
+ui.viewTosBtn?.addEventListener('click', async (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  await showTermsOfServiceDialog();
+});
+
+ui.viewPrivacyBtn?.addEventListener('click', async (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  await showPrivacyPolicyDialog();
+});
+
 ui.registerForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+
+  if (!ui.acceptTosCheckbox?.checked || !ui.acceptPrivacyCheckbox?.checked) {
+    setAuthMessage('Please accept the Terms of Service and Privacy Policy to create an account.', true);
+    return;
+  }
+
+  const dateOfBirth = normalizeDob(ui.registerDob.value);
+  if (!isAtLeast13YearsOld(dateOfBirth)) {
+    setAuthMessage('You must be at least 13 years old to register.', true);
+    return;
+  }
 
   const result = await window.api.auth.register({
     username: ui.registerUsername.value,
     email: ui.registerEmail.value,
     password: ui.registerPassword.value,
-    dateOfBirth: normalizeDob(ui.registerDob.value)
+    dateOfBirth
   });
 
   if (!result.ok) {

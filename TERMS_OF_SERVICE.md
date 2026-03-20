@@ -2,6 +2,8 @@
 
 Last updated: February 13, 2026
 
+**Experimental Service.** JelloChat is an experimental service. Features, availability, and policies may change without notice. Use at your own risk.
+
 ## 1. Acceptance of Terms
 By creating an account or using JelloChat, you agree to these Terms of Service ("Terms").
 
