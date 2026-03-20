@@ -309,6 +309,44 @@ app.get('/terms-of-service', (_req, res) => {
   res.type('html').send(renderMarkdownPage('JelloChat Terms of Service', text));
 });
 
+app.get('/delete-account', (_req, res) => {
+  const appUrl = buildPublicUrl('/');
+  res.type('html').send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delete Your JelloChat Account</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #0f172a; color: #e5e7eb; margin: 0; }
+      main { width: min(92vw, 760px); margin: 40px auto; background: #111827; border: 1px solid #334155; border-radius: 16px; padding: 28px; }
+      h1, h2 { color: #f8fafc; }
+      p, li { line-height: 1.65; color: #cbd5e1; }
+      ul, ol { padding-left: 1.5rem; }
+      a { color: #7dd3fc; }
+      .cta { display: inline-block; margin-top: 12px; text-decoration: none; background: #22c55e; color: #052e16; padding: 12px 16px; border-radius: 10px; font-weight: 700; }
+      .note { margin-top: 20px; color: #94a3b8; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Delete Your JelloChat Account</h1>
+      <p>You can delete your JelloChat account directly inside the app.</p>
+      <h2>How to delete your account</h2>
+      <ol>
+        <li>Open JelloChat and sign in to your account.</li>
+        <li>Open <strong>My Account</strong>.</li>
+        <li>Select <strong>Delete Account</strong>.</li>
+        <li>Enter your current password and confirm deletion.</li>
+      </ol>
+      <p>This permanently deletes your account and cannot be undone.</p>
+      <a class="cta" href="${appUrl}">Open JelloChat</a>
+      <p class="note">If you cannot access your account and need help, contact support through your published support channel and include the email tied to the account.</p>
+    </main>
+  </body>
+</html>`);
+});
+
 app.get('/download/android', (req, res) => {
   const apkUrl = String(process.env.APP_ANDROID_DOWNLOAD_URL || '').trim();
   const continueUrl = buildPublicUrl('/');
