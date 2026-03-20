@@ -55,8 +55,10 @@ function buildPublicUrl(pathname) {
 }
 
 function buildAuthWebUrl(mode, rawToken) {
-  const authPath = mode === 'verify' ? '/verify-email' : '/reset-password';
-  return buildPublicUrl(`${authPath}?token=${encodeURIComponent(rawToken)}`);
+  if (mode === 'verify') {
+    return buildPublicUrl(`/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`);
+  }
+  return buildPublicUrl(`/reset-password?token=${encodeURIComponent(rawToken)}`);
 }
 
 function buildAuthAppUrl(mode, rawToken) {
@@ -649,7 +651,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
 app.get('/api/auth/verify-email', async (req, res) => {
   const token = String(req.query?.token || '').trim();
   if (!token) {
-    res.status(400).type('text/plain').send('Missing verification token.');
+    res.redirect(buildPublicUrl('/verify-email?status=error&message=Missing%20verification%20token.'));
     return;
   }
 
@@ -667,13 +669,13 @@ app.get('/api/auth/verify-email', async (req, res) => {
     );
 
     if (updated.rows.length === 0) {
-      res.status(400).type('text/plain').send('Verification token is invalid or expired.');
+      res.redirect(buildPublicUrl('/verify-email?status=error&message=Verification%20token%20is%20invalid%20or%20expired.'));
       return;
     }
 
-    res.type('text/plain').send('Email verified. You can return to JelloChat and log in.');
+    res.redirect(buildPublicUrl('/verify-email?status=success&message=Email%20verified%20successfully.'));
   } catch (error) {
-    res.status(500).type('text/plain').send(`Failed to verify email: ${error.message}`);
+    res.redirect(buildPublicUrl(`/verify-email?status=error&message=${encodeURIComponent(`Failed to verify email: ${error.message}`)}`));
   }
 });
 

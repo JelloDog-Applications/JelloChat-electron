@@ -758,6 +758,33 @@ async function handleAuthDeepLinks() {
   const pathname = String(window.location.pathname || '');
   const params = new URLSearchParams(window.location.search || '');
   const token = String(params.get('token') || '').trim();
+  const status = String(params.get('status') || '').trim().toLowerCase();
+  const message = String(params.get('message') || '').trim();
+
+  if (pathname === '/verify-email' && status) {
+    openAuth();
+    showLogin();
+
+    await showMessageDialog(
+      status === 'success' ? 'Email Verified' : 'Verification Failed',
+      message || (status === 'success' ? 'Your email has been verified. You can log in now.' : 'Your verification link is invalid or expired.')
+    );
+
+    setAuthMessage(
+      message || (status === 'success' ? 'Email verified successfully.' : 'Failed to verify email.'),
+      status !== 'success'
+    );
+
+    try {
+      window.history.replaceState({}, '', '/');
+    } catch (_error) {
+    }
+
+    if (status === 'success') {
+      ui.loginEmailInput.focus();
+    }
+    return;
+  }
 
   if (pathname === '/verify-email' && token) {
     openAuth();
@@ -771,17 +798,13 @@ async function handleAuthDeepLinks() {
       result.message || (result.ok ? 'Your email has been verified. You can log in now.' : 'Your verification link is invalid or expired.')
     );
 
+    try {
+      window.history.replaceState({}, '', '/');
+    } catch (_error) {
+    }
+
     if (result.ok) {
-      try {
-        window.history.replaceState({}, '', '/');
-      } catch (_error) {
-      }
       ui.loginEmailInput.focus();
-    } else {
-      try {
-        window.history.replaceState({}, '', '/');
-      } catch (_error) {
-      }
     }
     return;
   }

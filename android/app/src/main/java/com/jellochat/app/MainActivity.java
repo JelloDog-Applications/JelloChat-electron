@@ -95,8 +95,11 @@ public class MainActivity extends BridgeActivity {
         }
 
         if ("jellochat".equalsIgnoreCase(scheme) && "auth".equalsIgnoreCase(host)) {
-            if ("/reset-password".equals(path) || "/verify-email".equals(path)) {
+            if ("/reset-password".equals(path)) {
                 return APP_WEB_BASE_URL + path + (query == null || query.isEmpty() ? "" : "?" + query);
+            }
+            if ("/verify-email".equals(path)) {
+                return APP_WEB_BASE_URL + "/api/auth/verify-email" + (query == null || query.isEmpty() ? "" : "?" + query);
             }
             return null;
         }
