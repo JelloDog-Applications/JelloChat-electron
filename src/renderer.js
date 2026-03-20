@@ -169,23 +169,12 @@ function isParticipantMuted(participant) {
 }
 
 function renderVoiceParticipants() {
-    // ✅ ONLY check the actual room connection
-    if (!state.voiceRoom || state.voiceRoom.state !== "connected") {
-      ui.voiceParticipants.innerHTML = "Not connected.";
-      return;
-    }
-
-    const room = state.voiceRoom;
-
-    // include yourself + others
-    const participants = [
-      room.localParticipant,
-      ...Array.from(room.remoteParticipants.values())
-    ];
-
-    ui.voiceParticipants.innerHTML = participants.map(p => {
-      return `<div>${p.identity}</div>`;
-    }).join("");
+  ui.vcParticipantsList.innerHTML = '';
+  if (!state.voiceRoom) {
+    const item = document.createElement('li');
+    item.textContent = 'Not connected.';
+    ui.vcParticipantsList.appendChild(item);
+    return;
   }
 
   const participants = [state.voiceRoom.localParticipant, ...Array.from(state.voiceRoom.remoteParticipants.values())];
@@ -225,7 +214,7 @@ function renderVoiceParticipants() {
     item.append(name, badges);
     ui.vcParticipantsList.appendChild(item);
   }
-
+}
 
 function setVcStatus(message) {
   ui.vcStatus.textContent = message;
@@ -485,7 +474,7 @@ function renderFriendRequests(requests) {
     rejectBtn.className = 'friend-request-action friend-request-reject';
     rejectBtn.type = 'button';
     rejectBtn.title = 'Reject';
-    rejectBtn.textContent = '⊘';
+    rejectBtn.textContent = 'Ã¢Å Ëœ';
     rejectBtn.addEventListener('click', async () => {
       const result = await window.api.friends.respondRequest({ requestId: request.id, action: 'reject' });
       if (!result.ok) {
@@ -591,7 +580,7 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
       autoSubscribe: true,
     });
 
-    // 🔥 STEP 3: WAIT for FULL connection
+    // Ã°Å¸â€Â¥ STEP 3: WAIT for FULL connection
     await new Promise((resolve) => {
       if (room.state === "connected") return resolve();
 
@@ -600,14 +589,14 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
         resolve();
       });
     });
-    // ✅ SET STATE HERE (AFTER CONNECTED)
+    // Ã¢Å“â€¦ SET STATE HERE (AFTER CONNECTED)
     state.voiceRoom = room;
     state.activeVoiceChannelId = channelId;
 
     ui.vcRoomTitle.textContent = roomLabel;
     syncVoicePanelVisibility();
 
-    // ✅ FORCE UI UPDATE
+    // Ã¢Å“â€¦ FORCE UI UPDATE
     updateVoiceButtons();
     renderVoiceParticipants();
 
@@ -1244,7 +1233,7 @@ function renderMessages(messages) {
     meta.className = 'msg-meta';
 
     const title = document.createElement('span');
-    title.textContent = `${msg.username} • ${formatTime(msg.created_at)}`;
+    title.textContent = `${msg.username} Ã¢â‚¬Â¢ ${formatTime(msg.created_at)}`;
     meta.appendChild(title);
 
     if (msg.user_id === state.currentUserId) {
