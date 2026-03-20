@@ -13,7 +13,7 @@
     "build:apk": "npx cap sync android && npx cap open android"
   },
   "dependencies": {
-    "@capacitor/core": "^7.4.2",
+    "@capacitor/core": "^7.6.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
@@ -24,9 +24,10 @@
   },
   "devDependencies": {
     "@capacitor/android": "^7.4.2",
-    "@capacitor/cli": "^7.4.2",
+    "@capacitor/cli": "^7.6.0",
     "electron": "^37.2.0",
-    "electron-builder": "^26.7.0"
+    "electron-builder": "^26.7.0",
+    "typescript": "^5.9.3"
   },
   "build": {
     "appId": "com.jellochat.app",

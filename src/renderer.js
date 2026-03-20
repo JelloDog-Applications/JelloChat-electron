@@ -1,3 +1,5 @@
+import { Room, createLocalAudioTrack } from 'livekit-client';
+
 const ui = {
   appShell: document.querySelector('.app-shell'),
   authPanel: document.getElementById('auth-panel'),
@@ -551,33 +553,65 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
   updateVoiceButtons();
 
   try {
-    const room = new Room({ adaptiveStream: true, dynacast: true });
+    const room = new Room({
+      adaptiveStream: true,
+      dynacast: true,
+    });
+
     wireRoomEvents(room);
-    await room.connect(tokenData.livekitUrl, tokenData.token, { autoSubscribe: true });
+
+    // 🔥 STEP 1: create audio BEFORE connect
+    let audioTrack = null;
+
+    if (canUseMicrophoneApi()) {
+      console.log("Creating audio track...");
+
+      audioTrack = await createLocalAudioTrack({
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      });
+
+      console.log("Audio track created:", audioTrack);
+    }
+
+    // 🔥 STEP 2: connect
+    await room.connect(tokenData.livekitUrl, tokenData.token, {
+      autoSubscribe: true,
+    });
+
     state.voiceRoom = room;
     state.activeVoiceChannelId = channelId;
+
     ui.vcRoomTitle.textContent = roomLabel;
     syncVoicePanelVisibility();
-    if (canUseMicrophoneApi()) {
-      await room.localParticipant.setMicrophoneEnabled(true);
+
+    // 🔥 STEP 3: publish AFTER connect
+    if (audioTrack) {
+      await room.localParticipant.publishTrack(audioTrack);
+
       state.isVoiceMuted = false;
       setVcStatus(`Connected to ${roomLabel}`);
     } else {
       state.isVoiceMuted = true;
-      await room.localParticipant.setMicrophoneEnabled(false);
-      setVcStatus(`Connected to ${roomLabel} (listen-only: use HTTPS/localhost for mic)`);
+      setVcStatus(`Connected to ${roomLabel} (listen-only)`);
     }
+
     updateVoiceButtons();
     renderVoiceParticipants();
+
   } catch (error) {
     state.voiceRoom = null;
     state.activeVoiceChannelId = null;
     syncVoicePanelVisibility();
+
     const iss = tokenData?.debug?.iss ? ` iss=${tokenData.debug.iss}` : '';
     const room = tokenData?.debug?.room ? ` room=${tokenData.debug.room}` : '';
     const url = tokenData?.livekitUrl ? ` url=${tokenData.livekitUrl}` : '';
+
     setVcStatus(`Failed to join voice: ${error.message}${iss}${room}${url}`);
     ui.channelTitle.textContent = `Failed to join VC: ${error.message}`;
+
     renderVoiceParticipants();
   }
 }
