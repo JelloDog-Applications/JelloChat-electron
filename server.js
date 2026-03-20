@@ -100,6 +100,7 @@ app.get('/auth-link', (req, res) => {
   const webUrl = buildAuthWebUrl(mode, token);
   const title = mode === 'verify' ? 'Verify your email' : 'Reset your password';
   const actionLabel = mode === 'verify' ? 'Open verification' : 'Open password reset';
+  const allowAutoFallback = mode !== 'verify';
 
   res.type('html').send(`<!doctype html>
 <html lang="en">
@@ -135,11 +136,14 @@ app.get('/auth-link', (req, res) => {
         }
       });
       window.addEventListener('pagehide', markHidden);
-      setTimeout(() => {
-        if (!appOpened) {
-          window.location.replace(webUrl);
-        }
-      }, 1400);
+      const allowAutoFallback = ${JSON.stringify(allowAutoFallback)};
+      if (allowAutoFallback) {
+        setTimeout(() => {
+          if (!appOpened) {
+            window.location.replace(webUrl);
+          }
+        }, 1400);
+      }
       window.location.replace(appUrl);
     </script>
   </body>
