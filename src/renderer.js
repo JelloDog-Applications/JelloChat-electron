@@ -1,4 +1,4 @@
-import { Room, createLocalAudioTrack } from 'livekit-client';
+
 
 const ui = {
   appShell: document.querySelector('.app-shell'),
@@ -553,7 +553,7 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
   updateVoiceButtons();
 
   try {
-    const room = new Room({
+    const room = new LivekitClient.Room({
       adaptiveStream: true,
       dynacast: true,
     });
@@ -566,13 +566,18 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
     if (canUseMicrophoneApi()) {
       console.log("Creating audio track...");
 
-      audioTrack = await createLocalAudioTrack({
+      const audioTrack = await LivekitClient.createLocalAudioTrack({
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: true,
+        autoGainControl: true
       });
 
       console.log("Audio track created:", audioTrack);
+
+      await room.localParticipant.publishTrack(audioTrack);
+
+      state.isVoiceMuted = false;
+      setVcStatus(`Connected to ${roomLabel}`);
     }
 
     // 🔥 STEP 2: connect
