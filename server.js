@@ -54,25 +54,93 @@ function buildPublicUrl(pathname) {
   return `${base}${pathname}`;
 }
 
+function buildAuthWebUrl(mode, rawToken) {
+  const authPath = mode === 'verify' ? '/verify-email' : '/reset-password';
+  return buildPublicUrl(`${authPath}?token=${encodeURIComponent(rawToken)}`);
+}
+
+function buildAuthAppUrl(mode, rawToken) {
+  return `jellochat://auth/${mode === 'verify' ? 'verify-email' : 'reset-password'}?token=${encodeURIComponent(rawToken)}`;
+}
+
+function buildAuthEmailUrl(mode, rawToken) {
+  return buildPublicUrl(`/auth-link?mode=${encodeURIComponent(mode)}&token=${encodeURIComponent(rawToken)}`);
+}
+
 async function sendVerificationEmail(email, username, rawToken) {
-  const verifyUrl = buildPublicUrl(`/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`);
+  const verifyUrl = buildAuthEmailUrl('verify', rawToken);
   return sendMail({
     to: email,
     subject: 'Verify your JelloChat email',
-    text: `Hi ${username},\n\nVerify your email:\n${verifyUrl}\n\nThis link expires in 24 hours.`,
-    html: `<p>Hi ${username},</p><p>Verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 24 hours.</p>`
+    text: `Hi ${username},\n\nVerify your email:\n${verifyUrl}\n\nThis link will open the app if it is installed, or fall back to the website. It expires in 24 hours.`,
+    html: `<p>Hi ${username},</p><p>Verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link will open the app if it is installed, or fall back to the website. It expires in 24 hours.</p>`
   });
 }
 
 async function sendPasswordResetEmail(email, username, rawToken) {
-  const resetUrl = buildPublicUrl(`/reset-password?token=${encodeURIComponent(rawToken)}`);
+  const resetUrl = buildAuthEmailUrl('reset', rawToken);
   return sendMail({
     to: email,
     subject: 'Reset your JelloChat password',
-    text: `Hi ${username},\n\nReset your password:\n${resetUrl}\n\nThis link expires in 1 hour.`,
-    html: `<p>Hi ${username},</p><p>Reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`
+    text: `Hi ${username},\n\nReset your password:\n${resetUrl}\n\nThis link will open the app if it is installed, or fall back to the website. It expires in 1 hour.`,
+    html: `<p>Hi ${username},</p><p>Reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link will open the app if it is installed, or fall back to the website. It expires in 1 hour.</p>`
   });
 }
+
+app.get('/auth-link', (req, res) => {
+  const mode = String(req.query?.mode || '').trim().toLowerCase();
+  const token = String(req.query?.token || '').trim();
+
+  if (!token || !['verify', 'reset'].includes(mode)) {
+    res.status(400).type('text/plain').send('Invalid auth link.');
+    return;
+  }
+
+  const appUrl = buildAuthAppUrl(mode, token);
+  const webUrl = buildAuthWebUrl(mode, token);
+  const title = mode === 'verify' ? 'Verify your email' : 'Reset your password';
+  const actionLabel = mode === 'verify' ? 'Open verification' : 'Open password reset';
+
+  res.type('html').send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #0f172a; color: #e5e7eb; margin: 0; min-height: 100vh; display: grid; place-items: center; }
+      main { width: min(92vw, 480px); background: #111827; border: 1px solid #334155; border-radius: 16px; padding: 24px; }
+      h1 { margin-top: 0; font-size: 1.5rem; }
+      p { line-height: 1.5; color: #cbd5e1; }
+      a { display: block; text-align: center; margin-top: 12px; padding: 12px 16px; border-radius: 10px; text-decoration: none; font-weight: 600; }
+      .primary { background: #22c55e; color: #052e16; }
+      .secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${title}</h1>
+      <p>Trying to open JelloChat in the app now. If the app does not open, continue on the website.</p>
+      <a class="primary" href="${appUrl}">${actionLabel} in app</a>
+      <a class="secondary" href="${webUrl}">Continue on website</a>
+    </main>
+    <script>
+      const appUrl = ${JSON.stringify(appUrl)};
+      const webUrl = ${JSON.stringify(webUrl)};
+      setTimeout(() => { window.location.replace(webUrl); }, 1400);
+      window.location.replace(appUrl);
+    </script>
+  </body>
+</html>`);
+});
+
+app.get('/reset-password', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'src', 'index.html'));
+});
+
+app.get('/verify-email', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'src', 'index.html'));
+});
 
 async function issueEmailVerification(userId, email, username) {
   const rawToken = crypto.randomBytes(32).toString('hex');

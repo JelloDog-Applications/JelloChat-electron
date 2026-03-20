@@ -560,54 +560,40 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
 
     wireRoomEvents(room);
 
-    // STEP 1: create audio
-    let audioTrack = null;
-
-    if (canUseMicrophoneApi()) {
-      console.log("Creating audio track...");
-
-      audioTrack = await LivekitClient.createLocalAudioTrack({
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      });
-
-      console.log("Audio track created:", audioTrack);
-    }
-
-    // STEP 2: connect
     await room.connect(tokenData.livekitUrl, tokenData.token, {
       autoSubscribe: true,
     });
 
-    // Ã°Å¸â€Â¥ STEP 3: WAIT for FULL connection
-    await new Promise((resolve) => {
-      if (room.state === "connected") return resolve();
-
-      room.once("connected", () => {
-        console.log("Room fully connected");
-        resolve();
-      });
-    });
-    // Ã¢Å“â€¦ SET STATE HERE (AFTER CONNECTED)
     state.voiceRoom = room;
     state.activeVoiceChannelId = channelId;
 
     ui.vcRoomTitle.textContent = roomLabel;
     syncVoicePanelVisibility();
 
-    // Ã¢Å“â€¦ FORCE UI UPDATE
+    state.isVoiceMuted = true;
     updateVoiceButtons();
     renderVoiceParticipants();
 
-    // STEP 4: publish AFTER confirmed connection
-    if (audioTrack) {
-      await room.localParticipant.publishTrack(audioTrack);
+    let vcStatus = `Connected to ${roomLabel}`;
 
-      state.isVoiceMuted = false;
-      setVcStatus(`Connected to ${roomLabel}`);
+    if (canUseMicrophoneApi()) {
+      try {
+        const audioTrack = await LivekitClient.createLocalAudioTrack({
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        });
+        await room.localParticipant.publishTrack(audioTrack);
+        state.isVoiceMuted = false;
+      } catch (micError) {
+        state.isVoiceMuted = true;
+        vcStatus = `Connected to ${roomLabel} (listen-only: ${micError.message})`;
+      }
+    } else {
+      vcStatus = `Connected to ${roomLabel} (listen-only: use HTTPS or localhost for mic)`;
     }
 
+    setVcStatus(vcStatus);
     updateVoiceButtons();
     renderVoiceParticipants();
 
@@ -772,6 +758,22 @@ async function handleAuthDeepLinks() {
   const pathname = String(window.location.pathname || '');
   const params = new URLSearchParams(window.location.search || '');
   const token = String(params.get('token') || '').trim();
+
+  if (pathname === '/verify-email' && token) {
+    openAuth();
+    showLogin();
+
+    const result = await window.api.auth.verifyEmail({ token });
+    setAuthMessage(result.message || (result.ok ? 'Email verified successfully.' : 'Failed to verify email.'), !result.ok);
+
+    if (result.ok) {
+      try {
+        window.history.replaceState({}, '', '/');
+      } catch (_error) {
+      }
+    }
+    return;
+  }
 
   if (pathname === '/reset-password' && token) {
     openAuth();

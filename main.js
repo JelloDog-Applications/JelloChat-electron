@@ -25,23 +25,27 @@ function buildPublicUrl(pathname) {
   return `${base}${pathname}`;
 }
 
+function buildAuthEmailUrl(mode, rawToken) {
+  return buildPublicUrl(`/auth-link?mode=${encodeURIComponent(mode)}&token=${encodeURIComponent(rawToken)}`);
+}
+
 async function sendVerificationEmail(email, username, rawToken) {
-  const verifyUrl = buildPublicUrl(`/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`);
+  const verifyUrl = buildAuthEmailUrl('verify', rawToken);
   return sendMail({
     to: email,
     subject: 'Verify your JelloChat email',
-    text: `Hi ${username},\n\nVerify your email:\n${verifyUrl}\n\nThis link expires in 24 hours.`,
-    html: `<p>Hi ${username},</p><p>Verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 24 hours.</p>`
+    text: `Hi ${username},\n\nVerify your email:\n${verifyUrl}\n\nThis link will open the app if it is installed, or fall back to the website. It expires in 24 hours.`,
+    html: `<p>Hi ${username},</p><p>Verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link will open the app if it is installed, or fall back to the website. It expires in 24 hours.</p>`
   });
 }
 
 async function sendPasswordResetEmail(email, username, rawToken) {
-  const resetUrl = buildPublicUrl(`/reset-password?token=${encodeURIComponent(rawToken)}`);
+  const resetUrl = buildAuthEmailUrl('reset', rawToken);
   return sendMail({
     to: email,
     subject: 'Reset your JelloChat password',
-    text: `Hi ${username},\n\nReset your password:\n${resetUrl}\n\nThis link expires in 1 hour.`,
-    html: `<p>Hi ${username},</p><p>Reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`
+    text: `Hi ${username},\n\nReset your password:\n${resetUrl}\n\nThis link will open the app if it is installed, or fall back to the website. It expires in 1 hour.`,
+    html: `<p>Hi ${username},</p><p>Reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link will open the app if it is installed, or fall back to the website. It expires in 1 hour.</p>`
   });
 }
 
