@@ -760,19 +760,24 @@ async function handleAuthDeepLinks() {
   const token = String(params.get('token') || '').trim();
   const status = String(params.get('status') || '').trim().toLowerCase();
   const message = String(params.get('message') || '').trim();
+  const verified = params.get('verified') === '1';
 
-  if (pathname === '/verify-email' && status) {
+  if (pathname === '/verify-email' && (status || verified)) {
     openAuth();
     showLogin();
 
-    await showMessageDialog(
-      status === 'success' ? 'Email Verified' : 'Verification Failed',
-      message || (status === 'success' ? 'Your email has been verified. You can log in now.' : 'Your verification link is invalid or expired.')
-    );
+    const success = verified || status === 'success';
+    const finalMessage =
+      message ||
+      (success ? 'Email verified successfully. You can log in now.' : 'Your verification link is invalid or expired.');
 
-    setAuthMessage(
-      message || (status === 'success' ? 'Email verified successfully.' : 'Failed to verify email.'),
-      status !== 'success'
+    setAuthMessage(finalMessage, !success);
+
+    ui.authMessage.scrollIntoView({ block: 'nearest' });
+
+    await showMessageDialog(
+      success ? 'Email Verified' : 'Verification Failed',
+      finalMessage
     );
 
     try {
@@ -780,7 +785,7 @@ async function handleAuthDeepLinks() {
     } catch (_error) {
     }
 
-    if (status === 'success') {
+    if (success) {
       ui.loginEmailInput.focus();
     }
     return;

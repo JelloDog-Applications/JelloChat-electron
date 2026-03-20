@@ -673,7 +673,7 @@ app.get('/api/auth/verify-email', async (req, res) => {
       return;
     }
 
-    res.redirect(buildPublicUrl('/verify-email?status=success&message=Email%20verified%20successfully.'));
+    res.redirect(buildPublicUrl('/verify-email?status=success&verified=1&message=Email%20verified%20successfully.%20You%20can%20log%20in%20now.'));
   } catch (error) {
     res.redirect(buildPublicUrl(`/verify-email?status=error&message=${encodeURIComponent(`Failed to verify email: ${error.message}`)}`));
   }
