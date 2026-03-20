@@ -113,6 +113,7 @@ body {
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+  width: 100%;
 }
 
 .auth-form.auth-anim-out-left {
@@ -175,13 +176,23 @@ body {
 }
 
 .auth-legal-link-btn {
+  display: inline;
   border: none;
   padding: 0;
+  margin: 0;
   background: transparent;
   color: var(--accent);
   text-decoration: underline;
   cursor: pointer;
   font-weight: 600;
+  font-size: inherit;
+  font-family: inherit;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
+.auth-legal-link-btn:hover {
+  color: var(--accent-dark);
 }
 
 .auth-actions {
@@ -205,6 +216,8 @@ body {
 
 .auth-form input,
 .message-form input {
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid #4a546c;
   background: #1f2430;
   color: var(--text);
@@ -217,11 +230,14 @@ body {
   position: relative;
   min-width: 0;
   width: 100%;
+  flex: 1 1 auto;
+  align-self: stretch;
 }
 
 .password-input-wrap input {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   padding-right: 42px;
   box-sizing: border-box;
 }
