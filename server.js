@@ -155,8 +155,13 @@ function isAndroidRequest(req) {
   return userAgent.includes('android');
 }
 
+function isAndroidAppWebViewRequest(req) {
+  const userAgent = String(req.get('user-agent') || '').toLowerCase();
+  return userAgent.includes('jellochatandroidapp');
+}
+
 function shouldRedirectAndroidToDownload(req) {
-  if (req.method !== 'GET' || !isAndroidRequest(req)) {
+  if (req.method !== 'GET' || !isAndroidRequest(req) || isAndroidAppWebViewRequest(req)) {
     return false;
   }
 

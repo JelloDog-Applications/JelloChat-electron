@@ -1,0 +1,27 @@
+<svg width="1024" height="500" viewBox="0 0 1024 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="84" y1="46" x2="940" y2="454" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2B6F14"/>
+      <stop offset="1" stop-color="#49B41C"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="1024" height="500" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#173E0B" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="500" rx="36" fill="url(#bg)"/>
+
+  <circle cx="132" cy="104" r="88" fill="#6BEA26" fill-opacity="0.08"/>
+  <circle cx="948" cy="404" r="112" fill="#C8F8AF" fill-opacity="0.08"/>
+
+  <g filter="url(#shadow)">
+    <path d="M120 128C120 102.595 140.595 82 166 82H440C465.405 82 486 102.595 486 128V292C486 317.405 465.405 338 440 338H239L126 384V338.5C122.164 330.93 120 321.868 120 312V128Z" fill="#DCEAF6" stroke="#111111" stroke-width="10" stroke-linejoin="round"/>
+    <rect x="182" y="138" width="176" height="28" fill="#111111"/>
+    <rect x="182" y="187" width="244" height="28" fill="#111111"/>
+    <rect x="182" y="236" width="110" height="28" fill="#111111"/>
+  </g>
+
+  <text x="560" y="210" fill="#F6FFF1" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700">JelloChat</text>
+  <text x="560" y="270" fill="#E4F7D9" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="600">Text. DMs. Voice.</text>
+  <text x="560" y="330" fill="#D7F0C9" font-family="Arial, Helvetica, sans-serif" font-size="24">Chat with friends in real time.</text>
+</svg>

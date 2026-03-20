@@ -20,6 +20,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     private static final int AUDIO_PERMISSION_REQUEST_CODE = 1001;
     private static final String APP_WEB_BASE_URL = "https://chat.jellodog.com";
+    private static final String APP_USER_AGENT_MARKER = "JelloChatAndroidApp";
     private String pendingAuthUrl;
     private boolean authNavigationHandled;
 
@@ -46,6 +47,7 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().clearHistory();
         getBridge().getWebView().getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
         getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
+        appendAppUserAgentMarker();
         ensureAudioPermission();
         handleAuthIntent(getIntent());
     }
@@ -70,6 +72,20 @@ public class MainActivity extends BridgeActivity {
                     AUDIO_PERMISSION_REQUEST_CODE
             );
         }
+    }
+
+    private void appendAppUserAgentMarker() {
+        if (getBridge() == null || getBridge().getWebView() == null) {
+            return;
+        }
+
+        WebSettings settings = getBridge().getWebView().getSettings();
+        String userAgent = settings.getUserAgentString();
+        if (userAgent == null || userAgent.contains(APP_USER_AGENT_MARKER)) {
+            return;
+        }
+
+        settings.setUserAgentString(userAgent + " " + APP_USER_AGENT_MARKER);
     }
 
     private void handleAuthIntent(Intent intent) {
