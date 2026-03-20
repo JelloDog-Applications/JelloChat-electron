@@ -589,6 +589,16 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
         resolve();
       });
     });
+    // ✅ SET STATE HERE (AFTER CONNECTED)
+    state.voiceRoom = room;
+    state.activeVoiceChannelId = channelId;
+
+    ui.vcRoomTitle.textContent = roomLabel;
+    syncVoicePanelVisibility();
+
+    // ✅ FORCE UI UPDATE
+    updateVoiceButtons();
+    renderVoiceParticipants();
 
     // STEP 4: publish AFTER confirmed connection
     if (audioTrack) {
