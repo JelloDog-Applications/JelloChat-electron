@@ -127,7 +127,19 @@ app.get('/auth-link', (req, res) => {
     <script>
       const appUrl = ${JSON.stringify(appUrl)};
       const webUrl = ${JSON.stringify(webUrl)};
-      setTimeout(() => { window.location.replace(webUrl); }, 1400);
+      let appOpened = false;
+      const markHidden = () => { appOpened = true; };
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          markHidden();
+        }
+      });
+      window.addEventListener('pagehide', markHidden);
+      setTimeout(() => {
+        if (!appOpened) {
+          window.location.replace(webUrl);
+        }
+      }, 1400);
       window.location.replace(appUrl);
     </script>
   </body>
