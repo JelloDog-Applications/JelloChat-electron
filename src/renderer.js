@@ -169,12 +169,23 @@ function isParticipantMuted(participant) {
 }
 
 function renderVoiceParticipants() {
-  ui.vcParticipantsList.innerHTML = '';
-  if (!state.voiceRoom) {
-    const item = document.createElement('li');
-    item.textContent = 'Not connected.';
-    ui.vcParticipantsList.appendChild(item);
-    return;
+    // ✅ ONLY check the actual room connection
+    if (!state.voiceRoom || state.voiceRoom.state !== "connected") {
+      ui.voiceParticipants.innerHTML = "Not connected.";
+      return;
+    }
+
+    const room = state.voiceRoom;
+
+    // include yourself + others
+    const participants = [
+      room.localParticipant,
+      ...Array.from(room.remoteParticipants.values())
+    ];
+
+    ui.voiceParticipants.innerHTML = participants.map(p => {
+      return `<div>${p.identity}</div>`;
+    }).join("");
   }
 
   const participants = [state.voiceRoom.localParticipant, ...Array.from(state.voiceRoom.remoteParticipants.values())];
@@ -214,7 +225,7 @@ function renderVoiceParticipants() {
     item.append(name, badges);
     ui.vcParticipantsList.appendChild(item);
   }
-}
+
 
 function setVcStatus(message) {
   ui.vcStatus.textContent = message;
