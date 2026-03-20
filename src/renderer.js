@@ -560,7 +560,7 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
 
     wireRoomEvents(room);
 
-    // 🔥 STEP 1: create audio
+    // STEP 1: create audio
     let audioTrack = null;
 
     if (canUseMicrophoneApi()) {
@@ -575,28 +575,27 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
       console.log("Audio track created:", audioTrack);
     }
 
-    // 🔥 STEP 2: connect FIRST
+    // STEP 2: connect
     await room.connect(tokenData.livekitUrl, tokenData.token, {
       autoSubscribe: true,
     });
 
-    // 🔥 STEP 3: publish AFTER connect
+    // 🔥 STEP 3: WAIT for FULL connection
+    await new Promise((resolve) => {
+      if (room.state === "connected") return resolve();
+
+      room.once("connected", () => {
+        console.log("Room fully connected");
+        resolve();
+      });
+    });
+
+    // STEP 4: publish AFTER confirmed connection
     if (audioTrack) {
       await room.localParticipant.publishTrack(audioTrack);
 
       state.isVoiceMuted = false;
       setVcStatus(`Connected to ${roomLabel}`);
-    }
-
-    // 🔥 STEP 3: publish AFTER connect
-    if (audioTrack) {
-      await room.localParticipant.publishTrack(audioTrack);
-
-      state.isVoiceMuted = false;
-      setVcStatus(`Connected to ${roomLabel}`);
-    } else {
-      state.isVoiceMuted = true;
-      setVcStatus(`Connected to ${roomLabel} (listen-only)`);
     }
 
     updateVoiceButtons();
