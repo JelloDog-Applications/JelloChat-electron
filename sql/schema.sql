@@ -3,6 +3,10 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(50) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  avatar_url TEXT,
+  is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE,
+  platform_banned_at TIMESTAMPTZ,
+  platform_ban_reason TEXT,
   date_of_birth DATE,
   email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   email_verification_token_hash TEXT,
@@ -29,6 +33,30 @@ ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS platform_banned_at TIMESTAMPTZ;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS platform_ban_reason TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS account_standing VARCHAR(20) NOT NULL DEFAULT 'good';
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS standing_reason TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS tos_violation_count INT NOT NULL DEFAULT 0;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS standing_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 DO $$
 DECLARE
@@ -76,6 +104,57 @@ CREATE TABLE IF NOT EXISTS server_members (
   server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (user_id, server_id)
+);
+
+CREATE TABLE IF NOT EXISTS server_roles (
+  id SERIAL PRIMARY KEY,
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  name VARCHAR(80) NOT NULL,
+  position INT NOT NULL DEFAULT 0,
+  permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS server_member_roles (
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  role_id INT NOT NULL REFERENCES server_roles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, server_id, role_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_reports (
+  id BIGSERIAL PRIMARY KEY,
+  reporter_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  target_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  server_id INT REFERENCES servers(id) ON DELETE SET NULL,
+  reason TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS user_passkeys (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credential_id TEXT NOT NULL UNIQUE,
+  public_key_spki TEXT NOT NULL,
+  counter BIGINT NOT NULL DEFAULT 0,
+  transports TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  label VARCHAR(120),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_used_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_passkeys_user_id
+ON user_passkeys (user_id);
+
+CREATE TABLE IF NOT EXISTS server_automod_events (
+  id BIGSERIAL PRIMARY KEY,
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  rule VARCHAR(40) NOT NULL,
+  content_preview TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS channels (

@@ -21,6 +21,10 @@
         <form id="login-form" class="auth-form">
           <label>Email</label>
           <input id="login-email" type="email" required />
+          <div class="bot-trap" aria-hidden="true">
+            <label for="login-company">Company</label>
+            <input id="login-company" type="text" tabindex="-1" autocomplete="off" />
+          </div>
           <label>Password</label>
           <div class="password-input-wrap">
             <input id="login-password" type="password" required />
@@ -33,6 +37,7 @@
             <span>Remember me</span>
           </label>
           <button type="submit">Login</button>
+          <button id="login-passkey-btn" class="hidden" type="button">Sign In With Passkey</button>
         </form>
 
         <form id="register-form" class="auth-form auth-hidden">
@@ -40,6 +45,10 @@
           <input id="register-username" type="text" required />
           <label>Email</label>
           <input id="register-email" type="email" required />
+          <div class="bot-trap" aria-hidden="true">
+            <label for="register-website">Website</label>
+            <input id="register-website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
           <label>Password</label>
           <div class="password-input-wrap">
             <input id="register-password" type="password" minlength="6" required />
@@ -82,6 +91,7 @@
           <div id="server-options-menu" class="server-options-menu hidden">
             <div class="server-options-tabs">
               <button id="server-tab-general" class="server-tab active" type="button">General</button>
+              <button id="server-tab-roles" class="server-tab" type="button">Roles</button>
               <button id="server-tab-banned" class="server-tab" type="button">Banned</button>
             </div>
             <div class="server-options-content">
@@ -90,6 +100,26 @@
                 <input id="server-name-input" type="text" maxlength="80" />
                 <button id="save-server-name-btn" type="button">Save Name</button>
                 <button id="leave-server-btn" type="button">Leave Server</button>
+              </section>
+              <section id="server-panel-roles" class="server-panel hidden">
+                <div class="roles-toolbar">
+                  <button id="create-role-btn" type="button">Create Role</button>
+                </div>
+                <div id="roles-list" class="roles-list"></div>
+                <label for="role-name-input">Role Name</label>
+                <input id="role-name-input" type="text" maxlength="80" />
+                <div id="role-permissions" class="role-permissions">
+                  <label><input id="perm-manage-server" type="checkbox" /> Manage Server</label>
+                  <label><input id="perm-manage-roles" type="checkbox" /> Manage Roles</label>
+                  <label><input id="perm-manage-channels" type="checkbox" /> Manage Channels</label>
+                  <label><input id="perm-create-invites" type="checkbox" /> Create Invites</label>
+                  <label><input id="perm-moderate-members" type="checkbox" /> Moderate Members</label>
+                </div>
+                <div class="roles-toolbar">
+                  <button id="save-role-btn" type="button">Save Role</button>
+                  <button id="delete-role-btn" type="button">Delete Role</button>
+                </div>
+                <div id="role-members-list" class="role-members-list"></div>
               </section>
               <section id="server-panel-banned" class="server-panel hidden">
                 <div id="banned-users-list" class="banned-users-list"></div>
@@ -115,6 +145,7 @@
           <header class="messages-header">
             <button id="mobile-servers-toggle" class="mobile-drawer-toggle" type="button" title="Open servers">☰</button>
             <h2 id="channel-title">Select a channel</h2>
+            <button id="dm-call-btn" class="icon-btn hidden" type="button" title="Start personal call">Call</button>
             <button id="mobile-users-toggle" class="mobile-drawer-toggle" type="button" title="Open users">👥</button>
           </header>
           <section id="vc-panel" class="vc-panel hidden">
@@ -146,17 +177,33 @@
           <div class="presence-actions">
             <button id="add-friend-btn" class="create-server-btn secondary-btn" type="button">Add Friend</button>
             <button id="friend-requests-btn" class="create-server-btn secondary-btn" type="button">Requests</button>
+            <button id="notifications-btn" class="create-server-btn secondary-btn" type="button">Notifications</button>
           </div>
           <div id="user-options-menu" class="user-options-menu hidden">
+            <button id="report-user-btn" type="button">Report User</button>
             <button id="kick-user-btn" type="button">Kick User</button>
             <button id="ban-user-btn" type="button">Ban User</button>
           </div>
+          <section id="notifications-modal" class="account-modal hidden">
+            <div class="account-modal-card">
+              <div class="account-modal-header">
+                <h3>Notifications</h3>
+                <button id="notifications-close-btn" type="button">Close</button>
+              </div>
+              <div class="roles-toolbar">
+                <button id="notifications-enable-btn" type="button">Enable Browser Notifications</button>
+                <button id="notifications-clear-btn" type="button">Clear</button>
+              </div>
+              <div id="notifications-list" class="notifications-list"></div>
+            </div>
+          </section>
           <h3>Online In Server</h3>
           <ul id="online-users-list" class="list compact-list"></ul>
           <h3>Friends</h3>
           <ul id="friends-list" class="list compact-list"></ul>
 
           <div class="account-panel">
+            <div id="account-avatar" class="avatar avatar-lg">U</div>
             <div class="account-info">
               <div id="account-username" class="account-username">User</div>
               <div id="account-email" class="account-email">email@example.com</div>
@@ -164,6 +211,7 @@
             <button id="account-settings-btn" class="account-settings-btn" type="button" title="Settings">⚙</button>
             <div id="account-settings-menu" class="account-settings-menu hidden">
               <button id="account-my-account-btn" type="button">My Account</button>
+              <button id="account-admin-btn" class="hidden" type="button">Admin Console</button>
               <button id="logout-btn" type="button">Logout</button>
             </div>
           </div>
@@ -175,11 +223,17 @@
               <h3>My Account</h3>
               <button id="account-modal-close-btn" type="button">Close</button>
             </div>
+            <div id="account-standing-card" class="account-standing-card">
+              <div id="account-standing-label" class="account-standing-label">Standing: Good</div>
+              <div id="account-standing-meta" class="account-standing-meta">No recent Terms of Service violations.</div>
+            </div>
             <form id="account-form" class="account-form">
               <label for="account-username-input">Username</label>
               <input id="account-username-input" type="text" maxlength="50" />
               <label for="account-email-input">Email</label>
               <input id="account-email-input" type="email" />
+              <label for="account-avatar-input">Profile Picture URL</label>
+              <input id="account-avatar-input" type="url" placeholder="https://example.com/avatar.png or data:image/..." />
               <label for="account-current-password-input">Current Password</label>
               <div class="password-input-wrap">
                 <input id="account-current-password-input" type="password" autocomplete="current-password" />
@@ -198,6 +252,16 @@
               <input id="account-dob-input" type="date" />
               <button id="account-save-btn" type="submit">Save Changes</button>
             </form>
+            <section id="passkeys-panel" class="passkeys-panel hidden">
+              <div class="passkeys-header">
+                <div>
+                  <h4>Passkeys</h4>
+                  <p id="passkeys-help" class="account-form-message">Use a device passkey for faster sign-in on supported browsers.</p>
+                </div>
+                <button id="add-passkey-btn" type="button">Add Passkey</button>
+              </div>
+              <div id="passkeys-list" class="passkeys-list"></div>
+            </section>
             <button id="account-delete-btn" class="account-delete-btn" type="button">Delete Account</button>
             <p id="account-form-message" class="account-form-message"></p>
           </div>
@@ -210,6 +274,26 @@
               <button id="friend-requests-close-btn" type="button">Close</button>
             </div>
             <div id="friend-requests-list" class="friend-requests-list"></div>
+          </div>
+        </section>
+
+        <section id="admin-modal" class="account-modal hidden">
+          <div class="account-modal-card">
+            <div class="account-modal-header">
+              <h3>Admin Console</h3>
+              <button id="admin-modal-close-btn" type="button">Close</button>
+            </div>
+            <div class="admin-toolbar">
+              <input id="admin-search-input" type="text" placeholder="Search username or email" />
+              <button id="admin-search-btn" type="button">Search</button>
+            </div>
+            <div id="admin-users-list" class="admin-users-list"></div>
+            <div id="admin-user-details" class="admin-user-details">
+              <h4 id="admin-user-details-title">Select a user</h4>
+              <p id="admin-user-details-meta" class="admin-user-details-meta">Click a user to see which servers they are in.</p>
+              <div id="admin-user-servers-list" class="admin-user-servers-list"></div>
+              <div id="admin-user-reports-list" class="admin-user-reports-list"></div>
+            </div>
           </div>
         </section>
 

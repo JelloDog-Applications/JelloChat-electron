@@ -10,6 +10,9 @@ const db = require('./db');
 const { sendMail } = require('./mailer');
 
 const WEB_PORT = Number(process.env.WEB_PORT || 3000);
+const IP_REPUTATION_BLOCK_THRESHOLD = Number(process.env.IP_REPUTATION_BLOCK_THRESHOLD || 8);
+const IP_REPUTATION_BLOCK_MINUTES = Number(process.env.IP_REPUTATION_BLOCK_MINUTES || 30);
+const IP_REPUTATION_DECAY_HOURS = Number(process.env.IP_REPUTATION_DECAY_HOURS || 6);
 
 const app = express();
 app.use(express.json());
@@ -132,6 +135,8 @@ app.get('/api/legal/terms-of-service', (_req, res) => {
 
 const authTokens = new Map();
 const wsClients = new Map();
+const pendingPasskeyRegistrations = new Map();
+const pendingPasskeyLogins = new Map();
 
 function hashToken(rawToken) {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -142,8 +147,164 @@ function buildPublicUrl(pathname) {
   return `${base}${pathname}`;
 }
 
+function buildInviteUrl(code) {
+  return buildPublicUrl(`/invite/${encodeURIComponent(String(code || '').trim().toUpperCase())}`);
+}
+
+function normalizeInviteCode(input) {
+  const value = String(input || '').trim();
+  if (!value) {
+    return '';
+  }
+
+  const inviteMatch = value.match(/\/invite\/([^/?#]+)/i);
+  if (inviteMatch?.[1]) {
+    return decodeURIComponent(inviteMatch[1]).trim().toUpperCase();
+  }
+
+  const queryMatch = value.match(/[?&]invite=([^&#]+)/i);
+  if (queryMatch?.[1]) {
+    return decodeURIComponent(queryMatch[1]).trim().toUpperCase();
+  }
+
+  return value.toUpperCase();
+}
+
+function toBase64Url(input) {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function fromBase64Url(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+  return Buffer.from(`${normalized}${padding}`, 'base64');
+}
+
+function getRequestOrigin(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const protocol = forwardedProto || (req.secure ? 'https' : 'http');
+  const host = String(req.headers.host || '').trim();
+  if (!host) {
+    return new URL(buildPublicUrl('/')).origin;
+  }
+  return `${protocol}://${host}`;
+}
+
+function getPasskeyOrigin(req) {
+  return getRequestOrigin(req);
+}
+
+function getPasskeyRpId(req) {
+  return new URL(getRequestOrigin(req)).hostname;
+}
+
+function cleanupChallengeStore(store) {
+  const now = Date.now();
+  for (const [key, record] of store.entries()) {
+    if (!record || record.expiresAt <= now) {
+      store.delete(key);
+    }
+  }
+}
+
+function createPasskeyChallenge(store, key, extra = {}) {
+  cleanupChallengeStore(store);
+  const challenge = toBase64Url(crypto.randomBytes(32));
+  store.set(String(key), {
+    challenge,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+    ...extra
+  });
+  return challenge;
+}
+
+function consumePasskeyChallenge(store, key, expectedChallenge) {
+  cleanupChallengeStore(store);
+  const record = store.get(String(key));
+  if (!record) {
+    return null;
+  }
+  if (record.challenge !== expectedChallenge) {
+    return null;
+  }
+  store.delete(String(key));
+  return record;
+}
+
+function parseAuthenticatorData(buffer) {
+  const input = Buffer.from(buffer || []);
+  if (input.length < 37) {
+    throw new Error('Authenticator data is too short.');
+  }
+
+  const flags = input[32];
+  const signCount = input.readUInt32BE(33);
+  const result = {
+    rpIdHash: input.subarray(0, 32),
+    flags,
+    signCount
+  };
+
+  if (flags & 0x40) {
+    let offset = 37;
+    if (input.length < offset + 18) {
+      throw new Error('Authenticator attestation data is incomplete.');
+    }
+    result.aaguid = input.subarray(offset, offset + 16);
+    offset += 16;
+    const credentialIdLength = input.readUInt16BE(offset);
+    offset += 2;
+    if (input.length < offset + credentialIdLength) {
+      throw new Error('Credential ID is incomplete.');
+    }
+    result.credentialId = input.subarray(offset, offset + credentialIdLength);
+  }
+
+  return result;
+}
+
+function verifyPasskeyClientData(clientDataJSON, expectedType, expectedChallenge, expectedOrigin) {
+  const parsed = JSON.parse(Buffer.from(clientDataJSON).toString('utf8'));
+  if (parsed.type !== expectedType) {
+    throw new Error('Unexpected WebAuthn operation type.');
+  }
+  if (parsed.challenge !== expectedChallenge) {
+    throw new Error('Passkey challenge did not match.');
+  }
+  if (parsed.origin !== expectedOrigin) {
+    throw new Error('Passkey origin did not match this app.');
+  }
+  return parsed;
+}
+
+function assertRpIdHash(authenticatorData, expectedRpId) {
+  const parsed = parseAuthenticatorData(authenticatorData);
+  const expectedHash = crypto.createHash('sha256').update(expectedRpId).digest();
+  if (!crypto.timingSafeEqual(parsed.rpIdHash, expectedHash)) {
+    throw new Error('Passkey RP ID hash did not match.');
+  }
+  if (!(parsed.flags & 0x01)) {
+    throw new Error('Passkey user presence check failed.');
+  }
+  return parsed;
+}
+
+function serializePasskey(row) {
+  return {
+    id: row.id,
+    label: row.label || 'Passkey',
+    created_at: row.created_at,
+    last_used_at: row.last_used_at,
+    transports: Array.isArray(row.transports) ? row.transports : []
+  };
+}
+
 function buildAndroidDownloadUrl() {
-  const configured = String(process.env.APP_ANDROID_DOWNLOAD_URL || '').trim();
+  const configured = String(process.env.APP_ANDROID_DOWNLOAD_URL || 'https://play.google.com/store/apps/details?id=com.jellochat.app&hl=en_US').trim();
   if (configured) {
     return configured;
   }
@@ -225,6 +386,17 @@ async function sendPasswordResetEmail(email, username, rawToken) {
   });
 }
 
+async function sendTerminationEmail(email, username, reason) {
+  const supportUrl = buildPublicUrl('/terms-of-service');
+  const detail = String(reason || 'Your account was terminated for Terms of Service violations.').trim();
+  return sendMail({
+    to: email,
+    subject: 'Your JelloChat account has been terminated',
+    text: `Hi ${username},\n\nYour JelloChat account has been terminated.\n\nReason: ${detail}\n\nFor more information, review our Terms of Service: ${supportUrl}`,
+    html: `<p>Hi ${username},</p><p>Your JelloChat account has been terminated.</p><p><strong>Reason:</strong> ${detail}</p><p>For more information, review our <a href="${supportUrl}">Terms of Service</a>.</p>`
+  });
+}
+
 app.get('/auth-link', (req, res) => {
   const mode = String(req.query?.mode || '').trim().toLowerCase();
   const token = String(req.query?.token || '').trim();
@@ -293,6 +465,10 @@ app.get('/reset-password', (_req, res) => {
 });
 
 app.get('/verify-email', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'src', 'index.html'));
+});
+
+app.get('/invite/:code', (_req, res) => {
   res.sendFile(path.join(__dirname, 'src', 'index.html'));
 });
 
@@ -426,6 +602,386 @@ function clearAuthTokensForUser(userId) {
   }
 }
 
+function disconnectRealtimeUser(userId, reason = 'Account access changed.') {
+  for (const [ws, meta] of wsClients) {
+    if (meta.userId === userId) {
+      ws.close(4003, reason);
+    }
+  }
+}
+
+async function ensurePlatformAdminExists() {
+  const existingAdmins = await db.query('SELECT id FROM users WHERE is_platform_admin = TRUE LIMIT 1');
+  if (existingAdmins.rows.length > 0) {
+    return;
+  }
+
+  const preferredEmail = String(process.env.PLATFORM_ADMIN_EMAIL || '').trim().toLowerCase();
+  if (preferredEmail) {
+    const preferred = await db.query('SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1', [preferredEmail]);
+    if (preferred.rows.length > 0) {
+      await db.query('UPDATE users SET is_platform_admin = TRUE WHERE id = $1', [preferred.rows[0].id]);
+      return;
+    }
+  }
+
+  const firstUser = await db.query('SELECT id FROM users ORDER BY id ASC LIMIT 1');
+  if (firstUser.rows.length > 0) {
+    await db.query('UPDATE users SET is_platform_admin = TRUE WHERE id = $1', [firstUser.rows[0].id]);
+  }
+}
+
+async function getUserAdminState(userId) {
+  const result = await db.query(
+    'SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, platform_ban_reason, account_standing, standing_reason, tos_violation_count, standing_updated_at FROM users WHERE id = $1',
+    [userId]
+  );
+  return result.rows[0] || null;
+}
+
+async function requirePlatformAdmin(userId) {
+  const user = await getUserAdminState(userId);
+  return Boolean(user?.is_platform_admin);
+}
+
+async function countPlatformAdmins() {
+  const result = await db.query('SELECT COUNT(*)::int AS count FROM users WHERE is_platform_admin = TRUE');
+  return result.rows[0]?.count || 0;
+}
+
+const authAttemptTracker = new Map();
+const ipReputationTracker = new Map();
+
+function normalizeIpAddress(ip) {
+  return String(ip || '').replace(/^::ffff:/, '').trim() || 'unknown';
+}
+
+function getIpReputation(ip) {
+  const key = normalizeIpAddress(ip);
+  const now = Date.now();
+  const current = ipReputationTracker.get(key) || {
+    score: 0,
+    blockedUntil: 0,
+    lastUpdatedAt: now
+  };
+  const elapsedHours = Math.max(0, (now - current.lastUpdatedAt) / (1000 * 60 * 60));
+  const decayedScore = Math.max(0, current.score - elapsedHours / Math.max(1, IP_REPUTATION_DECAY_HOURS));
+  const next = {
+    score: decayedScore,
+    blockedUntil: current.blockedUntil,
+    lastUpdatedAt: now
+  };
+  ipReputationTracker.set(key, next);
+  return next;
+}
+
+function penalizeIp(ip, amount, reason = '') {
+  const key = normalizeIpAddress(ip);
+  const current = getIpReputation(key);
+  const nextScore = current.score + Math.max(0, Number(amount || 0));
+  const blockedUntil = nextScore >= IP_REPUTATION_BLOCK_THRESHOLD
+    ? Date.now() + (IP_REPUTATION_BLOCK_MINUTES * 60 * 1000)
+    : current.blockedUntil;
+  ipReputationTracker.set(key, {
+    score: nextScore,
+    blockedUntil,
+    lastUpdatedAt: Date.now(),
+    lastReason: reason
+  });
+}
+
+function rewardIp(ip, amount = 1) {
+  const key = normalizeIpAddress(ip);
+  const current = getIpReputation(key);
+  ipReputationTracker.set(key, {
+    score: Math.max(0, current.score - Math.max(0, Number(amount || 0))),
+    blockedUntil: current.blockedUntil > Date.now() ? current.blockedUntil : 0,
+    lastUpdatedAt: Date.now(),
+    lastReason: current.lastReason || ''
+  });
+}
+
+function isIpTemporarilyBlocked(ip) {
+  const current = getIpReputation(ip);
+  return current.blockedUntil > Date.now();
+}
+
+function trackAuthAttempts(bucketKey, limit, windowMs) {
+  const now = Date.now();
+  const state = authAttemptTracker.get(bucketKey) || [];
+  const recent = state.filter((timestamp) => now - timestamp < windowMs);
+  recent.push(now);
+  authAttemptTracker.set(bucketKey, recent);
+  return recent.length > limit;
+}
+
+function hasSuspiciousUsername(username) {
+  const value = String(username || '').trim();
+  if (/https?:\/\//i.test(value) || /discord\.gg|telegram|whatsapp|onlyfans/i.test(value)) {
+    return true;
+  }
+  if (/(.)\1{4,}/i.test(value)) {
+    return true;
+  }
+  return false;
+}
+
+function shouldBlockBotLikeAuth(payload, mode) {
+  const trapValue = String(mode === 'register' ? payload?.website || '' : payload?.company || '').trim();
+  if (trapValue) {
+    return 'Suspicious automated activity was detected.';
+  }
+  const elapsedMs = Number(payload?.clientElapsedMs || 0);
+  if (elapsedMs > 0 && elapsedMs < 1200) {
+    return 'Please wait a moment and try again.';
+  }
+  if (mode === 'register' && hasSuspiciousUsername(payload?.username)) {
+    return 'That username looks automated. Please choose a different username.';
+  }
+  return null;
+}
+
+function deriveStandingFromViolationCount(violationCount, platformBanned = false) {
+  if (platformBanned || violationCount >= 5) {
+    return 'banned';
+  }
+  if (violationCount >= 3) {
+    return 'restricted';
+  }
+  if (violationCount >= 1) {
+    return 'warning';
+  }
+  return 'good';
+}
+
+async function applyAutomaticStandingUpdate(userId, options = {}) {
+  const increment = Math.max(0, Number(options.increment || 0));
+  const reason = String(options.reason || '').trim().slice(0, 500) || null;
+  const forceStanding = String(options.forceStanding || '').trim();
+  const setPlatformBanned = Boolean(options.setPlatformBanned);
+  const platformBanReason = String(options.platformBanReason || reason || '').trim().slice(0, 500) || null;
+  const current = await getUserAdminState(userId);
+  if (!current) {
+    return null;
+  }
+
+  const nextViolationCount = Math.max(0, Number(current.tos_violation_count || 0) + increment);
+  const nextPlatformBanned = Boolean(current.platform_banned_at) || setPlatformBanned;
+  const nextStanding = forceStanding || deriveStandingFromViolationCount(nextViolationCount, nextPlatformBanned);
+  const result = await db.query(
+    `UPDATE users
+     SET account_standing = $1,
+         standing_reason = $2,
+         tos_violation_count = $3,
+         platform_banned_at = CASE WHEN $4 THEN COALESCE(platform_banned_at, NOW()) ELSE platform_banned_at END,
+         platform_ban_reason = CASE WHEN $4 THEN $5 ELSE platform_ban_reason END,
+         standing_updated_at = NOW()
+     WHERE id = $6
+     RETURNING id, username, email, avatar_url, is_platform_admin, platform_banned_at, platform_ban_reason, account_standing, standing_reason, tos_violation_count, standing_updated_at`,
+    [nextStanding, reason, nextViolationCount, nextPlatformBanned, platformBanReason, userId]
+  );
+  const updated = result.rows[0] || null;
+  if (!updated) {
+    return null;
+  }
+  if (!current.platform_banned_at && updated.platform_banned_at) {
+    clearAuthTokensForUser(userId);
+    disconnectRealtimeUser(userId, 'Account banned from JelloChat.');
+    sendTerminationEmail(updated.email, updated.username, updated.platform_ban_reason || updated.standing_reason || 'Your account was terminated for Terms of Service violations.').catch(() => {});
+  }
+  return updated;
+}
+
+async function autoTerminateBotAccount(userId, reason) {
+  return applyAutomaticStandingUpdate(userId, {
+    increment: 3,
+    reason,
+    forceStanding: 'banned',
+    setPlatformBanned: true,
+    platformBanReason: reason
+  });
+}
+
+function checkMinimumAutoModerationContent(content) {
+  const text = String(content || '').trim();
+  const linkCount = (text.match(/(https?:\/\/|www\.|discord\.gg\/|discord\.com\/invite\/)/gi) || []).length;
+  if (linkCount >= 3) {
+    return 'Minimum automod blocked that message for link spam.';
+  }
+  if (/(.)\1{11,}/i.test(text)) {
+    return 'Minimum automod blocked that message for excessive repeated characters.';
+  }
+  const letters = text.replace(/[^a-z]/gi, '');
+  const uppercaseLetters = text.replace(/[^A-Z]/g, '');
+  if (letters.length >= 14 && uppercaseLetters.length / letters.length >= 0.9) {
+    return 'Minimum automod blocked that message for excessive caps.';
+  }
+  return null;
+}
+
+async function checkMinimumAutoModerationRecentActivity({ userId, content, channelId = null, partnerUserId = null }) {
+  if (channelId) {
+    const duplicate = await db.query(
+      `SELECT 1
+       FROM messages
+       WHERE channel_id = $1
+         AND user_id = $2
+         AND content = $3
+         AND created_at >= NOW() - INTERVAL '20 seconds'
+       LIMIT 1`,
+      [channelId, userId, content]
+    );
+    if (duplicate.rows.length > 0) {
+      return 'Minimum automod blocked that duplicate message.';
+    }
+
+    const burst = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM messages
+       WHERE channel_id = $1
+         AND user_id = $2
+         AND created_at >= NOW() - INTERVAL '12 seconds'`,
+      [channelId, userId]
+    );
+    if ((burst.rows[0]?.count || 0) >= 5) {
+      return 'Minimum automod blocked that message for sending too quickly.';
+    }
+    return null;
+  }
+
+  if (partnerUserId) {
+    const duplicate = await db.query(
+      `SELECT 1
+       FROM dm_messages
+       WHERE sender_user_id = $1
+         AND receiver_user_id = $2
+         AND content = $3
+         AND created_at >= NOW() - INTERVAL '20 seconds'
+       LIMIT 1`,
+      [userId, partnerUserId, content]
+    );
+    if (duplicate.rows.length > 0) {
+      return 'Minimum automod blocked that duplicate message.';
+    }
+
+    const burst = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM dm_messages
+       WHERE sender_user_id = $1
+         AND receiver_user_id = $2
+         AND created_at >= NOW() - INTERVAL '12 seconds'`,
+      [userId, partnerUserId]
+    );
+    if ((burst.rows[0]?.count || 0) >= 5) {
+      return 'Minimum automod blocked that message for sending too quickly.';
+    }
+  }
+
+  return null;
+}
+
+async function runMinimumAutoModeration(context) {
+  const contentMessage = checkMinimumAutoModerationContent(context.content);
+  if (contentMessage) {
+    return contentMessage;
+  }
+  return checkMinimumAutoModerationRecentActivity(context);
+}
+
+function classifyServerAutoModerationViolation(content) {
+  const text = String(content || '').trim();
+  const linkCount = (text.match(/(https?:\/\/|www\.|discord\.gg\/|discord\.com\/invite\/)/gi) || []).length;
+  if (linkCount >= 5) {
+    return {
+      rule: 'link_spam',
+      shouldBan: true,
+      message: 'Automod banned this user for severe link spam.'
+    };
+  }
+  if (/(.)\1{17,}/i.test(text)) {
+    return {
+      rule: 'character_spam',
+      shouldBan: true,
+      message: 'Automod banned this user for severe repeated-character spam.'
+    };
+  }
+  return null;
+}
+
+async function recordServerAutoModerationEvent(serverId, userId, rule, content) {
+  const preview = String(content || '').slice(0, 240);
+  await db.query(
+    'INSERT INTO server_automod_events (server_id, user_id, rule, content_preview) VALUES ($1, $2, $3, $4)',
+    [serverId, userId, rule, preview]
+  );
+  const recent = await db.query(
+    `SELECT COUNT(*)::int AS count
+     FROM server_automod_events
+     WHERE server_id = $1
+       AND user_id = $2
+       AND created_at >= NOW() - INTERVAL '30 minutes'`,
+    [serverId, userId]
+  );
+  return recent.rows[0]?.count || 0;
+}
+
+async function enforceServerAutoBan(serverId, userId, reason) {
+  const existingBan = await db.query('SELECT 1 FROM server_bans WHERE server_id = $1 AND user_id = $2', [serverId, userId]);
+  const serverOwner = await db.query('SELECT owner_user_id FROM servers WHERE id = $1', [serverId]);
+  const bannedByUserId = serverOwner.rows[0]?.owner_user_id || userId;
+  if (existingBan.rows.length === 0) {
+    await db.query(
+      `INSERT INTO server_bans (server_id, user_id, banned_by_user_id, reason)
+       VALUES ($1, $2, $3, $4)`,
+      [serverId, userId, bannedByUserId, reason]
+    );
+  }
+  await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, userId]);
+  await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, userId]);
+  await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
+  await broadcastPresenceForUser(userId);
+}
+
+async function handleServerAutoModeration(serverId, channelId, userId, content) {
+  const severeViolation = classifyServerAutoModerationViolation(content);
+  if (severeViolation) {
+    if (!(await isServerOwner(userId, serverId))) {
+      await recordServerAutoModerationEvent(serverId, userId, severeViolation.rule, content);
+      await applyAutomaticStandingUpdate(userId, {
+        increment: 2,
+        reason: severeViolation.message,
+        forceStanding: 'restricted'
+      });
+      await enforceServerAutoBan(serverId, userId, severeViolation.message);
+      return { blocked: true, banned: true, message: severeViolation.message };
+    }
+    return { blocked: true, banned: false, message: 'Automod blocked that message, but server owners are not auto-banned.' };
+  }
+
+  const minimumMessage = await runMinimumAutoModeration({ userId, channelId, content });
+  if (!minimumMessage) {
+    return null;
+  }
+
+  const recentViolations = await recordServerAutoModerationEvent(serverId, userId, 'minimum_automod', content);
+  await applyAutomaticStandingUpdate(userId, {
+    increment: 1,
+    reason: minimumMessage
+  });
+  if (recentViolations >= 3 && !(await isServerOwner(userId, serverId))) {
+    const reason = 'Automod banned this user after repeated moderation violations.';
+    await applyAutomaticStandingUpdate(userId, {
+      increment: 1,
+      reason,
+      forceStanding: 'restricted'
+    });
+    await enforceServerAutoBan(serverId, userId, reason);
+    return { blocked: true, banned: true, message: reason };
+  }
+
+  return { blocked: true, banned: false, message: minimumMessage };
+}
+
 function generateInviteCode() {
   return crypto
     .randomBytes(5)
@@ -525,13 +1081,31 @@ function getOnlineUserIds() {
   return ids;
 }
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   const userId = token ? authTokens.get(token) : null;
 
   if (!userId) {
     res.status(401).json({ ok: false, message: 'Not authenticated.' });
+    return;
+  }
+
+  try {
+    const user = await getUserAdminState(userId);
+    if (!user) {
+      authTokens.delete(token);
+      res.status(401).json({ ok: false, message: 'Session not found.' });
+      return;
+    }
+    if (user.platform_banned_at) {
+      clearAuthTokensForUser(userId);
+      disconnectRealtimeUser(userId, 'Account banned from JelloChat.');
+      res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
+      return;
+    }
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to validate session: ${error.message}` });
     return;
   }
 
@@ -607,6 +1181,33 @@ async function canUsersDm(userAId, userBId) {
   return sharedServer.rows.length > 0;
 }
 
+function getDmCallRoomName(userAId, userBId) {
+  const [firstId, secondId] = [Number(userAId), Number(userBId)].sort((a, b) => a - b);
+  return `dm-call-${firstId}-${secondId}`;
+}
+
+function normalizeAvatarUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  if (raw.length > 500000) {
+    throw new Error('Profile picture is too large.');
+  }
+  if (/^data:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml);base64,[a-z0-9+/=]+$/i.test(raw)) {
+    return raw;
+  }
+  try {
+    const parsed = new URL(raw);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Profile picture URL must use http or https.');
+    }
+    return parsed.toString();
+  } catch (_error) {
+    throw new Error('Profile picture must be a valid image URL or data URL.');
+  }
+}
+
 async function createVoiceToken({ identity, name, roomName }) {
   const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
   const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
@@ -672,6 +1273,118 @@ async function isServerOwner(userId, serverId) {
   return result.rows[0].owner_user_id === userId;
 }
 
+const SERVER_PERMISSION_KEYS = [
+  'manage_server',
+  'manage_roles',
+  'manage_channels',
+  'create_invites',
+  'moderate_members'
+];
+
+function emptyServerPermissions() {
+  return {
+    manage_server: false,
+    manage_roles: false,
+    manage_channels: false,
+    create_invites: false,
+    moderate_members: false
+  };
+}
+
+function normalizeServerPermissions(value) {
+  const normalized = emptyServerPermissions();
+  const raw = value && typeof value === 'object' ? value : {};
+  for (const key of SERVER_PERMISSION_KEYS) {
+    normalized[key] = Boolean(raw[key]);
+  }
+  return normalized;
+}
+
+function mergeServerPermissions(...permissionSets) {
+  const merged = emptyServerPermissions();
+  for (const set of permissionSets) {
+    const normalized = normalizeServerPermissions(set);
+    for (const key of SERVER_PERMISSION_KEYS) {
+      merged[key] = merged[key] || normalized[key];
+    }
+  }
+  return merged;
+}
+
+async function ensureServerRoles(serverId) {
+  const roles = await db.query('SELECT id, name, is_default FROM server_roles WHERE server_id = $1', [serverId]);
+  const hasDefaultRole = roles.rows.some((role) => role.is_default);
+  if (!hasDefaultRole) {
+    await db.query(
+      `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
+       VALUES ($1, '@everyone', 0, '{}'::jsonb, TRUE)`,
+      [serverId]
+    );
+  }
+
+  const hasAdminRole = roles.rows.some((role) => String(role.name || '').toLowerCase() === 'admin');
+  if (!hasAdminRole) {
+    await db.query(
+      `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
+       VALUES ($1, 'Admin', 100, $2::jsonb, FALSE)`,
+      [serverId, JSON.stringify({
+        manage_server: true,
+        manage_roles: true,
+        manage_channels: true,
+        create_invites: true,
+        moderate_members: true
+      })]
+    );
+  }
+}
+
+async function getServerRoles(serverId) {
+  await ensureServerRoles(serverId);
+  const result = await db.query(
+    `SELECT id, server_id, name, position, permissions, is_default
+     FROM server_roles
+     WHERE server_id = $1
+     ORDER BY is_default DESC, position DESC, name ASC`,
+    [serverId]
+  );
+  return result.rows.map((role) => ({
+    ...role,
+    permissions: normalizeServerPermissions(role.permissions)
+  }));
+}
+
+async function getUserServerPermissions(userId, serverId) {
+  if (await isServerOwner(userId, serverId)) {
+    return {
+      ...emptyServerPermissions(),
+      manage_server: true,
+      manage_roles: true,
+      manage_channels: true,
+      create_invites: true,
+      moderate_members: true
+    };
+  }
+
+  const roles = await getServerRoles(serverId);
+  const assigned = await db.query(
+    `SELECT r.permissions
+     FROM server_member_roles smr
+     JOIN server_roles r ON r.id = smr.role_id
+     WHERE smr.server_id = $1 AND smr.user_id = $2`,
+    [serverId, userId]
+  );
+
+  const permissionSets = [];
+  const defaultRole = roles.find((role) => role.is_default);
+  if (defaultRole) {
+    permissionSets.push(defaultRole.permissions);
+  }
+  for (const row of assigned.rows) {
+    permissionSets.push(row.permissions);
+  }
+  return mergeServerPermissions(...permissionSets);
+}
+
 async function getMessageAccess(userId, messageId) {
   const access = await db.query(
     `SELECT m.id, m.channel_id, m.user_id
@@ -685,13 +1398,30 @@ async function getMessageAccess(userId, messageId) {
 }
 
 app.post('/api/auth/register', async (req, res) => {
+  const requestIp = normalizeIpAddress(req.ip);
   const requestedUsername = String(req.body?.username || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
   const dateOfBirth = normalizeDateOfBirthInput(req.body?.dateOfBirth);
+  const botBlock = shouldBlockBotLikeAuth(req.body, 'register');
+
+  if (isIpTemporarilyBlocked(requestIp)) {
+    res.status(429).json({ ok: false, message: 'This IP has been temporarily blocked for suspicious activity. Please try again later.' });
+    return;
+  }
 
   if (!requestedUsername || !email || !password) {
     res.status(400).json({ ok: false, message: 'Username, email, and password are required.' });
+    return;
+  }
+  if (botBlock) {
+    penalizeIp(requestIp, 3, 'bot-like-register');
+    res.status(400).json({ ok: false, message: botBlock });
+    return;
+  }
+  if (trackAuthAttempts(`register:${req.ip}:${email}`, 4, 10 * 60 * 1000)) {
+    penalizeIp(requestIp, 2, 'register-rate-limit');
+    res.status(429).json({ ok: false, message: 'Too many signup attempts. Please try again later.' });
     return;
   }
   if (baseUsername(requestedUsername).length < 2 || baseUsername(requestedUsername).length > 50) {
@@ -714,6 +1444,7 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const exists = await db.query('SELECT id FROM users WHERE email = $1', [email]);
     if (exists.rows.length > 0) {
+      penalizeIp(requestIp, 1, 'duplicate-register');
       res.status(409).json({ ok: false, message: 'Email already in use.' });
       return;
     }
@@ -721,7 +1452,7 @@ app.post('/api/auth/register', async (req, res) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const created = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified) VALUES ($1, $2, $3, $4, FALSE) RETURNING id, username, email, date_of_birth',
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified) VALUES ($1, $2, $3, $4, FALSE) RETURNING id, username, email, avatar_url, date_of_birth',
       [allocated.username, email, passwordHash, dateOfBirth]
     );
     const user = created.rows[0];
@@ -737,11 +1468,15 @@ app.post('/api/auth/register', async (req, res) => {
       );
     }
 
+    await ensurePlatformAdminExists();
+
     const mailResult = await issueEmailVerification(user.id, user.email, user.username);
     if (!mailResult.ok) {
       res.status(500).json({ ok: false, message: `Account created but verification email failed: ${mailResult.message}` });
       return;
     }
+
+    rewardIp(requestIp, 1);
 
     res.json({
       ok: true,
@@ -757,17 +1492,29 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
+  const requestIp = normalizeIpAddress(req.ip);
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
+  const botBlock = shouldBlockBotLikeAuth(req.body, 'login');
+  const ipBlocked = isIpTemporarilyBlocked(requestIp);
 
   if (!email || !password) {
     res.status(400).json({ ok: false, message: 'Email and password are required.' });
     return;
   }
+  if (botBlock) {
+    penalizeIp(requestIp, 3, 'bot-like-login');
+  }
+  if (trackAuthAttempts(`login:${req.ip}:${email}`, 8, 10 * 60 * 1000)) {
+    penalizeIp(requestIp, 2, 'login-rate-limit');
+    res.status(429).json({ ok: false, message: 'Too many login attempts. Please try again later.' });
+    return;
+  }
 
   try {
-    const result = await db.query('SELECT id, username, email, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
+      penalizeIp(requestIp, 1, 'login-miss');
       res.status(401).json({ ok: false, message: 'Invalid email or password.' });
       return;
     }
@@ -775,7 +1522,14 @@ app.post('/api/auth/login', async (req, res) => {
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
+      penalizeIp(requestIp, 1, 'login-bad-password');
       res.status(401).json({ ok: false, message: 'Invalid email or password.' });
+      return;
+    }
+    if (botBlock || ipBlocked) {
+      const reason = botBlock || 'Automated bot activity was detected from this IP during login.';
+      await autoTerminateBotAccount(user.id, reason);
+      res.status(403).json({ ok: false, message: 'This account has been terminated for automated bot activity.' });
       return;
     }
     if (!user.email_verified) {
@@ -786,11 +1540,16 @@ app.post('/api/auth/login', async (req, res) => {
       });
       return;
     }
+    if (user.platform_banned_at) {
+      res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
+      return;
+    }
 
     const realtimeToken = issueAuthToken(user.id);
+    rewardIp(requestIp, 2);
     res.json({
       ok: true,
-      user: { id: user.id, username: user.username, email: user.email, date_of_birth: user.date_of_birth },
+      user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url, is_platform_admin: user.is_platform_admin, account_standing: user.account_standing, standing_reason: user.standing_reason, tos_violation_count: user.tos_violation_count, date_of_birth: user.date_of_birth },
       realtimeToken
     });
   } catch (error) {
@@ -805,16 +1564,277 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
 
 app.get('/api/auth/session', authMiddleware, async (req, res) => {
   try {
-    const userResult = await db.query('SELECT id, username, email, date_of_birth FROM users WHERE id = $1', [req.userId]);
+    const userResult = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, date_of_birth FROM users WHERE id = $1', [req.userId]);
     if (userResult.rows.length === 0) {
       res.status(401).json({ ok: false, message: 'Session not found.' });
       return;
     }
     const user = userResult.rows[0];
+    if (user.platform_banned_at) {
+      clearAuthTokensForUser(user.id);
+      disconnectRealtimeUser(user.id, 'Account banned from JelloChat.');
+      res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
+      return;
+    }
     const realtimeToken = issueAuthToken(user.id);
     res.json({ ok: true, user, realtimeToken });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to restore session: ${error.message}` });
+  }
+});
+
+app.get('/api/auth/passkeys', authMiddleware, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT id, label, transports, created_at, last_used_at
+       FROM user_passkeys
+       WHERE user_id = $1
+       ORDER BY created_at ASC`,
+      [req.userId]
+    );
+    res.json({ ok: true, supported: true, passkeys: result.rows.map(serializePasskey) });
+  } catch (error) {
+    res.status(500).json({ ok: false, supported: true, message: `Failed to load passkeys: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/passkeys/register/options', authMiddleware, async (req, res) => {
+  try {
+    const passkeyOrigin = getPasskeyOrigin(req);
+    const passkeyRpId = getPasskeyRpId(req);
+    const userResult = await db.query(
+      'SELECT id, username, email, platform_banned_at FROM users WHERE id = $1',
+      [req.userId]
+    );
+    if (userResult.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+
+    const user = userResult.rows[0];
+    if (user.platform_banned_at) {
+      res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
+      return;
+    }
+
+    const existing = await db.query(
+      'SELECT credential_id FROM user_passkeys WHERE user_id = $1 ORDER BY id ASC',
+      [req.userId]
+    );
+    const challenge = createPasskeyChallenge(pendingPasskeyRegistrations, req.userId, {
+      origin: passkeyOrigin,
+      rpId: passkeyRpId
+    });
+    res.json({
+      ok: true,
+      supported: true,
+      options: {
+        challenge,
+        rp: {
+          name: process.env.PASSKEY_RP_NAME || 'JelloChat',
+          id: passkeyRpId
+        },
+        user: {
+          id: toBase64Url(Buffer.from(String(user.id), 'utf8')),
+          name: user.email,
+          displayName: user.username
+        },
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -257 }
+        ],
+        timeout: 60000,
+        attestation: 'none',
+        authenticatorSelection: {
+          residentKey: 'required',
+          userVerification: 'preferred'
+        },
+        excludeCredentials: existing.rows.map((row) => ({
+          type: 'public-key',
+          id: row.credential_id
+        }))
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, supported: true, message: `Failed to prepare passkey registration: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/passkeys/register/verify', authMiddleware, async (req, res) => {
+  try {
+    const credentialId = String(req.body?.rawId || '').trim();
+    const response = req.body?.response || {};
+    if (!credentialId || !response.clientDataJSON || !response.authenticatorData || !response.publicKey) {
+      res.status(400).json({ ok: false, message: 'Passkey registration response is incomplete.' });
+      return;
+    }
+
+    const clientDataJSON = fromBase64Url(response.clientDataJSON);
+    const clientData = JSON.parse(clientDataJSON.toString('utf8'));
+    const challengeRecord = consumePasskeyChallenge(pendingPasskeyRegistrations, req.userId, clientData.challenge);
+    if (!challengeRecord) {
+      res.status(400).json({ ok: false, message: 'Passkey registration expired. Try again.' });
+      return;
+    }
+
+    verifyPasskeyClientData(clientDataJSON, 'webauthn.create', challengeRecord.challenge, challengeRecord.origin);
+    const authenticatorData = fromBase64Url(response.authenticatorData);
+    const parsedAuthData = assertRpIdHash(authenticatorData, challengeRecord.rpId);
+    const rawCredentialId = fromBase64Url(credentialId);
+    if (parsedAuthData.credentialId && !crypto.timingSafeEqual(parsedAuthData.credentialId, rawCredentialId)) {
+      res.status(400).json({ ok: false, message: 'Passkey credential ID mismatch.' });
+      return;
+    }
+
+    const existing = await db.query('SELECT id FROM user_passkeys WHERE credential_id = $1', [credentialId]);
+    if (existing.rows.length > 0) {
+      res.status(409).json({ ok: false, message: 'That passkey is already registered.' });
+      return;
+    }
+
+    const countResult = await db.query('SELECT COUNT(*)::int AS count FROM user_passkeys WHERE user_id = $1', [req.userId]);
+    const inserted = await db.query(
+      `INSERT INTO user_passkeys (user_id, credential_id, public_key_spki, counter, transports, label)
+       VALUES ($1, $2, $3, $4, $5::text[], $6)
+       RETURNING id, label, transports, created_at, last_used_at`,
+      [
+        req.userId,
+        credentialId,
+        String(response.publicKey),
+        parsedAuthData.signCount,
+        Array.isArray(response.transports) ? response.transports.map((item) => String(item || '')) : [],
+        `Passkey ${Number(countResult.rows[0]?.count || 0) + 1}`
+      ]
+    );
+
+    res.json({ ok: true, supported: true, passkey: serializePasskey(inserted.rows[0]) });
+  } catch (error) {
+    res.status(500).json({ ok: false, supported: true, message: `Failed to save passkey: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/passkeys/login/options', async (req, res) => {
+  try {
+    const passkeyOrigin = getPasskeyOrigin(req);
+    const passkeyRpId = getPasskeyRpId(req);
+    const challenge = createPasskeyChallenge(pendingPasskeyLogins, crypto.randomUUID(), {
+      origin: passkeyOrigin,
+      rpId: passkeyRpId
+    });
+    res.json({
+      ok: true,
+      supported: true,
+      options: {
+        challenge,
+        rpId: passkeyRpId,
+        timeout: 60000,
+        userVerification: 'preferred',
+        allowCredentials: []
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, supported: true, message: `Failed to prepare passkey sign-in: ${error.message}` });
+  }
+});
+
+app.post('/api/auth/passkeys/login/verify', async (req, res) => {
+  try {
+    const credentialId = String(req.body?.rawId || '').trim();
+    const response = req.body?.response || {};
+    if (!credentialId || !response.clientDataJSON || !response.authenticatorData || !response.signature) {
+      res.status(400).json({ ok: false, message: 'Passkey sign-in response is incomplete.' });
+      return;
+    }
+
+    const clientDataJSON = fromBase64Url(response.clientDataJSON);
+    const clientData = JSON.parse(clientDataJSON.toString('utf8'));
+    let challengeKey = null;
+    let challengeRecord = null;
+    for (const [key, record] of pendingPasskeyLogins.entries()) {
+      if (record?.challenge === clientData.challenge) {
+        challengeKey = key;
+        challengeRecord = record;
+        break;
+      }
+    }
+    if (!challengeRecord || !consumePasskeyChallenge(pendingPasskeyLogins, challengeKey, clientData.challenge)) {
+      res.status(400).json({ ok: false, message: 'Passkey sign-in expired. Try again.' });
+      return;
+    }
+
+    verifyPasskeyClientData(clientDataJSON, 'webauthn.get', clientData.challenge, challengeRecord.origin);
+    const authenticatorData = fromBase64Url(response.authenticatorData);
+    const parsedAuthData = assertRpIdHash(authenticatorData, challengeRecord.rpId);
+    const signature = fromBase64Url(response.signature);
+
+    const credentialResult = await db.query(
+      `SELECT p.id, p.user_id, p.public_key_spki, p.counter, u.username, u.email, u.avatar_url,
+              u.is_platform_admin, u.platform_banned_at, u.account_standing, u.standing_reason,
+              u.tos_violation_count, u.date_of_birth, u.email_verified
+       FROM user_passkeys p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.credential_id = $1`,
+      [credentialId]
+    );
+    if (credentialResult.rows.length === 0) {
+      res.status(401).json({ ok: false, message: 'Passkey not recognized.' });
+      return;
+    }
+
+    const credential = credentialResult.rows[0];
+    if (!credential.email_verified) {
+      res.status(403).json({ ok: false, verificationRequired: true, message: 'Please verify your email before using passkeys.' });
+      return;
+    }
+    if (credential.platform_banned_at) {
+      res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
+      return;
+    }
+
+    const clientDataHash = crypto.createHash('sha256').update(clientDataJSON).digest();
+    const signedPayload = Buffer.concat([authenticatorData, clientDataHash]);
+    const isValid = crypto.verify(
+      'sha256',
+      signedPayload,
+      {
+        key: fromBase64Url(credential.public_key_spki),
+        format: 'der',
+        type: 'spki'
+      },
+      signature
+    );
+    if (!isValid) {
+      res.status(401).json({ ok: false, message: 'Passkey signature verification failed.' });
+      return;
+    }
+
+    await db.query(
+      `UPDATE user_passkeys
+       SET counter = GREATEST(counter, $2),
+           last_used_at = NOW()
+       WHERE id = $1`,
+      [credential.id, parsedAuthData.signCount]
+    );
+
+    const realtimeToken = issueAuthToken(credential.user_id);
+    res.json({
+      ok: true,
+      supported: true,
+      user: {
+        id: credential.user_id,
+        username: credential.username,
+        email: credential.email,
+        avatar_url: credential.avatar_url,
+        is_platform_admin: credential.is_platform_admin,
+        account_standing: credential.account_standing,
+        standing_reason: credential.standing_reason,
+        tos_violation_count: credential.tos_violation_count,
+        date_of_birth: credential.date_of_birth
+      },
+      realtimeToken
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, supported: true, message: `Passkey sign-in failed: ${error.message}` });
   }
 });
 
@@ -996,7 +2016,8 @@ app.post('/api/auth/account', authMiddleware, async (req, res) => {
   }
 
   try {
-    const existing = await db.query('SELECT id, username, email, password_hash, date_of_birth FROM users WHERE id = $1', [req.userId]);
+    const avatarUrl = normalizeAvatarUrl(req.body?.avatarUrl);
+    const existing = await db.query('SELECT id, username, email, avatar_url, password_hash, date_of_birth FROM users WHERE id = $1', [req.userId]);
     if (existing.rows.length === 0) {
       res.status(404).json({ ok: false, message: 'User not found.' });
       return;
@@ -1033,8 +2054,8 @@ app.post('/api/auth/account', authMiddleware, async (req, res) => {
 
     const allocated = await allocateUniqueUsername(requestedUsername, req.userId);
     const updated = await db.query(
-      'UPDATE users SET username = $1, email = $2, password_hash = $3, date_of_birth = $4 WHERE id = $5 RETURNING id, username, email, date_of_birth',
-      [allocated.username, email, passwordHash, nextDateOfBirth, req.userId]
+      'UPDATE users SET username = $1, email = $2, avatar_url = $3, password_hash = $4, date_of_birth = $5 WHERE id = $6 RETURNING id, username, email, avatar_url, is_platform_admin, account_standing, standing_reason, tos_violation_count, date_of_birth',
+      [allocated.username, email, avatarUrl, passwordHash, nextDateOfBirth, req.userId]
     );
 
     res.json({
@@ -1069,10 +2090,34 @@ app.post('/api/auth/account/delete', authMiddleware, async (req, res) => {
 
     await db.query('DELETE FROM users WHERE id = $1', [req.userId]);
     clearAuthTokensForUser(req.userId);
+    disconnectRealtimeUser(req.userId, 'Account deleted.');
     authTokens.delete(req.authToken);
+    await ensurePlatformAdminExists();
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to delete account: ${error.message}` });
+  }
+});
+
+app.delete('/api/auth/passkeys/:passkeyId', authMiddleware, async (req, res) => {
+  const passkeyId = Number(req.params.passkeyId);
+  if (!passkeyId) {
+    res.status(400).json({ ok: false, message: 'Valid passkey id is required.' });
+    return;
+  }
+
+  try {
+    const removed = await db.query(
+      'DELETE FROM user_passkeys WHERE id = $1 AND user_id = $2 RETURNING id',
+      [passkeyId, req.userId]
+    );
+    if (removed.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Passkey not found.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to remove passkey: ${error.message}` });
   }
 });
 
@@ -1105,11 +2150,12 @@ app.post('/api/chat/servers', authMiddleware, async (req, res) => {
       [name, req.userId]
     );
     const server = created.rows[0];
-    await db.query(
-      'INSERT INTO server_members (user_id, server_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-      [req.userId, server.id]
-    );
-    await db.query('INSERT INTO channels (server_id, type, name) VALUES ($1, $2, $3)', [server.id, 'text', 'general']);
+      await db.query(
+        'INSERT INTO server_members (user_id, server_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [req.userId, server.id]
+      );
+      await ensureServerRoles(server.id);
+      await db.query('INSERT INTO channels (server_id, type, name) VALUES ($1, $2, $3)', [server.id, 'text', 'general']);
 
     await broadcastToServerMembers(server.id, { type: 'server-created', server });
     res.json({ ok: true, server });
@@ -1141,6 +2187,7 @@ app.post('/api/chat/servers/:serverId/leave', authMiddleware, async (req, res) =
       return;
     }
 
+    await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, req.userId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, req.userId]);
 
     if (server.rows[0].owner_user_id === req.userId) {
@@ -1177,9 +2224,9 @@ app.post('/api/chat/servers/:serverId/kick', authMiddleware, async (req, res) =>
   }
 
   try {
-    const owner = await isServerOwner(req.userId, serverId);
-    if (!owner) {
-      res.status(403).json({ ok: false, message: 'Only the server owner can kick members.' });
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.moderate_members) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to kick members.' });
       return;
     }
 
@@ -1192,6 +2239,7 @@ app.post('/api/chat/servers/:serverId/kick', authMiddleware, async (req, res) =>
       return;
     }
 
+    await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
     await broadcastPresenceForUser(targetUserId);
@@ -1215,9 +2263,9 @@ app.post('/api/chat/servers/:serverId/ban', authMiddleware, async (req, res) => 
   }
 
   try {
-    const owner = await isServerOwner(req.userId, serverId);
-    if (!owner) {
-      res.status(403).json({ ok: false, message: 'Only the server owner can ban members.' });
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.moderate_members) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to ban members.' });
       return;
     }
 
@@ -1230,6 +2278,7 @@ app.post('/api/chat/servers/:serverId/ban', authMiddleware, async (req, res) => 
                      created_at = NOW()`,
       [serverId, targetUserId, req.userId, reason || null]
     );
+    await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
 
     await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
@@ -1250,9 +2299,9 @@ app.post('/api/chat/servers/:serverId/unban', authMiddleware, async (req, res) =
   }
 
   try {
-    const owner = await isServerOwner(req.userId, serverId);
-    if (!owner) {
-      res.status(403).json({ ok: false, message: 'Only the server owner can unban members.' });
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.moderate_members) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to unban members.' });
       return;
     }
 
@@ -1295,9 +2344,9 @@ app.get('/api/chat/servers/:serverId/bans', authMiddleware, async (req, res) => 
   }
 
   try {
-    const owner = await isServerOwner(req.userId, serverId);
-    if (!owner) {
-      res.status(403).json({ ok: false, message: 'Only the server owner can view banned users.' });
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.moderate_members) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to view banned users.' });
       return;
     }
 
@@ -1324,9 +2373,9 @@ app.post('/api/chat/servers/:serverId/rename', authMiddleware, async (req, res) 
   }
 
   try {
-    const owner = await isServerOwner(req.userId, serverId);
-    if (!owner) {
-      res.status(403).json({ ok: false, message: 'Only the server owner can rename the server.' });
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_server) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to rename the server.' });
       return;
     }
 
@@ -1360,14 +2409,15 @@ app.get('/api/chat/servers/:serverId/channels', authMiddleware, async (req, res)
       return;
     }
 
-    const owner = await db.query('SELECT owner_user_id FROM servers WHERE id = $1', [serverId]);
+    const permissions = await getUserServerPermissions(req.userId, serverId);
     const channels = await db.query('SELECT id, type, name, server_id FROM channels WHERE server_id = $1 ORDER BY name', [
       serverId
     ]);
     res.json({
       ok: true,
       channels: channels.rows,
-      canCreateChannels: owner.rows[0]?.owner_user_id === req.userId
+      canCreateChannels: permissions.manage_channels,
+      permissions
     });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load channels: ${error.message}` });
@@ -1385,13 +2435,14 @@ app.post('/api/chat/channels', authMiddleware, async (req, res) => {
   }
 
   try {
-    const owner = await db.query('SELECT owner_user_id FROM servers WHERE id = $1', [serverId]);
-    if (owner.rows.length === 0) {
+    const server = await db.query('SELECT id FROM servers WHERE id = $1', [serverId]);
+    if (server.rows.length === 0) {
       res.status(404).json({ ok: false, message: 'Server not found.' });
       return;
     }
-    if (owner.rows[0].owner_user_id !== req.userId) {
-      res.status(403).json({ ok: false, message: 'Only the server owner can create channels.' });
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to create channels.' });
       return;
     }
 
@@ -1496,13 +2547,14 @@ app.post('/api/chat/servers/:serverId/invites', authMiddleware, async (req, res)
   }
 
   try {
-    const owner = await db.query('SELECT id, name, owner_user_id FROM servers WHERE id = $1', [serverId]);
-    if (owner.rows.length === 0) {
+    const server = await db.query('SELECT id, name FROM servers WHERE id = $1', [serverId]);
+    if (server.rows.length === 0) {
       res.status(404).json({ ok: false, message: 'Server not found.' });
       return;
     }
-    if (owner.rows[0].owner_user_id !== req.userId) {
-      res.status(403).json({ ok: false, message: 'Only the server owner can create invites.' });
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.create_invites) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to create invites.' });
       return;
     }
 
@@ -1526,14 +2578,14 @@ app.post('/api/chat/servers/:serverId/invites', authMiddleware, async (req, res)
       [serverId, code, req.userId]
     );
 
-    res.json({ ok: true, invite: { code, serverId, serverName: owner.rows[0].name } });
+    res.json({ ok: true, invite: { code, serverId, serverName: server.rows[0].name, url: buildInviteUrl(code) } });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to create invite: ${error.message}` });
   }
 });
 
 app.post('/api/chat/invites/join', authMiddleware, async (req, res) => {
-  const code = String(req.body?.code || '').trim().toUpperCase();
+  const code = normalizeInviteCode(req.body?.code);
   if (!code) {
     res.status(400).json({ ok: false, message: 'Invite code is required.' });
     return;
@@ -1612,26 +2664,538 @@ app.get('/api/chat/servers/:serverId/presence', authMiddleware, async (req, res)
       return;
     }
 
+    const permissions = await getUserServerPermissions(req.userId, serverId);
     const members = await db.query(
-      `SELECT u.id, u.username
+      `SELECT u.id, u.username, u.avatar_url,
+              COALESCE(
+                ARRAY_AGG(r.name ORDER BY r.position DESC, r.name ASC) FILTER (WHERE r.id IS NOT NULL),
+                '{}'::text[]
+              ) AS role_names
        FROM server_members sm
        JOIN users u ON u.id = sm.user_id
+       LEFT JOIN server_member_roles smr ON smr.server_id = sm.server_id AND smr.user_id = sm.user_id
+       LEFT JOIN server_roles r ON r.id = smr.role_id
        WHERE sm.server_id = $1
+         AND u.platform_banned_at IS NULL
+       GROUP BY u.id, u.username, u.avatar_url
        ORDER BY u.username`,
       [serverId]
     );
     const onlineIds = getOnlineUserIds();
     const users = members.rows.map((row) => ({ ...row, online: onlineIds.has(row.id) }));
-    res.json({ ok: true, users });
+    res.json({ ok: true, users, permissions });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load server presence: ${error.message}` });
+  }
+});
+
+app.get('/api/chat/servers/:serverId/roles', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  if (!serverId) {
+    res.status(400).json({ ok: false, message: 'Valid server id is required.' });
+    return;
+  }
+  try {
+    const membership = await canAccessServer(req.userId, serverId);
+    if (!membership) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    const roles = await getServerRoles(serverId);
+    const members = await db.query(
+      `SELECT u.id, u.username, u.avatar_url,
+              COALESCE(ARRAY_AGG(smr.role_id ORDER BY smr.role_id) FILTER (WHERE smr.role_id IS NOT NULL), '{}'::int[]) AS role_ids
+       FROM server_members sm
+       JOIN users u ON u.id = sm.user_id
+       LEFT JOIN server_member_roles smr ON smr.server_id = sm.server_id AND smr.user_id = sm.user_id
+       WHERE sm.server_id = $1
+       GROUP BY u.id, u.username, u.avatar_url
+       ORDER BY u.username`,
+      [serverId]
+    );
+    res.json({ ok: true, permissions, roles, members: members.rows });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load roles: ${error.message}` });
+  }
+});
+
+app.post('/api/chat/servers/:serverId/roles', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  const name = String(req.body?.name || '').trim();
+  if (!serverId || name.length < 2 || name.length > 80) {
+    res.status(400).json({ ok: false, message: 'Role name must be between 2 and 80 characters.' });
+    return;
+  }
+  try {
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_roles) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage roles.' });
+      return;
+    }
+    const created = await db.query(
+      `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
+       VALUES ($1, $2, 1, '{}'::jsonb, FALSE)
+       RETURNING id, server_id, name, position, permissions, is_default`,
+      [serverId, name]
+    );
+    res.json({ ok: true, role: { ...created.rows[0], permissions: normalizeServerPermissions(created.rows[0].permissions) } });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to create role: ${error.message}` });
+  }
+});
+
+app.post('/api/chat/servers/:serverId/roles/:roleId', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  const roleId = Number(req.params.roleId);
+  const name = String(req.body?.name || '').trim();
+  const rolePermissions = normalizeServerPermissions(req.body?.permissions);
+  if (!serverId || !roleId || name.length < 2 || name.length > 80) {
+    res.status(400).json({ ok: false, message: 'Valid server, role, and role name are required.' });
+    return;
+  }
+  try {
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_roles) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage roles.' });
+      return;
+    }
+    const existing = await db.query('SELECT id, is_default FROM server_roles WHERE id = $1 AND server_id = $2', [roleId, serverId]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Role not found.' });
+      return;
+    }
+    const nextName = existing.rows[0].is_default ? '@everyone' : name;
+    const updated = await db.query(
+      `UPDATE server_roles SET name = $1, permissions = $2::jsonb
+       WHERE id = $3 AND server_id = $4
+       RETURNING id, server_id, name, position, permissions, is_default`,
+      [nextName, JSON.stringify(rolePermissions), roleId, serverId]
+    );
+    res.json({ ok: true, role: { ...updated.rows[0], permissions: normalizeServerPermissions(updated.rows[0].permissions) } });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update role: ${error.message}` });
+  }
+});
+
+app.delete('/api/chat/servers/:serverId/roles/:roleId', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  const roleId = Number(req.params.roleId);
+  if (!serverId || !roleId) {
+    res.status(400).json({ ok: false, message: 'Valid server and role are required.' });
+    return;
+  }
+  try {
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_roles) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage roles.' });
+      return;
+    }
+    const existing = await db.query('SELECT id, is_default FROM server_roles WHERE id = $1 AND server_id = $2', [roleId, serverId]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Role not found.' });
+      return;
+    }
+    if (existing.rows[0].is_default) {
+      res.status(400).json({ ok: false, message: 'The default role cannot be deleted.' });
+      return;
+    }
+    await db.query('DELETE FROM server_roles WHERE id = $1 AND server_id = $2', [roleId, serverId]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to delete role: ${error.message}` });
+  }
+});
+
+app.post('/api/chat/servers/:serverId/roles/:roleId/members', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  const roleId = Number(req.params.roleId);
+  const targetUserId = Number(req.body?.targetUserId);
+  const enabled = Boolean(req.body?.enabled);
+  if (!serverId || !roleId || !targetUserId) {
+    res.status(400).json({ ok: false, message: 'Valid server, role, and member are required.' });
+    return;
+  }
+  try {
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_roles) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage roles.' });
+      return;
+    }
+    if (await isServerOwner(targetUserId, serverId)) {
+      res.status(400).json({ ok: false, message: 'You cannot modify the server owner roles.' });
+      return;
+    }
+    const member = await db.query('SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
+    if (member.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'User is not in this server.' });
+      return;
+    }
+    const role = await db.query('SELECT id, is_default FROM server_roles WHERE id = $1 AND server_id = $2', [roleId, serverId]);
+    if (role.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Role not found.' });
+      return;
+    }
+    if (role.rows[0].is_default) {
+      res.status(400).json({ ok: false, message: 'The default role is applied automatically.' });
+      return;
+    }
+    if (enabled) {
+      await db.query(
+        'INSERT INTO server_member_roles (user_id, server_id, role_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        [targetUserId, serverId, roleId]
+      );
+    } else {
+      await db.query(
+        'DELETE FROM server_member_roles WHERE user_id = $1 AND server_id = $2 AND role_id = $3',
+        [targetUserId, serverId, roleId]
+      );
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update member role: ${error.message}` });
+  }
+});
+
+app.post('/api/admin/users/search', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+
+    const query = String(req.body?.query || '').trim();
+    const like = `%${query}%`;
+    const result = await db.query(
+      `SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, platform_ban_reason, account_standing, standing_reason, tos_violation_count
+       FROM users
+       WHERE $1 = '%%'
+          OR username ILIKE $1
+          OR email ILIKE $1
+       ORDER BY is_platform_admin DESC, username ASC
+       LIMIT 100`,
+      [like]
+    );
+    res.json({ ok: true, users: result.rows });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load users: ${error.message}` });
+  }
+});
+
+app.get('/api/admin/users/:userId', authMiddleware, async (req, res) => {
+  const targetUserId = Number(req.params.userId);
+  if (!targetUserId) {
+    res.status(400).json({ ok: false, message: 'Valid user id is required.' });
+    return;
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+
+    const user = await getUserAdminState(targetUserId);
+    if (!user) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+
+    const memberships = await db.query(
+      `SELECT s.id, s.name, sm.joined_at, (s.owner_user_id = sm.user_id) AS is_owner,
+              COALESCE(
+                ARRAY_AGG(r.name ORDER BY r.position DESC, r.name ASC) FILTER (WHERE r.id IS NOT NULL),
+                '{}'::text[]
+              ) AS role_names
+       FROM server_members sm
+       JOIN servers s ON s.id = sm.server_id
+       LEFT JOIN server_member_roles smr ON smr.user_id = sm.user_id AND smr.server_id = sm.server_id
+       LEFT JOIN server_roles r ON r.id = smr.role_id
+       WHERE sm.user_id = $1
+       GROUP BY s.id, s.name, sm.joined_at, s.owner_user_id, sm.user_id
+       ORDER BY LOWER(s.name), s.id`,
+      [targetUserId]
+    );
+    const reports = await db.query(
+      `SELECT ur.id, ur.reason, ur.created_at, ur.server_id, ur.reporter_user_id,
+              reporter.username AS reporter_username, s.name AS server_name
+       FROM user_reports ur
+       JOIN users reporter ON reporter.id = ur.reporter_user_id
+       LEFT JOIN servers s ON s.id = ur.server_id
+       WHERE ur.target_user_id = $1
+       ORDER BY ur.created_at DESC
+       LIMIT 50`,
+      [targetUserId]
+    );
+
+    res.json({ ok: true, user, servers: memberships.rows, reports: reports.rows });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load user details: ${error.message}` });
+  }
+});
+
+app.post('/api/reports/users', authMiddleware, async (req, res) => {
+  const targetUserId = Number(req.body?.targetUserId);
+  const serverId = req.body?.serverId ? Number(req.body.serverId) : null;
+  const reason = String(req.body?.reason || '').trim();
+  if (!targetUserId || reason.length < 5 || reason.length > 500) {
+    res.status(400).json({ ok: false, message: 'Report reason must be between 5 and 500 characters.' });
+    return;
+  }
+  if (targetUserId === req.userId) {
+    res.status(400).json({ ok: false, message: 'You cannot report yourself.' });
+    return;
+  }
+
+  try {
+    const target = await db.query('SELECT id FROM users WHERE id = $1', [targetUserId]);
+    if (target.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+    if (serverId) {
+      const access = await db.query('SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, req.userId]);
+      if (access.rows.length === 0) {
+        res.status(403).json({ ok: false, message: 'You can only attach reports to servers you are in.' });
+        return;
+      }
+    }
+
+    await db.query(
+      'INSERT INTO user_reports (reporter_user_id, target_user_id, server_id, reason) VALUES ($1, $2, $3, $4)',
+      [req.userId, targetUserId, serverId, reason]
+    );
+    const reportVolume = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM user_reports
+       WHERE target_user_id = $1
+         AND created_at >= NOW() - INTERVAL '30 days'`,
+      [targetUserId]
+    );
+    if ((reportVolume.rows[0]?.count || 0) >= 3) {
+      await applyAutomaticStandingUpdate(targetUserId, {
+        increment: 1,
+        reason: 'Multiple user reports were received for this account.'
+      });
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to submit report: ${error.message}` });
+  }
+});
+
+app.get('/api/admin/servers/:serverId', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  if (!serverId) {
+    res.status(400).json({ ok: false, message: 'Valid server id is required.' });
+    return;
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+
+    const server = await db.query('SELECT id, name, owner_user_id, created_at FROM servers WHERE id = $1', [serverId]);
+    if (server.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Server not found.' });
+      return;
+    }
+
+    const channels = await db.query(
+      `SELECT id, name, type, created_at
+       FROM channels
+       WHERE server_id = $1
+       ORDER BY type DESC, LOWER(name), id`,
+      [serverId]
+    );
+    const members = await db.query(
+      `SELECT u.id, u.username, u.avatar_url, u.platform_banned_at, sm.joined_at,
+              (s.owner_user_id = u.id) AS is_owner,
+              COALESCE(
+                ARRAY_AGG(r.name ORDER BY r.position DESC, r.name ASC) FILTER (WHERE r.id IS NOT NULL),
+                '{}'::text[]
+              ) AS role_names
+       FROM server_members sm
+       JOIN servers s ON s.id = sm.server_id
+       JOIN users u ON u.id = sm.user_id
+       LEFT JOIN server_member_roles smr ON smr.user_id = sm.user_id AND smr.server_id = sm.server_id
+       LEFT JOIN server_roles r ON r.id = smr.role_id
+       WHERE sm.server_id = $1
+       GROUP BY u.id, u.username, u.avatar_url, u.platform_banned_at, sm.joined_at, s.owner_user_id
+       ORDER BY LOWER(u.username), u.id`,
+      [serverId]
+    );
+
+    res.json({ ok: true, server: server.rows[0], channels: channels.rows, members: members.rows });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load server view: ${error.message}` });
+  }
+});
+
+app.post('/api/admin/users/:userId', authMiddleware, async (req, res) => {
+  const targetUserId = Number(req.params.userId);
+  if (!targetUserId) {
+    res.status(400).json({ ok: false, message: 'Valid user id is required.' });
+    return;
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+
+    const target = await getUserAdminState(targetUserId);
+    if (!target) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+    if (target.id === req.userId) {
+      res.status(400).json({ ok: false, message: 'You cannot change your own platform admin status here.' });
+      return;
+    }
+
+    let nextAdmin = target.is_platform_admin;
+    if (typeof req.body?.isPlatformAdmin === 'boolean') {
+      nextAdmin = req.body.isPlatformAdmin;
+    }
+
+    let nextBanned = Boolean(target.platform_banned_at);
+    if (typeof req.body?.platformBanned === 'boolean') {
+      nextBanned = req.body.platformBanned;
+    }
+    const allowedStandings = new Set(['good', 'warning', 'restricted', 'banned']);
+    let nextStanding = allowedStandings.has(String(req.body?.accountStanding || '').trim())
+      ? String(req.body.accountStanding).trim()
+      : (target.account_standing || 'good');
+    let nextStandingReason = typeof req.body?.standingReason === 'string'
+      ? String(req.body.standingReason || '').trim().slice(0, 500) || null
+      : (target.standing_reason || null);
+    let nextViolationCount = Number(target.tos_violation_count || 0);
+    if (req.body?.resetViolations) {
+      nextViolationCount = 0;
+    }
+    if (req.body?.incrementViolations) {
+      nextViolationCount += 1;
+    }
+
+    if (target.is_platform_admin && (!nextAdmin || nextBanned)) {
+      const adminCount = await countPlatformAdmins();
+      if (adminCount <= 1) {
+        res.status(400).json({ ok: false, message: 'JelloChat must always keep at least one platform admin.' });
+        return;
+      }
+    }
+
+    const nextBanReason = nextBanned ? String(req.body?.platformBanReason || '').trim().slice(0, 500) || null : null;
+    if (nextBanned) {
+      nextStanding = 'banned';
+      if (!nextStandingReason) {
+        nextStandingReason = nextBanReason || 'Account terminated for Terms of Service violations.';
+      }
+    }
+    const updated = await db.query(
+      `UPDATE users
+       SET is_platform_admin = $1,
+           platform_banned_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+           platform_ban_reason = $3,
+           account_standing = $4,
+           standing_reason = $5,
+           tos_violation_count = $6,
+           standing_updated_at = NOW()
+       WHERE id = $7
+       RETURNING id, username, email, avatar_url, is_platform_admin, platform_banned_at, platform_ban_reason, account_standing, standing_reason, tos_violation_count, standing_updated_at`,
+      [nextAdmin, nextBanned, nextBanReason, nextStanding, nextStandingReason, nextViolationCount, targetUserId]
+    );
+
+    if (nextBanned) {
+      clearAuthTokensForUser(targetUserId);
+      disconnectRealtimeUser(targetUserId, 'Account banned from JelloChat.');
+    }
+    if (!target.platform_banned_at && nextBanned) {
+      sendTerminationEmail(updated.rows[0].email, updated.rows[0].username, nextBanReason || nextStandingReason || 'Your account was terminated for Terms of Service violations.').catch(() => {});
+    }
+
+    res.json({ ok: true, user: updated.rows[0] });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update user: ${error.message}` });
+  }
+});
+
+app.delete('/api/admin/servers/:serverId', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  if (!serverId) {
+    res.status(400).json({ ok: false, message: 'Valid server id is required.' });
+    return;
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+
+    const server = await db.query('SELECT id, name FROM servers WHERE id = $1', [serverId]);
+    if (server.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Server not found.' });
+      return;
+    }
+
+    const memberIds = await db.query('SELECT user_id FROM server_members WHERE server_id = $1', [serverId]);
+    await db.query('DELETE FROM servers WHERE id = $1', [serverId]);
+    broadcastToUsers(memberIds.rows.map((row) => row.user_id), { type: 'server-membership-changed', serverId });
+    res.json({ ok: true, serverName: server.rows[0].name });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to delete server: ${error.message}` });
+  }
+});
+
+app.delete('/api/admin/users/:userId', authMiddleware, async (req, res) => {
+  const targetUserId = Number(req.params.userId);
+  if (!targetUserId) {
+    res.status(400).json({ ok: false, message: 'Valid user id is required.' });
+    return;
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    if (targetUserId === req.userId) {
+      res.status(400).json({ ok: false, message: 'You cannot delete your own account from the admin panel.' });
+      return;
+    }
+
+    const target = await getUserAdminState(targetUserId);
+    if (!target) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+    if (target.is_platform_admin) {
+      const adminCount = await countPlatformAdmins();
+      if (adminCount <= 1) {
+        res.status(400).json({ ok: false, message: 'JelloChat must always keep at least one platform admin.' });
+        return;
+      }
+    }
+
+    await db.query('DELETE FROM users WHERE id = $1', [targetUserId]);
+    clearAuthTokensForUser(targetUserId);
+    disconnectRealtimeUser(targetUserId, 'Account deleted.');
+    await ensurePlatformAdminExists();
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to delete user: ${error.message}` });
   }
 });
 
 app.get('/api/friends', authMiddleware, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT u.id, u.username
+      `SELECT u.id, u.username, u.avatar_url
        FROM friendships f
        JOIN users u ON u.id = f.friend_user_id
        WHERE f.user_id = $1
@@ -1660,14 +3224,14 @@ app.get('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => {
       return;
     }
 
-    const partner = await db.query('SELECT id, username FROM users WHERE id = $1', [partnerUserId]);
+    const partner = await db.query('SELECT id, username, avatar_url FROM users WHERE id = $1', [partnerUserId]);
     if (partner.rows.length === 0) {
       res.status(404).json({ ok: false, message: 'User not found.' });
       return;
     }
 
     const messages = await db.query(
-      `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at, u.username
+      `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at, u.username, u.avatar_url
        FROM dm_messages m
        JOIN users u ON u.id = m.sender_user_id
        WHERE (m.sender_user_id = $1 AND m.receiver_user_id = $2)
@@ -1698,20 +3262,31 @@ app.post('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => 
       return;
     }
 
+    const moderationMessage = await runMinimumAutoModeration({
+      userId: req.userId,
+      partnerUserId,
+      content
+    });
+    if (moderationMessage) {
+      res.status(400).json({ ok: false, message: moderationMessage });
+      return;
+    }
+
     const inserted = await db.query(
       `INSERT INTO dm_messages (sender_user_id, receiver_user_id, content)
        VALUES ($1, $2, $3)
        RETURNING id, sender_user_id, receiver_user_id, content, created_at`,
       [req.userId, partnerUserId, content]
     );
-    const me = await db.query('SELECT username FROM users WHERE id = $1', [req.userId]);
+    const me = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [req.userId]);
     const message = {
       id: inserted.rows[0].id,
       user_id: inserted.rows[0].sender_user_id,
       receiver_user_id: inserted.rows[0].receiver_user_id,
       content: inserted.rows[0].content,
       created_at: inserted.rows[0].created_at,
-      username: me.rows[0]?.username || 'Unknown'
+      username: me.rows[0]?.username || 'Unknown',
+      avatar_url: me.rows[0]?.avatar_url || ''
     };
 
     broadcastToUsers([req.userId, partnerUserId], {
@@ -1727,7 +3302,7 @@ app.post('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => 
 app.get('/api/friends/requests', authMiddleware, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT fr.id, fr.sender_user_id, u.username, fr.created_at
+      `SELECT fr.id, fr.sender_user_id, u.username, u.avatar_url, fr.created_at
        FROM friend_requests fr
        JOIN users u ON u.id = fr.sender_user_id
        WHERE fr.receiver_user_id = $1 AND fr.status = 'pending'
@@ -1858,6 +3433,104 @@ app.post('/api/friends/requests/:requestId/respond', authMiddleware, async (req,
   }
 });
 
+app.post('/api/dm/:partnerUserId/call/start', authMiddleware, async (req, res) => {
+  const partnerUserId = Number(req.params.partnerUserId);
+  if (!partnerUserId) {
+    res.status(400).json({ ok: false, message: 'Valid partner user id is required.' });
+    return;
+  }
+
+  try {
+    const canDm = await canUsersDm(req.userId, partnerUserId);
+    if (!canDm) {
+      res.status(403).json({ ok: false, message: 'You can only call friends or users in a shared server.' });
+      return;
+    }
+
+    const users = await db.query(
+      'SELECT id, username FROM users WHERE id = ANY($1::int[])',
+      [[req.userId, partnerUserId]]
+    );
+    if (users.rows.length < 2) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+
+    const me = users.rows.find((user) => user.id === req.userId);
+    const partner = users.rows.find((user) => user.id === partnerUserId);
+    const roomName = getDmCallRoomName(req.userId, partnerUserId);
+    const voice = await createVoiceToken({
+      identity: String(req.userId),
+      name: me?.username || `user-${req.userId}`,
+      roomName
+    });
+
+    broadcastToUsers([partnerUserId], {
+      type: 'dm-call-started',
+      fromUserId: req.userId,
+      fromUsername: me?.username || 'Unknown',
+      partnerUserId,
+      roomName
+    });
+
+    res.json({
+      ok: true,
+      roomName,
+      livekitUrl: voice.livekitUrl,
+      token: voice.token,
+      debug: voice.debug,
+      partner: partner || null
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to start personal call: ${error.message}` });
+  }
+});
+
+app.post('/api/dm/:partnerUserId/call/join', authMiddleware, async (req, res) => {
+  const partnerUserId = Number(req.params.partnerUserId);
+  if (!partnerUserId) {
+    res.status(400).json({ ok: false, message: 'Valid partner user id is required.' });
+    return;
+  }
+
+  try {
+    const canDm = await canUsersDm(req.userId, partnerUserId);
+    if (!canDm) {
+      res.status(403).json({ ok: false, message: 'You can only call friends or users in a shared server.' });
+      return;
+    }
+
+    const users = await db.query(
+      'SELECT id, username FROM users WHERE id = ANY($1::int[])',
+      [[req.userId, partnerUserId]]
+    );
+    if (users.rows.length < 2) {
+      res.status(404).json({ ok: false, message: 'User not found.' });
+      return;
+    }
+
+    const me = users.rows.find((user) => user.id === req.userId);
+    const partner = users.rows.find((user) => user.id === partnerUserId);
+    const roomName = getDmCallRoomName(req.userId, partnerUserId);
+    const voice = await createVoiceToken({
+      identity: String(req.userId),
+      name: me?.username || `user-${req.userId}`,
+      roomName
+    });
+
+    res.json({
+      ok: true,
+      roomName,
+      livekitUrl: voice.livekitUrl,
+      token: voice.token,
+      debug: voice.debug,
+      partner: partner || null
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to join personal call: ${error.message}` });
+  }
+});
+
 app.get('/api/chat/channels/:channelId/messages', authMiddleware, async (req, res) => {
   const channelId = Number(req.params.channelId);
   if (!channelId) {
@@ -1867,7 +3540,7 @@ app.get('/api/chat/channels/:channelId/messages', authMiddleware, async (req, re
 
   try {
     const access = await db.query(
-      `SELECT 1
+      `SELECT c.server_id
        FROM channels c
        JOIN server_members sm ON sm.server_id = c.server_id
        WHERE c.id = $1 AND sm.user_id = $2`,
@@ -1879,7 +3552,7 @@ app.get('/api/chat/channels/:channelId/messages', authMiddleware, async (req, re
     }
 
     const messages = await db.query(
-      `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at, u.username
+      `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at, u.username, u.avatar_url
        FROM messages m
        JOIN users u ON u.id = m.user_id
        WHERE m.channel_id = $1
@@ -1903,7 +3576,7 @@ app.post('/api/chat/messages', authMiddleware, async (req, res) => {
 
   try {
     const access = await db.query(
-      `SELECT 1
+      `SELECT c.server_id
        FROM channels c
        JOIN server_members sm ON sm.server_id = c.server_id
        WHERE c.id = $1 AND sm.user_id = $2`,
@@ -1914,14 +3587,20 @@ app.post('/api/chat/messages', authMiddleware, async (req, res) => {
       return;
     }
 
+    const moderationResult = await handleServerAutoModeration(access.rows[0].server_id, channelId, req.userId, content);
+    if (moderationResult?.blocked) {
+      res.status(400).json({ ok: false, message: moderationResult.message });
+      return;
+    }
+
     const inserted = await db.query(
       `INSERT INTO messages (channel_id, user_id, content)
        VALUES ($1, $2, $3)
        RETURNING id, channel_id, user_id, content, created_at`,
       [channelId, req.userId, content]
     );
-    const user = await db.query('SELECT username FROM users WHERE id = $1', [req.userId]);
-    const message = { ...inserted.rows[0], username: user.rows[0]?.username || 'Unknown' };
+    const user = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [req.userId]);
+    const message = { ...inserted.rows[0], username: user.rows[0]?.username || 'Unknown', avatar_url: user.rows[0]?.avatar_url || '' };
     broadcastToChannel(channelId, { type: 'message-created', channelId, message });
     res.json({ ok: true, message });
   } catch (error) {
@@ -1952,8 +3631,8 @@ app.patch('/api/chat/messages/:messageId', authMiddleware, async (req, res) => {
       'UPDATE messages SET content = $1 WHERE id = $2 RETURNING id, channel_id, user_id, content, created_at',
       [content, messageId]
     );
-    const user = await db.query('SELECT username FROM users WHERE id = $1', [req.userId]);
-    const message = { ...updated.rows[0], username: user.rows[0]?.username || 'Unknown' };
+    const user = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [req.userId]);
+    const message = { ...updated.rows[0], username: user.rows[0]?.username || 'Unknown', avatar_url: user.rows[0]?.avatar_url || '' };
 
     broadcastToChannel(message.channel_id, { type: 'message-updated', channelId: message.channel_id, message });
     res.json({ ok: true, message });
@@ -1999,16 +3678,24 @@ app.get('*', (_req, res) => {
 
 async function start() {
   await db.connect();
+  await ensurePlatformAdminExists();
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
 
-  wss.on('connection', (ws, request) => {
+  wss.on('connection', async (ws, request) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`);
     const token = url.searchParams.get('token');
     const userId = token ? authTokens.get(token) : null;
 
     if (!userId) {
       ws.close(4001, 'Unauthorized');
+      return;
+    }
+
+    const user = await getUserAdminState(userId).catch(() => null);
+    if (!user || user.platform_banned_at) {
+      clearAuthTokensForUser(userId);
+      ws.close(4003, 'Account banned from JelloChat.');
       return;
     }
 

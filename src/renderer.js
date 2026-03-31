@@ -11,10 +11,13 @@ const ui = {
   registerForm: document.getElementById('register-form'),
   loginEmail: document.getElementById('login-email'),
   loginPassword: document.getElementById('login-password'),
+  loginPasskeyBtn: document.getElementById('login-passkey-btn'),
+  loginCompany: document.getElementById('login-company'),
   rememberMe: document.getElementById('remember-me'),
   registerUsername: document.getElementById('register-username'),
   registerEmail: document.getElementById('register-email'),
   registerPassword: document.getElementById('register-password'),
+  registerWebsite: document.getElementById('register-website'),
   registerDob: document.getElementById('register-dob'),
   acceptTosCheckbox: document.getElementById('accept-tos'),
   acceptPrivacyCheckbox: document.getElementById('accept-privacy'),
@@ -26,11 +29,24 @@ const ui = {
   serversList: document.getElementById('servers-list'),
   serverOptionsMenu: document.getElementById('server-options-menu'),
   serverTabGeneral: document.getElementById('server-tab-general'),
+  serverTabRoles: document.getElementById('server-tab-roles'),
   serverTabBanned: document.getElementById('server-tab-banned'),
   serverPanelGeneral: document.getElementById('server-panel-general'),
+  serverPanelRoles: document.getElementById('server-panel-roles'),
   serverPanelBanned: document.getElementById('server-panel-banned'),
   serverNameInput: document.getElementById('server-name-input'),
   saveServerNameBtn: document.getElementById('save-server-name-btn'),
+  createRoleBtn: document.getElementById('create-role-btn'),
+  rolesList: document.getElementById('roles-list'),
+  roleNameInput: document.getElementById('role-name-input'),
+  permManageServer: document.getElementById('perm-manage-server'),
+  permManageRoles: document.getElementById('perm-manage-roles'),
+  permManageChannels: document.getElementById('perm-manage-channels'),
+  permCreateInvites: document.getElementById('perm-create-invites'),
+  permModerateMembers: document.getElementById('perm-moderate-members'),
+  saveRoleBtn: document.getElementById('save-role-btn'),
+  deleteRoleBtn: document.getElementById('delete-role-btn'),
+  roleMembersList: document.getElementById('role-members-list'),
   bannedUsersList: document.getElementById('banned-users-list'),
   leaveServerBtn: document.getElementById('leave-server-btn'),
   channelsList: document.getElementById('channels-list'),
@@ -47,10 +63,13 @@ const ui = {
   messagesList: document.getElementById('messages-list'),
   mobileServersToggle: document.getElementById('mobile-servers-toggle'),
   mobileUsersToggle: document.getElementById('mobile-users-toggle'),
+  dmCallBtn: document.getElementById('dm-call-btn'),
   mobileDrawerBackdrop: document.getElementById('mobile-drawer-backdrop'),
   onlineUsersList: document.getElementById('online-users-list'),
   friendsList: document.getElementById('friends-list'),
+  accountAvatar: document.getElementById('account-avatar'),
   userOptionsMenu: document.getElementById('user-options-menu'),
+  reportUserBtn: document.getElementById('report-user-btn'),
   kickUserBtn: document.getElementById('kick-user-btn'),
   banUserBtn: document.getElementById('ban-user-btn'),
   messageForm: document.getElementById('message-form'),
@@ -59,9 +78,25 @@ const ui = {
   createServerBtn: document.getElementById('create-server-btn'),
   addFriendBtn: document.getElementById('add-friend-btn'),
   friendRequestsBtn: document.getElementById('friend-requests-btn'),
+  notificationsBtn: document.getElementById('notifications-btn'),
   friendRequestsModal: document.getElementById('friend-requests-modal'),
   friendRequestsCloseBtn: document.getElementById('friend-requests-close-btn'),
   friendRequestsList: document.getElementById('friend-requests-list'),
+  notificationsModal: document.getElementById('notifications-modal'),
+  notificationsCloseBtn: document.getElementById('notifications-close-btn'),
+  notificationsEnableBtn: document.getElementById('notifications-enable-btn'),
+  notificationsClearBtn: document.getElementById('notifications-clear-btn'),
+  notificationsList: document.getElementById('notifications-list'),
+  adminModal: document.getElementById('admin-modal'),
+  adminModalCloseBtn: document.getElementById('admin-modal-close-btn'),
+  adminSearchInput: document.getElementById('admin-search-input'),
+  adminSearchBtn: document.getElementById('admin-search-btn'),
+  adminUsersList: document.getElementById('admin-users-list'),
+  adminUserDetails: document.getElementById('admin-user-details'),
+  adminUserDetailsTitle: document.getElementById('admin-user-details-title'),
+  adminUserDetailsMeta: document.getElementById('admin-user-details-meta'),
+  adminUserServersList: document.getElementById('admin-user-servers-list'),
+  adminUserReportsList: document.getElementById('admin-user-reports-list'),
   joinInviteBtn: document.getElementById('join-invite-btn'),
   createInviteBtn: document.getElementById('create-invite-btn'),
   createChannelBtn: document.getElementById('create-channel-btn'),
@@ -70,14 +105,22 @@ const ui = {
   accountSettingsBtn: document.getElementById('account-settings-btn'),
   accountSettingsMenu: document.getElementById('account-settings-menu'),
   accountMyAccountBtn: document.getElementById('account-my-account-btn'),
+  accountAdminBtn: document.getElementById('account-admin-btn'),
   accountModal: document.getElementById('account-modal'),
   accountModalCloseBtn: document.getElementById('account-modal-close-btn'),
+  accountStandingLabel: document.getElementById('account-standing-label'),
+  accountStandingMeta: document.getElementById('account-standing-meta'),
   accountForm: document.getElementById('account-form'),
   accountUsernameInput: document.getElementById('account-username-input'),
   accountEmailInput: document.getElementById('account-email-input'),
+  accountAvatarInput: document.getElementById('account-avatar-input'),
   accountCurrentPasswordInput: document.getElementById('account-current-password-input'),
   accountNewPasswordInput: document.getElementById('account-new-password-input'),
   accountDobInput: document.getElementById('account-dob-input'),
+  passkeysPanel: document.getElementById('passkeys-panel'),
+  passkeysHelp: document.getElementById('passkeys-help'),
+  addPasskeyBtn: document.getElementById('add-passkey-btn'),
+  passkeysList: document.getElementById('passkeys-list'),
   accountFormMessage: document.getElementById('account-form-message'),
   accountDeleteBtn: document.getElementById('account-delete-btn'),
   dobModal: document.getElementById('dob-modal'),
@@ -113,13 +156,32 @@ const state = {
   selectedModerationUserId: null,
   serverOptionsTab: 'general',
   bannedUsers: [],
+  serverPermissions: {
+    manage_server: false,
+    manage_roles: false,
+    manage_channels: false,
+    create_invites: false,
+    moderate_members: false
+  },
+  serverRoles: [],
+  serverRoleMembers: [],
+  selectedRoleId: null,
   activeVoiceChannelId: null,
   voiceRoom: null,
   voiceAudioEls: new Map(),
   voiceActiveSpeakerIds: new Set(),
   isVoiceMuted: false,
   isVoiceDeafened: false,
-  isDobRequired: false
+  isDobRequired: false,
+  activeDmCallUserId: null,
+  activeVoiceLabel: '',
+  avatarPromptShown: false,
+  adminUsers: [],
+  selectedAdminUserId: null,
+  adminUserDetails: null,
+  notifications: [],
+  passkeys: [],
+  passkeysSupported: false
 };
 
 const dialogState = {
@@ -127,17 +189,64 @@ const dialogState = {
 };
 
 let authSwitchTimer = null;
+const authTiming = {
+  loginShownAt: Date.now(),
+  registerShownAt: Date.now()
+};
+
+function isPasskeySupportedInBrowser() {
+  return typeof window.PublicKeyCredential !== 'undefined'
+    && typeof navigator.credentials !== 'undefined'
+    && window.isSecureContext
+    && String(window.location?.protocol || '') !== 'file:';
+}
+
+function base64UrlToArrayBuffer(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+  const binary = window.atob(`${normalized}${padding}`);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+}
+
+function arrayBufferToBase64Url(value) {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value || new ArrayBuffer(0));
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function formatPasskeyDate(value) {
+  if (!value) {
+    return 'Never used';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Never used';
+  }
+  return date.toLocaleString();
+}
 
 function getSelectedChannel() {
   return state.channels.find((channel) => channel.id === state.selectedChannelId) || null;
 }
 
 function shouldShowVoicePanel() {
-  return Boolean(state.voiceRoom && state.activeVoiceChannelId);
+  return Boolean(state.voiceRoom && (state.activeVoiceChannelId || state.activeDmCallUserId));
 }
 
 function syncVoicePanelVisibility() {
   ui.vcPanel.classList.toggle('hidden', !shouldShowVoicePanel());
+}
+
+function syncDmCallButton() {
+  const canCall = Boolean(ui.dmCallBtn && state.selectedDmUser);
+  ui.dmCallBtn?.classList.toggle('hidden', !canCall);
 }
 
 function pickDefaultChannelId(channels) {
@@ -158,6 +267,52 @@ function getParticipantDisplayName(participant) {
     }
   }
   return participant?.name || metadataName || participant?.identity || 'Unknown';
+}
+
+function getInitials(name) {
+  const parts = String(name || 'U')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!parts.length) {
+    return 'U';
+  }
+  return parts.map((part) => part[0]?.toUpperCase() || '').join('') || 'U';
+}
+
+function setAvatarContent(container, user, fallbackLabel) {
+  if (!container) {
+    return;
+  }
+  const label = fallbackLabel || user?.username || user?.email || 'User';
+  const initials = getInitials(label);
+  const avatarUrl = String(user?.avatar_url || user?.avatarUrl || '').trim();
+
+  container.textContent = '';
+  container.setAttribute('aria-label', `${label} avatar`);
+
+  if (avatarUrl) {
+    const img = document.createElement('img');
+    img.src = avatarUrl;
+    img.alt = `${label} avatar`;
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => {
+      container.textContent = initials;
+    }, { once: true });
+    container.appendChild(img);
+    return;
+  }
+
+  container.textContent = initials;
+}
+
+function createAvatarElement(user, className = 'avatar', fallbackLabel) {
+  const avatar = document.createElement('div');
+  avatar.className = className;
+  setAvatarContent(avatar, user, fallbackLabel);
+  return avatar;
 }
 
 function isParticipantMuted(participant) {
@@ -335,12 +490,128 @@ function leaveVoiceView(disconnect = true) {
   setVcStatus('Not connected');
   renderVoiceParticipants();
   state.activeVoiceChannelId = null;
+  state.activeDmCallUserId = null;
+  state.activeVoiceLabel = '';
   syncVoicePanelVisibility();
 }
 
 function renderAccountPanel() {
   ui.accountUsername.textContent = state.user?.username || 'User';
   ui.accountEmail.textContent = state.user?.email || '';
+  setAvatarContent(ui.accountAvatar, state.user, state.user?.username || 'User');
+  ui.accountAdminBtn?.classList.toggle('hidden', !state.user?.is_platform_admin);
+  const standing = String(state.user?.account_standing || 'good').replace(/_/g, ' ');
+  const violationCount = Number(state.user?.tos_violation_count || 0);
+  ui.accountStandingLabel.textContent = `Standing: ${standing.charAt(0).toUpperCase()}${standing.slice(1)}`;
+  ui.accountStandingMeta.textContent = state.user?.standing_reason
+    ? `${state.user.standing_reason} (${violationCount} violation${violationCount === 1 ? '' : 's'})`
+    : violationCount > 0
+      ? `${violationCount} Terms of Service violation${violationCount === 1 ? '' : 's'} on record.`
+      : 'No recent Terms of Service violations.';
+}
+
+function renderPasskeys() {
+  if (!ui.passkeysPanel || !ui.passkeysList || !ui.passkeysHelp) {
+    return;
+  }
+
+  const browserSupported = isPasskeySupportedInBrowser();
+  const supported = browserSupported && state.passkeysSupported;
+  ui.passkeysPanel.classList.toggle('hidden', !supported);
+  ui.loginPasskeyBtn?.classList.toggle('hidden', !browserSupported);
+
+  if (!supported) {
+    ui.passkeysHelp.textContent = browserSupported
+      ? 'Passkeys are not available from this app runtime.'
+      : 'Passkeys need a supported secure browser session, like the web version on localhost or HTTPS.';
+    ui.passkeysList.innerHTML = '';
+    return;
+  }
+
+  ui.passkeysHelp.textContent = state.passkeys.length
+    ? 'Use a device passkey for faster sign-in on supported browsers.'
+    : 'No passkeys added yet. Add one on this device to sign in without typing your password.';
+  ui.passkeysList.innerHTML = '';
+
+  if (!state.passkeys.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'No passkeys added yet.';
+    ui.passkeysList.appendChild(empty);
+    return;
+  }
+
+  for (const passkey of state.passkeys) {
+    const row = document.createElement('div');
+    row.className = 'passkey-item';
+
+    const meta = document.createElement('div');
+    meta.className = 'passkey-meta';
+
+    const title = document.createElement('div');
+    title.className = 'passkey-title';
+    title.textContent = passkey.label || 'Passkey';
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'passkey-subtitle';
+    const transports = Array.isArray(passkey.transports) && passkey.transports.length ? passkey.transports.join(', ') : 'device';
+    subtitle.textContent = `Added ${formatPasskeyDate(passkey.created_at)} - Last used ${formatPasskeyDate(passkey.last_used_at)} - ${transports}`;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'passkey-remove-btn';
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', async () => {
+      const confirmed = await showConfirmDialog('Remove Passkey', `Remove ${passkey.label || 'this passkey'} from your account?`, 'Remove', 'Cancel');
+      if (!confirmed) {
+        return;
+      }
+      const response = await window.api.auth.deletePasskey({ passkeyId: passkey.id });
+      if (!response.ok) {
+        setAccountFormMessage(response.message || 'Failed to remove passkey.', true);
+        return;
+      }
+      state.passkeys = state.passkeys.filter((item) => item.id !== passkey.id);
+      renderPasskeys();
+      setAccountFormMessage('Passkey removed.');
+    });
+
+    meta.append(title, subtitle);
+    row.append(meta, removeBtn);
+    ui.passkeysList.appendChild(row);
+  }
+}
+
+async function loadPasskeys() {
+  if (!ui.passkeysPanel || !window.api?.auth?.getPasskeys) {
+    return;
+  }
+  const browserSupported = isPasskeySupportedInBrowser();
+  if (!browserSupported) {
+    state.passkeysSupported = false;
+    state.passkeys = [];
+    renderPasskeys();
+    return;
+  }
+  const response = await window.api.auth.getPasskeys();
+  state.passkeysSupported = Boolean(response?.supported);
+  state.passkeys = response?.ok ? (response.passkeys || []) : [];
+  renderPasskeys();
+}
+
+async function completeSignedInState(result) {
+  state.user = result.user;
+  renderAccountPanel();
+  setAuthMessage('');
+  await openChat();
+  await enforceDobIfMissing();
+  await maybePromptForAvatar();
+  await loadServers();
+  await loadFriends();
+  await handlePendingInviteLink();
+  if (result.realtimeToken) {
+    await ensureRealtime(result.realtimeToken);
+  }
 }
 
 function closeAccountSettingsMenu() {
@@ -433,6 +704,459 @@ function openFriendRequestsModal() {
   animateShowOverlay(ui.friendRequestsModal);
 }
 
+function closeAdminModal() {
+  animateHideOverlay(ui.adminModal);
+}
+
+function openAdminModal() {
+  animateShowOverlay(ui.adminModal);
+}
+
+function closeNotificationsModal() {
+  animateHideOverlay(ui.notificationsModal);
+}
+
+function openNotificationsModal() {
+  renderNotifications();
+  animateShowOverlay(ui.notificationsModal);
+}
+
+function pushNotificationItem(title, body) {
+  state.notifications.unshift({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: String(title || 'Notification'),
+    body: String(body || ''),
+    createdAt: new Date().toISOString()
+  });
+  state.notifications = state.notifications.slice(0, 50);
+  renderNotifications();
+}
+
+async function sendBrowserNotification(title, body) {
+  if (typeof Notification === 'undefined') {
+    return;
+  }
+  if (Notification.permission === 'default') {
+    try {
+      await Notification.requestPermission();
+    } catch (_error) {
+      return;
+    }
+  }
+  if (Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body });
+    } catch (_error) {
+    }
+  }
+}
+
+function notifyUser(title, body) {
+  pushNotificationItem(title, body);
+  sendBrowserNotification(title, body).catch(() => {});
+}
+
+function renderNotifications() {
+  ui.notificationsList.innerHTML = '';
+  if (!state.notifications.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'No notifications yet.';
+    ui.notificationsList.appendChild(empty);
+    return;
+  }
+
+  for (const item of state.notifications) {
+    const row = document.createElement('div');
+    row.className = 'notification-item';
+
+    const title = document.createElement('div');
+    title.className = 'notification-title';
+    title.textContent = item.title;
+
+    const body = document.createElement('div');
+    body.textContent = item.body;
+
+    const meta = document.createElement('div');
+    meta.className = 'notification-meta';
+    meta.textContent = new Date(item.createdAt).toLocaleString();
+
+    row.append(title, body, meta);
+    ui.notificationsList.appendChild(row);
+  }
+}
+
+function formatAdminServerJoinedAt(value) {
+  if (!value) {
+    return 'Joined date unavailable';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Joined date unavailable';
+  }
+  return `Joined ${date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+}
+
+function escapeHtmlText(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatStandingLabel(standing) {
+  const normalized = String(standing || 'good').replace(/_/g, ' ');
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+async function showAdminServerView(serverId) {
+  const result = await window.api.admin.getServerView({ serverId });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+
+  const channelItems = (result.channels || [])
+    .map((channel) => `<li>#${escapeHtmlText(channel.name)} <span style="color:#94a3b8">(${escapeHtmlText(channel.type || 'text')})</span></li>`)
+    .join('');
+  const memberItems = (result.members || [])
+    .map((member) => {
+      const roleText = member.role_names?.length ? member.role_names.join(', ') : 'None';
+      const badges = [member.is_owner ? 'Owner' : 'Member', member.platform_banned_at ? 'Platform Banned' : 'Active'].join(' - ');
+      return `<li>${escapeHtmlText(member.username)} <span style="color:#94a3b8">(${escapeHtmlText(badges)} | Roles: ${escapeHtmlText(roleText)})</span></li>`;
+    })
+    .join('');
+
+  const html = `
+    <p><strong>Server:</strong> ${escapeHtmlText(result.server?.name)}</p>
+    <p><strong>Channels:</strong></p>
+    <ul>${channelItems || '<li>No channels.</li>'}</ul>
+    <p><strong>Members:</strong></p>
+    <ul>${memberItems || '<li>No members.</li>'}</ul>
+  `;
+  await showMessageDialog(`Admin View: ${result.server?.name || 'Server'}`, html, { html: true });
+}
+
+async function deleteAdminServer(serverId, serverName) {
+  const confirmed = await showConfirmDialog('Delete Server', `Delete ${serverName}? This removes channels, messages, invites, and memberships.`, 'Delete', 'Cancel');
+  if (!confirmed) {
+    return;
+  }
+
+  const result = await window.api.admin.deleteServer({ serverId });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+
+  ui.channelTitle.textContent = `${result.serverName || serverName} deleted.`;
+  await loadAdminUsers(ui.adminSearchInput.value.trim());
+  await loadServers(false);
+}
+
+function renderAdminUserDetails() {
+  const details = state.adminUserDetails;
+  if (!details?.user) {
+    ui.adminUserDetailsTitle.textContent = 'Select a user';
+    ui.adminUserDetailsMeta.textContent = 'Click a user to see which servers they are in.';
+    ui.adminUserServersList.innerHTML = '';
+    ui.adminUserReportsList.innerHTML = '';
+    return;
+  }
+
+  const user = details.user;
+  const role = user.is_platform_admin ? 'Platform Admin' : 'Member';
+  const banStatus = user.platform_banned_at ? 'Banned' : 'Active';
+  ui.adminUserDetailsTitle.textContent = user.username;
+  ui.adminUserDetailsMeta.textContent = `${user.email} - ${role} - ${banStatus} - Standing: ${formatStandingLabel(user.account_standing)} (${user.tos_violation_count || 0})`;
+  ui.adminUserServersList.innerHTML = '';
+  ui.adminUserReportsList.innerHTML = '';
+
+  if (!details.servers?.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'This user is not in any servers.';
+    ui.adminUserServersList.appendChild(empty);
+    return;
+  }
+
+  for (const server of details.servers) {
+    const item = document.createElement('div');
+    item.className = 'admin-server-item';
+
+    const row = document.createElement('div');
+    row.className = 'admin-server-row';
+
+    const name = document.createElement('div');
+    name.className = 'admin-server-name';
+    name.textContent = server.name;
+
+    const actions = document.createElement('div');
+    actions.className = 'admin-server-actions';
+
+    const viewBtn = document.createElement('button');
+    viewBtn.type = 'button';
+    viewBtn.textContent = 'View';
+    viewBtn.addEventListener('click', async () => {
+      await showAdminServerView(server.id);
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = 'Delete Server';
+    deleteBtn.addEventListener('click', async () => {
+      await deleteAdminServer(server.id, server.name);
+    });
+
+    actions.append(viewBtn, deleteBtn);
+    row.append(name, actions);
+
+    const meta = document.createElement('div');
+    meta.className = 'admin-server-meta';
+    const roleText = server.role_names?.length ? `Roles: ${server.role_names.join(', ')}` : 'Roles: None';
+    meta.textContent = `${server.is_owner ? 'Owner' : 'Member'} - ${formatAdminServerJoinedAt(server.joined_at)} - ${roleText}`;
+
+    item.append(row, meta);
+    ui.adminUserServersList.appendChild(item);
+  }
+
+  const reportsTitle = document.createElement('div');
+  reportsTitle.className = 'admin-server-name';
+  reportsTitle.textContent = 'Reports';
+  ui.adminUserReportsList.appendChild(reportsTitle);
+
+  if (!details.reports?.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'No reports for this account.';
+    ui.adminUserReportsList.appendChild(empty);
+    return;
+  }
+
+  for (const report of details.reports) {
+    const item = document.createElement('div');
+    item.className = 'admin-report-item';
+
+    const reason = document.createElement('div');
+    reason.textContent = report.reason;
+
+    const meta = document.createElement('div');
+    meta.className = 'admin-report-meta';
+    const origin = report.server_name ? ` in ${report.server_name}` : '';
+    meta.textContent = `Reported by ${report.reporter_username}${origin} on ${new Date(report.created_at).toLocaleString()}`;
+
+    item.append(reason, meta);
+    ui.adminUserReportsList.appendChild(item);
+  }
+}
+
+async function loadAdminUserDetails(userId) {
+  const result = await window.api.admin.getUserDetails({ userId });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+  state.selectedAdminUserId = userId;
+  state.adminUserDetails = result;
+  renderAdminUsers();
+  renderAdminUserDetails();
+}
+
+function renderAdminUsers() {
+  ui.adminUsersList.innerHTML = '';
+  if (!state.adminUsers.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'No users found.';
+    ui.adminUsersList.appendChild(empty);
+    return;
+  }
+
+  for (const user of state.adminUsers) {
+    const row = document.createElement('div');
+    row.className = 'admin-user-item';
+    row.classList.toggle('active', user.id === state.selectedAdminUserId);
+    row.addEventListener('click', () => {
+      loadAdminUserDetails(user.id);
+    });
+    const avatar = createAvatarElement(user);
+    const meta = document.createElement('div');
+    meta.className = 'admin-user-meta';
+    meta.innerHTML = `
+      <div class="admin-user-name">${user.username}</div>
+      <div class="admin-user-email">${user.email}</div>
+      <div class="admin-user-flags">${user.is_platform_admin ? 'Admin' : 'Member'}${user.platform_banned_at ? ' • Banned' : ''}</div>
+    `;
+
+    const actions = document.createElement('div');
+    actions.className = 'admin-user-actions';
+
+    const warnBtn = document.createElement('button');
+    warnBtn.type = 'button';
+    warnBtn.textContent = 'Warn';
+    warnBtn.disabled = user.id === state.user?.id;
+    warnBtn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const reason = (await showPromptDialog('Account Standing', `Reason for warning ${user.username}:`, 'Terms of Service warning')) || '';
+      if (!reason) {
+        return;
+      }
+      const result = await window.api.admin.updateUser({
+        userId: user.id,
+        accountStanding: 'warning',
+        standingReason: reason,
+        incrementViolations: true
+      });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      await loadAdminUsers(ui.adminSearchInput.value.trim());
+      if (state.selectedAdminUserId === user.id) {
+        await loadAdminUserDetails(user.id);
+      }
+    });
+
+    const restrictBtn = document.createElement('button');
+    restrictBtn.type = 'button';
+    restrictBtn.textContent = 'Restrict';
+    restrictBtn.disabled = user.id === state.user?.id;
+    restrictBtn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const reason = (await showPromptDialog('Account Standing', `Reason for restricting ${user.username}:`, 'Restricted for Terms of Service violations')) || '';
+      if (!reason) {
+        return;
+      }
+      const result = await window.api.admin.updateUser({
+        userId: user.id,
+        accountStanding: 'restricted',
+        standingReason: reason,
+        incrementViolations: true
+      });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      await loadAdminUsers(ui.adminSearchInput.value.trim());
+      if (state.selectedAdminUserId === user.id) {
+        await loadAdminUserDetails(user.id);
+      }
+    });
+
+    const adminBtn = document.createElement('button');
+    adminBtn.type = 'button';
+    adminBtn.textContent = user.is_platform_admin ? 'Remove Admin' : 'Make Admin';
+    adminBtn.disabled = user.id === state.user?.id;
+    adminBtn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const result = await window.api.admin.updateUser({
+        userId: user.id,
+        isPlatformAdmin: !user.is_platform_admin
+      });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      await loadAdminUsers(ui.adminSearchInput.value.trim());
+      if (state.selectedAdminUserId === user.id) {
+        await loadAdminUserDetails(user.id);
+      }
+    });
+
+    const banBtn = document.createElement('button');
+    banBtn.type = 'button';
+    banBtn.textContent = user.platform_banned_at ? 'Unban' : 'Ban';
+    banBtn.disabled = user.id === state.user?.id;
+    banBtn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const reason = user.platform_banned_at
+        ? ''
+        : ((await showPromptDialog('Platform Ban', 'Ban reason (optional):', '')) || '');
+      const result = await window.api.admin.updateUser({
+        userId: user.id,
+        platformBanned: !user.platform_banned_at,
+        platformBanReason: reason
+      });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      await loadAdminUsers(ui.adminSearchInput.value.trim());
+      if (state.selectedAdminUserId === user.id) {
+        await loadAdminUserDetails(user.id);
+      }
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.disabled = user.id === state.user?.id;
+    deleteBtn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const confirmed = await showConfirmDialog('Delete User', `Delete ${user.username}?`, 'Delete', 'Cancel');
+      if (!confirmed) {
+        return;
+      }
+      const result = await window.api.admin.deleteUser({ userId: user.id });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      await loadAdminUsers(ui.adminSearchInput.value.trim());
+      if (state.selectedAdminUserId === user.id) {
+        state.selectedAdminUserId = null;
+        state.adminUserDetails = null;
+        renderAdminUsers();
+        renderAdminUserDetails();
+      }
+    });
+
+    const clearStandingBtn = document.createElement('button');
+    clearStandingBtn.type = 'button';
+    clearStandingBtn.textContent = 'Clear Standing';
+    clearStandingBtn.disabled = user.id === state.user?.id;
+    clearStandingBtn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const result = await window.api.admin.updateUser({
+        userId: user.id,
+        accountStanding: 'good',
+        standingReason: '',
+        resetViolations: true
+      });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      await loadAdminUsers(ui.adminSearchInput.value.trim());
+      if (state.selectedAdminUserId === user.id) {
+        await loadAdminUserDetails(user.id);
+      }
+    });
+
+    actions.append(warnBtn, restrictBtn, clearStandingBtn, adminBtn, banBtn, deleteBtn);
+    meta.appendChild(actions);
+    row.append(avatar, meta);
+    ui.adminUsersList.appendChild(row);
+  }
+}
+
+async function loadAdminUsers(query = '') {
+  const result = await window.api.admin.listUsers({ query });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+  state.adminUsers = result.users || [];
+  if (!state.adminUsers.some((user) => user.id === state.selectedAdminUserId)) {
+    state.selectedAdminUserId = null;
+    state.adminUserDetails = null;
+  }
+  renderAdminUsers();
+  renderAdminUserDetails();
+}
+
 function renderFriendRequests(requests) {
   ui.friendRequestsList.innerHTML = '';
   if (!requests.length) {
@@ -450,6 +1174,7 @@ function renderFriendRequests(requests) {
     const meta = document.createElement('div');
     meta.className = 'friend-request-meta';
     meta.innerHTML = `<div class="friend-request-name">${request.username}</div>`;
+    const avatar = createAvatarElement(request);
 
     const acceptBtn = document.createElement('button');
     acceptBtn.className = 'friend-request-action friend-request-accept';
@@ -474,7 +1199,7 @@ function renderFriendRequests(requests) {
     rejectBtn.className = 'friend-request-action friend-request-reject';
     rejectBtn.type = 'button';
     rejectBtn.title = 'Reject';
-    rejectBtn.textContent = 'Ã¢Å Ëœ';
+    rejectBtn.textContent = 'x';
     rejectBtn.addEventListener('click', async () => {
       const result = await window.api.friends.respondRequest({ requestId: request.id, action: 'reject' });
       if (!result.ok) {
@@ -488,7 +1213,7 @@ function renderFriendRequests(requests) {
       ui.channelTitle.textContent = 'Friend request rejected.';
     });
 
-    row.append(meta, acceptBtn, rejectBtn);
+    row.append(avatar, meta, acceptBtn, rejectBtn);
     ui.friendRequestsList.appendChild(row);
   }
 }
@@ -496,11 +1221,13 @@ function renderFriendRequests(requests) {
 function openAccountModal() {
   ui.accountUsernameInput.value = state.user?.username || '';
   ui.accountEmailInput.value = state.user?.email || '';
+  ui.accountAvatarInput.value = state.user?.avatar_url || '';
   ui.accountDobInput.value = normalizeDob(state.user?.date_of_birth);
   ui.accountCurrentPasswordInput.value = '';
   ui.accountNewPasswordInput.value = '';
   setAccountFormMessage('');
   animateShowOverlay(ui.accountModal);
+  loadPasskeys().catch(() => {});
 }
 
 function openDobModal() {
@@ -519,6 +1246,145 @@ function closeDobModal() {
   animateHideOverlay(ui.dobModal);
 }
 
+async function maybePromptForAvatar() {
+  if (!state.user || state.avatarPromptShown || String(state.user.avatar_url || '').trim()) {
+    return;
+  }
+  state.avatarPromptShown = true;
+  const shouldOpen = await showConfirmDialog(
+    'Add a Profile Picture',
+    'You do not have a profile picture yet. Open account settings to add one now?',
+    'Open Settings',
+    'Later'
+  );
+  if (shouldOpen) {
+    openAccountModal();
+  }
+}
+
+async function startPasskeyRegistration() {
+  if (!isPasskeySupportedInBrowser()) {
+    setAccountFormMessage('Passkeys need a supported secure browser session.', true);
+    return;
+  }
+
+  const optionsResponse = await window.api.auth.beginPasskeyRegistration();
+  if (!optionsResponse.ok) {
+    setAccountFormMessage(optionsResponse.message || 'Failed to start passkey setup.', true);
+    return;
+  }
+
+  const options = optionsResponse.options || {};
+  try {
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        ...options,
+        challenge: base64UrlToArrayBuffer(options.challenge),
+        user: {
+          ...options.user,
+          id: base64UrlToArrayBuffer(options.user?.id)
+        },
+        excludeCredentials: Array.isArray(options.excludeCredentials)
+          ? options.excludeCredentials.map((item) => ({
+            ...item,
+            id: base64UrlToArrayBuffer(item.id)
+          }))
+          : []
+      }
+    });
+
+    if (!credential || !credential.response || typeof credential.response.getPublicKey !== 'function') {
+      setAccountFormMessage('This browser did not provide the passkey public key. Try a newer browser.', true);
+      return;
+    }
+
+    const verifyResponse = await window.api.auth.finishPasskeyRegistration({
+      id: credential.id,
+      rawId: arrayBufferToBase64Url(credential.rawId),
+      type: credential.type,
+      response: {
+        clientDataJSON: arrayBufferToBase64Url(credential.response.clientDataJSON),
+        authenticatorData: arrayBufferToBase64Url(credential.response.getAuthenticatorData()),
+        publicKey: arrayBufferToBase64Url(credential.response.getPublicKey()),
+        publicKeyAlgorithm: credential.response.getPublicKeyAlgorithm?.() ?? null,
+        transports: credential.response.getTransports?.() || []
+      }
+    });
+
+    if (!verifyResponse.ok) {
+      setAccountFormMessage(verifyResponse.message || 'Failed to save passkey.', true);
+      return;
+    }
+
+    state.passkeys.push(verifyResponse.passkey);
+    renderPasskeys();
+    setAccountFormMessage('Passkey added successfully.');
+  } catch (error) {
+    const message = error?.name === 'NotAllowedError'
+      ? 'Passkey setup was canceled.'
+      : `Passkey setup failed: ${error.message || error}`;
+    setAccountFormMessage(message, error?.name !== 'NotAllowedError');
+  }
+}
+
+async function startPasskeyLogin() {
+  if (!isPasskeySupportedInBrowser()) {
+    setAuthMessage('Passkeys need a supported secure browser session.', true);
+    return;
+  }
+
+  const optionsResponse = await window.api.auth.beginPasskeyLogin();
+  if (!optionsResponse.ok) {
+    setAuthMessage(optionsResponse.message || 'Failed to start passkey sign-in.', true);
+    return;
+  }
+
+  const options = optionsResponse.options || {};
+  try {
+    const credential = await navigator.credentials.get({
+      publicKey: {
+        ...options,
+        challenge: base64UrlToArrayBuffer(options.challenge),
+        allowCredentials: Array.isArray(options.allowCredentials)
+          ? options.allowCredentials.map((item) => ({
+            ...item,
+            id: base64UrlToArrayBuffer(item.id)
+          }))
+          : []
+      }
+    });
+
+    if (!credential) {
+      setAuthMessage('Passkey sign-in was canceled.', true);
+      return;
+    }
+
+    const verifyResponse = await window.api.auth.finishPasskeyLogin({
+      id: credential.id,
+      rawId: arrayBufferToBase64Url(credential.rawId),
+      type: credential.type,
+      response: {
+        clientDataJSON: arrayBufferToBase64Url(credential.response.clientDataJSON),
+        authenticatorData: arrayBufferToBase64Url(credential.response.authenticatorData),
+        signature: arrayBufferToBase64Url(credential.response.signature),
+        userHandle: credential.response.userHandle ? arrayBufferToBase64Url(credential.response.userHandle) : ''
+      }
+    });
+
+    if (!verifyResponse.ok) {
+      setAuthMessage(verifyResponse.message || 'Passkey sign-in failed.', true);
+      return;
+    }
+
+    await completeSignedInState(verifyResponse);
+  } catch (error) {
+    const message = error?.name === 'NotAllowedError'
+      ? 'Passkey sign-in was canceled.'
+      : `Passkey sign-in failed: ${error.message || error}`;
+    setAuthMessage(message, error?.name !== 'NotAllowedError');
+  }
+}
+
 async function enforceDobIfMissing() {
   if (!userNeedsDob(state.user)) {
     state.isDobRequired = false;
@@ -530,7 +1396,7 @@ async function enforceDobIfMissing() {
   return false;
 }
 
-async function openVoiceView(roomLabel, channelId, tokenData) {
+async function openVoiceView(roomLabel, channelId, tokenData, options = {}) {
   const sdk = window.LivekitClient;
   if (!sdk) {
     setVcStatus('Voice SDK failed to load.');
@@ -565,7 +1431,9 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
     });
 
     state.voiceRoom = room;
-    state.activeVoiceChannelId = channelId;
+    state.activeVoiceChannelId = channelId || null;
+    state.activeDmCallUserId = Number(options.dmUserId) || null;
+    state.activeVoiceLabel = roomLabel;
 
     ui.vcRoomTitle.textContent = roomLabel;
     syncVoicePanelVisibility();
@@ -600,6 +1468,8 @@ async function openVoiceView(roomLabel, channelId, tokenData) {
   } catch (error) {
     state.voiceRoom = null;
     state.activeVoiceChannelId = null;
+    state.activeDmCallUserId = null;
+    state.activeVoiceLabel = '';
     syncVoicePanelVisibility();
 
     const iss = tokenData?.debug?.iss ? ` iss=${tokenData.debug.iss}` : '';
@@ -702,12 +1572,14 @@ function setupPasswordToggles() {
 function showLogin() {
   ui.showLoginBtn.classList.add('tab-active');
   ui.showRegisterBtn.classList.remove('tab-active');
+  authTiming.loginShownAt = Date.now();
   switchAuthForms(ui.registerForm, ui.loginForm, 'left');
 }
 
 function showRegister() {
   ui.showRegisterBtn.classList.add('tab-active');
   ui.showLoginBtn.classList.remove('tab-active');
+  authTiming.registerShownAt = Date.now();
   switchAuthForms(ui.loginForm, ui.registerForm, 'right');
 }
 
@@ -838,6 +1710,64 @@ async function handleAuthDeepLinks() {
   }
 }
 
+function getInviteCodeFromLocation() {
+  const pathname = String(window.location.pathname || '');
+  const params = new URLSearchParams(window.location.search || '');
+  const queryInvite = String(params.get('invite') || '').trim();
+  if (queryInvite) {
+    return queryInvite.toUpperCase();
+  }
+
+  const inviteMatch = pathname.match(/^\/invite\/([^/?#]+)/i);
+  if (inviteMatch?.[1]) {
+    return decodeURIComponent(inviteMatch[1]).trim().toUpperCase();
+  }
+
+  return '';
+}
+
+function clearInviteLinkFromLocation() {
+  try {
+    window.history.replaceState({}, '', '/');
+  } catch (_error) {
+  }
+}
+
+async function handlePendingInviteLink() {
+  const inviteCode = getInviteCodeFromLocation();
+  if (!inviteCode) {
+    return;
+  }
+
+  if (!state.user?.id) {
+    openAuth();
+    showLogin();
+    setAuthMessage('Log in or create an account to join this server invite.');
+    return;
+  }
+
+  const result = await window.api.chat.joinByInvite({ code: inviteCode });
+  clearInviteLinkFromLocation();
+
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message || 'Failed to join invite.';
+    await showMessageDialog('Invite Link', result.message || 'Failed to join invite.');
+    return;
+  }
+
+  const joinedServerId = result.server?.id || null;
+  await loadServers(false);
+  if (joinedServerId) {
+    state.selectedServerId = joinedServerId;
+    renderServers();
+    const server = state.servers.find((item) => item.id === joinedServerId);
+    ui.serverTitle.textContent = server ? server.name : 'Channels';
+    await loadChannels(joinedServerId, false);
+  }
+
+  await showMessageDialog('Invite Accepted', `Joined ${result.server?.name || 'the server'}.`);
+}
+
 function openChat() {
   return new Promise((resolve) => {
     ui.authPanel.classList.add('auth-swipe-out');
@@ -929,12 +1859,23 @@ async function performLogout(serverLogout = true) {
   state.serverOptionsServerId = null;
   state.selectedModerationUserId = null;
   state.activeVoiceChannelId = null;
+  state.activeDmCallUserId = null;
+  state.activeVoiceLabel = '';
   state.isDobRequired = false;
+  state.avatarPromptShown = false;
+  state.adminUsers = [];
+  state.selectedAdminUserId = null;
+  state.adminUserDetails = null;
+  state.notifications = [];
+  state.passkeys = [];
+  state.passkeysSupported = false;
 
   ui.serversList.innerHTML = '';
   ui.channelsList.innerHTML = '';
   ui.messagesList.innerHTML = '';
+  syncDmCallButton();
   ui.onlineUsersList.innerHTML = '';
+  renderPasskeys();
   ui.friendsList.innerHTML = '';
   ui.channelTitle.textContent = 'Select a channel';
   ui.serverTitle.textContent = 'Channels';
@@ -950,9 +1891,10 @@ async function performLogout(serverLogout = true) {
 }
 
 function updateChannelCreateButton() {
-  const canCreate = Boolean(state.canCreateChannels && state.selectedServerId);
-  ui.createChannelBtn.style.display = canCreate ? 'inline-flex' : 'none';
-  ui.createInviteBtn.style.display = canCreate ? 'inline-flex' : 'none';
+  const canCreateChannel = Boolean(state.serverPermissions.manage_channels && state.selectedServerId);
+  const canCreateInvite = Boolean(state.serverPermissions.create_invites && state.selectedServerId);
+  ui.createChannelBtn.style.display = canCreateChannel ? 'inline-flex' : 'none';
+  ui.createInviteBtn.style.display = canCreateInvite ? 'inline-flex' : 'none';
 }
 
 function updateMobileDrawers() {
@@ -986,6 +1928,9 @@ function closeServerOptions() {
   state.serverOptionsServerId = null;
   state.serverOptionsTab = 'general';
   state.bannedUsers = [];
+  state.serverRoles = [];
+  state.serverRoleMembers = [];
+  state.selectedRoleId = null;
   ui.serverOptionsMenu.classList.remove('open');
   ui.serverOptionsMenu.classList.add('hidden');
 }
@@ -993,10 +1938,125 @@ function closeServerOptions() {
 function setServerOptionsTab(tabName) {
   state.serverOptionsTab = tabName;
   const generalActive = tabName === 'general';
+  const rolesActive = tabName === 'roles';
   ui.serverTabGeneral.classList.toggle('active', generalActive);
-  ui.serverTabBanned.classList.toggle('active', !generalActive);
+  ui.serverTabRoles.classList.toggle('active', rolesActive);
+  ui.serverTabBanned.classList.toggle('active', tabName === 'banned');
   ui.serverPanelGeneral.classList.toggle('hidden', !generalActive);
-  ui.serverPanelBanned.classList.toggle('hidden', generalActive);
+  ui.serverPanelRoles.classList.toggle('hidden', !rolesActive);
+  ui.serverPanelBanned.classList.toggle('hidden', tabName !== 'banned');
+}
+
+function getRoleEditorPermissions() {
+  return {
+    manage_server: ui.permManageServer.checked,
+    manage_roles: ui.permManageRoles.checked,
+    manage_channels: ui.permManageChannels.checked,
+    create_invites: ui.permCreateInvites.checked,
+    moderate_members: ui.permModerateMembers.checked
+  };
+}
+
+function setRoleEditor(role) {
+  const permissions = role?.permissions || {};
+  ui.roleNameInput.value = role?.name || '';
+  ui.permManageServer.checked = Boolean(permissions.manage_server);
+  ui.permManageRoles.checked = Boolean(permissions.manage_roles);
+  ui.permManageChannels.checked = Boolean(permissions.manage_channels);
+  ui.permCreateInvites.checked = Boolean(permissions.create_invites);
+  ui.permModerateMembers.checked = Boolean(permissions.moderate_members);
+
+  const canManage = Boolean(state.serverPermissions.manage_roles);
+  ui.createRoleBtn.disabled = !canManage;
+  const isDefault = Boolean(role?.is_default);
+  ui.roleNameInput.disabled = !canManage || isDefault;
+  ui.permManageServer.disabled = !canManage;
+  ui.permManageRoles.disabled = !canManage;
+  ui.permManageChannels.disabled = !canManage;
+  ui.permCreateInvites.disabled = !canManage;
+  ui.permModerateMembers.disabled = !canManage;
+  ui.saveRoleBtn.disabled = !canManage || !role;
+  ui.deleteRoleBtn.disabled = !canManage || !role || isDefault;
+}
+
+function renderRoleMembers() {
+  ui.roleMembersList.innerHTML = '';
+  const role = state.serverRoles.find((item) => item.id === state.selectedRoleId);
+  if (!role) {
+    return;
+  }
+
+  for (const member of state.serverRoleMembers) {
+    const row = document.createElement('div');
+    row.className = 'role-member-row';
+    const label = document.createElement('div');
+    label.className = 'role-member-name';
+    label.textContent = member.username;
+
+    const toggle = document.createElement('button');
+    const hasRole = (member.role_ids || []).includes(role.id);
+    toggle.type = 'button';
+    toggle.textContent = hasRole ? 'Remove' : 'Add';
+    toggle.disabled = !state.serverPermissions.manage_roles || role.is_default || member.is_owner;
+    toggle.addEventListener('click', async () => {
+      const result = await window.api.roles.setMemberRole({
+        serverId: state.serverOptionsServerId,
+        roleId: role.id,
+        targetUserId: member.id,
+        enabled: !hasRole
+      });
+      if (!result.ok) {
+        ui.channelTitle.textContent = result.message;
+        return;
+      }
+      await loadRolesState();
+    });
+
+    row.append(label, toggle);
+    ui.roleMembersList.appendChild(row);
+  }
+}
+
+function renderRoles() {
+  ui.rolesList.innerHTML = '';
+  for (const role of state.serverRoles) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = role.name;
+    button.className = role.id === state.selectedRoleId ? 'active' : '';
+    button.addEventListener('click', () => {
+      state.selectedRoleId = role.id;
+      setRoleEditor(role);
+      renderRoles();
+      renderRoleMembers();
+    });
+    ui.rolesList.appendChild(button);
+  }
+  const selectedRole = state.serverRoles.find((item) => item.id === state.selectedRoleId) || null;
+  setRoleEditor(selectedRole);
+  renderRoleMembers();
+}
+
+async function loadRolesState() {
+  if (!state.serverOptionsServerId) {
+    return;
+  }
+  const result = await window.api.roles.getState({ serverId: state.serverOptionsServerId });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+  state.serverPermissions = result.permissions || state.serverPermissions;
+  state.serverRoles = result.roles || [];
+  state.serverRoleMembers = (result.members || []).map((member) => ({
+    ...member,
+    role_ids: member.role_ids || [],
+    is_owner: member.id === state.servers.find((server) => server.id === state.serverOptionsServerId)?.owner_user_id
+  }));
+  if (!state.selectedRoleId || !state.serverRoles.some((role) => role.id === state.selectedRoleId)) {
+    state.selectedRoleId = state.serverRoles[0]?.id || null;
+  }
+  renderRoles();
 }
 
 function renderBannedUsers() {
@@ -1067,7 +2127,9 @@ function openServerOptions(serverId, buttonElement) {
   setServerOptionsTab('general');
   const selected = state.servers.find((s) => s.id === serverId);
   ui.serverNameInput.value = selected?.name || '';
-  loadBannedUsers();
+  ui.serverNameInput.disabled = !state.serverPermissions.manage_server;
+  ui.saveServerNameBtn.disabled = !state.serverPermissions.manage_server;
+  loadRolesState();
   const serverColumnRect = ui.serversList.closest('.servers-column').getBoundingClientRect();
   const buttonRect = buttonElement.getBoundingClientRect();
 
@@ -1084,6 +2146,9 @@ function openServerOptions(serverId, buttonElement) {
 
 function openUserOptions(userId, buttonElement) {
   state.selectedModerationUserId = userId;
+  ui.reportUserBtn?.classList.remove('hidden');
+  ui.kickUserBtn?.classList.toggle('hidden', !state.serverPermissions.moderate_members);
+  ui.banUserBtn?.classList.toggle('hidden', !state.serverPermissions.moderate_members);
   const presenceColumnRect = ui.onlineUsersList.closest('.presence-column').getBoundingClientRect();
   const buttonRect = buttonElement.getBoundingClientRect();
 
@@ -1155,6 +2220,35 @@ async function joinVoiceChannel(channel) {
 
   ui.channelTitle.textContent = `VC: ${channel.name}`;
   await openVoiceView(`Voice Channel: ${channel.name}`, channel.id, result);
+}
+
+async function startPersonalCall(partnerUserId, partnerUsername, joinOnly = false) {
+  if (!partnerUserId) {
+    ui.channelTitle.textContent = 'Select someone to call first.';
+    return;
+  }
+
+  const connectionState = String(state.voiceRoom?.state || state.voiceRoom?.connectionState || '').toLowerCase();
+  const isConnected = connectionState.includes('connected');
+  if (state.voiceRoom && state.activeDmCallUserId === partnerUserId && isConnected) {
+    ui.channelTitle.textContent = `@ ${partnerUsername}`;
+    syncVoicePanelVisibility();
+    return;
+  }
+  if (state.voiceRoom && !isConnected) {
+    leaveVoiceView(false);
+  }
+
+  const fn = joinOnly ? window.api.dm.joinCall : window.api.dm.startCall;
+  const result = await fn({ partnerUserId });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+
+  const label = `Personal Call: ${partnerUsername || result.partner?.username || 'User'}`;
+  ui.channelTitle.textContent = `@ ${partnerUsername || result.partner?.username || 'User'}`;
+  await openVoiceView(label, null, result, { dmUserId: partnerUserId });
 }
 
 async function toggleVoiceMute() {
@@ -1239,13 +2333,37 @@ async function ensureRealtime(token) {
     }
 
     if (payload.type === 'friends-changed' || payload.type === 'friend-requests-changed') {
+      if (payload.type === 'friend-requests-changed') {
+        notifyUser('Friend Request Update', 'You have a new or updated friend request.');
+      }
       await loadFriends();
     }
 
-    if (payload.type === 'dm-message-created' && state.selectedDmUser) {
-      if (payload.fromUserId === state.selectedDmUser.id || payload.fromUserId === state.currentUserId) {
+    if (payload.type === 'dm-message-created') {
+      if (payload.fromUserId && payload.fromUserId !== state.currentUserId) {
+        const friend = state.friends.find((entry) => entry.id === payload.fromUserId);
+        notifyUser('Direct Message', `${friend?.username || 'Someone'} sent you a DM.`);
+      }
+      if (state.selectedDmUser && (payload.fromUserId === state.selectedDmUser.id || payload.fromUserId === state.currentUserId)) {
         await loadDmMessages(state.selectedDmUser.id, state.selectedDmUser.username);
       }
+    }
+
+    if (payload.type === 'dm-call-started' && payload.fromUserId && payload.fromUserId !== state.currentUserId) {
+      const callerName = payload.fromUsername || 'Someone';
+      notifyUser('Incoming Call', `${callerName} is calling you.`);
+      const accepted = await showConfirmDialog(
+        'Incoming Personal Call',
+        `${callerName} is calling you. Join now?`,
+        'Join',
+        'Ignore'
+      );
+      if (!accepted) {
+        return;
+      }
+
+      await loadDmMessages(payload.fromUserId, callerName);
+      await startPersonalCall(payload.fromUserId, callerName, true);
     }
 
     if (
@@ -1255,6 +2373,9 @@ async function ensureRealtime(token) {
       state.selectedChannelId === payload.channelId
     ) {
       await loadMessages(state.selectedChannelId);
+    }
+    if (payload.type === 'message-created' && payload.message?.user_id !== state.currentUserId && state.selectedChannelId !== payload.channelId) {
+      notifyUser('New Channel Message', `${payload.message?.username || 'Someone'} sent a message in another channel.`);
     }
   };
 
@@ -1269,12 +2390,15 @@ function renderMessages(messages) {
   for (const msg of messages) {
     const wrapper = document.createElement('div');
     wrapper.className = `msg ${msg.user_id === state.currentUserId ? 'me' : ''}`;
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+    const avatar = createAvatarElement(msg);
 
     const meta = document.createElement('div');
     meta.className = 'msg-meta';
 
     const title = document.createElement('span');
-    title.textContent = `${msg.username} Ã¢â‚¬Â¢ ${formatTime(msg.created_at)}`;
+    title.textContent = `${msg.username} - ${formatTime(msg.created_at)}`;
     meta.appendChild(title);
 
     if (msg.user_id === state.currentUserId) {
@@ -1334,7 +2458,10 @@ function renderMessages(messages) {
     const body = document.createElement('div');
     body.textContent = msg.content;
 
-    wrapper.append(meta, body);
+    const content = document.createElement('div');
+    content.append(meta, body);
+    row.append(avatar, content);
+    wrapper.append(row);
     ui.messagesList.appendChild(wrapper);
   }
 
@@ -1360,10 +2487,15 @@ async function loadDmMessages(partnerUserId, partnerUsername) {
     return;
   }
 
-  state.selectedDmUser = { id: partnerUserId, username: partnerUsername || response.partner?.username || 'User' };
+  state.selectedDmUser = {
+    id: partnerUserId,
+    username: partnerUsername || response.partner?.username || 'User',
+    avatar_url: response.partner?.avatar_url || ''
+  };
   state.selectedChannelId = null;
   state.currentUserId = response.currentUserId;
   ui.channelTitle.textContent = `@ ${state.selectedDmUser.username}`;
+  syncDmCallButton();
   renderMessages(response.messages || []);
   syncVoicePanelVisibility();
 }
@@ -1383,6 +2515,7 @@ function renderChannels() {
     button.addEventListener('click', async () => {
       state.selectedChannelId = channel.id;
       state.selectedDmUser = null;
+      syncDmCallButton();
       renderChannels();
       if (channelType === 'voice') {
         state.subscribedChannelId = null;
@@ -1408,6 +2541,13 @@ async function loadChannels(serverId, resetSelection = true) {
   if (!response.ok) {
     ui.channelTitle.textContent = response.message;
     state.canCreateChannels = false;
+    state.serverPermissions = {
+      manage_server: false,
+      manage_roles: false,
+      manage_channels: false,
+      create_invites: false,
+      moderate_members: false
+    };
     updateChannelCreateButton();
     return;
   }
@@ -1418,6 +2558,7 @@ async function loadChannels(serverId, resetSelection = true) {
     type: String(channel.type || 'text').toLowerCase()
   }));
   state.canCreateChannels = Boolean(response.canCreateChannels);
+  state.serverPermissions = response.permissions || state.serverPermissions;
   updateChannelCreateButton();
 
   if (resetSelection) {
@@ -1431,6 +2572,7 @@ async function loadChannels(serverId, resetSelection = true) {
 
   if (state.selectedChannelId) {
     state.selectedDmUser = null;
+    syncDmCallButton();
     const selected = getSelectedChannel();
     if (selected?.type === 'voice') {
       ui.channelTitle.textContent = `VC: ${selected.name}`;
@@ -1454,6 +2596,7 @@ function attachServerButtonInteractions(button, serverId) {
   const selectServer = async () => {
     state.selectedServerId = serverId;
     state.selectedDmUser = null;
+    syncDmCallButton();
     closeServerOptions();
     closeUserOptions();
     renderServers();
@@ -1549,6 +2692,13 @@ async function loadServers(resetSelection = true) {
     ui.channelsList.innerHTML = '';
     ui.messagesList.innerHTML = '';
     state.canCreateChannels = false;
+    state.serverPermissions = {
+      manage_server: false,
+      manage_roles: false,
+      manage_channels: false,
+      create_invites: false,
+      moderate_members: false
+    };
     updateChannelCreateButton();
     await loadServerPresence(null);
   }
@@ -1563,7 +2713,14 @@ function renderOnlineUsers() {
     const item = document.createElement('li');
     const button = document.createElement('button');
     button.type = 'button';
-    button.innerHTML = `<span class="status-dot ${user.online ? 'online' : 'offline'}"></span>${user.username}`;
+    const status = document.createElement('span');
+    status.className = `status-dot ${user.online ? 'online' : 'offline'}`;
+    const avatar = createAvatarElement(user);
+    const label = document.createElement('span');
+    label.className = 'list-user-label';
+    label.textContent = user.username;
+    button.classList.add('list-user-button');
+    button.append(status, avatar, label);
     let suppressClickOnce = false;
     button.addEventListener('click', async () => {
       if (suppressClickOnce) {
@@ -1576,37 +2733,35 @@ function renderOnlineUsers() {
       }
     });
 
-    if (state.canCreateChannels) {
-      button.addEventListener('contextmenu', (event) => {
-        event.preventDefault();
+    button.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      openUserOptions(user.id, button);
+    });
+
+    let holdTimer = null;
+
+    button.addEventListener('touchstart', () => {
+      holdTimer = setTimeout(() => {
         openUserOptions(user.id, button);
-      });
+        suppressClickOnce = true;
+      }, 500);
+    }, { passive: true });
 
-      let holdTimer = null;
+    const cancelHold = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+    };
 
-      button.addEventListener('touchstart', () => {
-        holdTimer = setTimeout(() => {
-          openUserOptions(user.id, button);
-          suppressClickOnce = true;
-        }, 500);
-      }, { passive: true });
-
-      const cancelHold = () => {
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
-      };
-
-      button.addEventListener('touchend', () => {
-        cancelHold();
-        if (suppressClickOnce) {
-          suppressClickOnce = false;
-        }
-      }, { passive: true });
-      button.addEventListener('touchmove', cancelHold, { passive: true });
-      button.addEventListener('touchcancel', cancelHold, { passive: true });
-    }
+    button.addEventListener('touchend', () => {
+      cancelHold();
+      if (suppressClickOnce) {
+        suppressClickOnce = false;
+      }
+    }, { passive: true });
+    button.addEventListener('touchmove', cancelHold, { passive: true });
+    button.addEventListener('touchcancel', cancelHold, { passive: true });
 
     item.appendChild(button);
     ui.onlineUsersList.appendChild(item);
@@ -1619,7 +2774,14 @@ function renderFriends() {
     const item = document.createElement('li');
     const button = document.createElement('button');
     button.type = 'button';
-    button.innerHTML = `<span class="status-dot ${friend.online ? 'online' : 'offline'}"></span>${friend.username}`;
+    const status = document.createElement('span');
+    status.className = `status-dot ${friend.online ? 'online' : 'offline'}`;
+    const avatar = createAvatarElement(friend);
+    const label = document.createElement('span');
+    label.className = 'list-user-label';
+    label.textContent = friend.username;
+    button.classList.add('list-user-button');
+    button.append(status, avatar, label);
     button.addEventListener('click', async () => {
       await loadDmMessages(friend.id, friend.username);
       if (window.innerWidth <= 700) {
@@ -1646,6 +2808,8 @@ async function loadServerPresence(serverId) {
   }
 
   state.onlineUsers = result.users || [];
+  state.serverPermissions = result.permissions || state.serverPermissions;
+  updateChannelCreateButton();
   renderOnlineUsers();
 }
 
@@ -1703,9 +2867,38 @@ ui.verifyTokenBtn.addEventListener('click', async () => {
   setAuthMessage(result.message || (result.ok ? 'Email verified successfully.' : 'Failed to verify email.'), !result.ok);
 });
 ui.serverTabGeneral.addEventListener('click', () => setServerOptionsTab('general'));
+ui.serverTabRoles.addEventListener('click', async () => {
+  setServerOptionsTab('roles');
+  await loadRolesState();
+});
 ui.serverTabBanned.addEventListener('click', async () => {
   setServerOptionsTab('banned');
   await loadBannedUsers();
+});
+ui.notificationsBtn?.addEventListener('click', openNotificationsModal);
+ui.notificationsCloseBtn?.addEventListener('click', closeNotificationsModal);
+ui.notificationsModal?.addEventListener('click', (event) => {
+  if (event.target === ui.notificationsModal) {
+    closeNotificationsModal();
+  }
+});
+ui.notificationsEnableBtn?.addEventListener('click', async () => {
+  if (typeof Notification === 'undefined') {
+    ui.channelTitle.textContent = 'Browser notifications are not available here.';
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    ui.channelTitle.textContent = permission === 'granted'
+      ? 'Browser notifications enabled.'
+      : 'Browser notifications were not enabled.';
+  } catch (_error) {
+    ui.channelTitle.textContent = 'Could not enable browser notifications.';
+  }
+});
+ui.notificationsClearBtn?.addEventListener('click', () => {
+  state.notifications = [];
+  renderNotifications();
 });
 ui.mobileServersToggle.addEventListener('click', toggleMobileServersDrawer);
 ui.mobileUsersToggle.addEventListener('click', toggleMobileUsersDrawer);
@@ -1827,6 +3020,83 @@ ui.saveServerNameBtn.addEventListener('click', async () => {
   ui.channelTitle.textContent = 'Server renamed.';
 });
 
+ui.createRoleBtn.addEventListener('click', async () => {
+  if (!state.serverOptionsServerId) {
+    return;
+  }
+  const name = await showPromptDialog('Create Role', 'Role name:');
+  if (!name) {
+    return;
+  }
+  const result = await window.api.roles.create({ serverId: state.serverOptionsServerId, name });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+  await loadRolesState();
+});
+
+ui.saveRoleBtn.addEventListener('click', async () => {
+  if (!state.serverOptionsServerId || !state.selectedRoleId) {
+    return;
+  }
+  const result = await window.api.roles.update({
+    serverId: state.serverOptionsServerId,
+    roleId: state.selectedRoleId,
+    name: ui.roleNameInput.value.trim(),
+    permissions: getRoleEditorPermissions()
+  });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+  await loadRolesState();
+});
+
+ui.deleteRoleBtn.addEventListener('click', async () => {
+  if (!state.serverOptionsServerId || !state.selectedRoleId) {
+    return;
+  }
+  const confirmed = await showConfirmDialog('Delete Role', 'Delete this role?', 'Delete', 'Cancel');
+  if (!confirmed) {
+    return;
+  }
+  const result = await window.api.roles.delete({
+    serverId: state.serverOptionsServerId,
+    roleId: state.selectedRoleId
+  });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+  await loadRolesState();
+});
+
+ui.reportUserBtn?.addEventListener('click', async () => {
+  const targetUserId = state.selectedModerationUserId;
+  if (!targetUserId) {
+    return;
+  }
+
+  const reason = await showPromptDialog('Report User', 'What happened? Please include a short reason:', '');
+  if (!reason) {
+    return;
+  }
+
+  const result = await window.api.reports.createUserReport({
+    targetUserId,
+    serverId: state.selectedServerId || null,
+    reason
+  });
+  if (!result.ok) {
+    ui.channelTitle.textContent = result.message;
+    return;
+  }
+
+  closeUserOptions();
+  ui.channelTitle.textContent = 'User reported to the admins.';
+});
+
 ui.kickUserBtn.addEventListener('click', async () => {
   const targetUserId = state.selectedModerationUserId;
   if (!targetUserId || !state.selectedServerId) {
@@ -1887,10 +3157,38 @@ ui.accountMyAccountBtn.addEventListener('click', () => {
   openAccountModal();
 });
 
+ui.addPasskeyBtn?.addEventListener('click', async () => {
+  await startPasskeyRegistration();
+});
+
+ui.accountAdminBtn?.addEventListener('click', async () => {
+  closeAccountSettingsMenu();
+  openAdminModal();
+  await loadAdminUsers(ui.adminSearchInput.value.trim());
+});
+
 ui.accountModalCloseBtn.addEventListener('click', closeAccountModal);
 ui.accountModal.addEventListener('click', (event) => {
   if (event.target === ui.accountModal) {
     closeAccountModal();
+  }
+});
+
+ui.adminModalCloseBtn?.addEventListener('click', closeAdminModal);
+ui.adminModal?.addEventListener('click', (event) => {
+  if (event.target === ui.adminModal) {
+    closeAdminModal();
+  }
+});
+
+ui.adminSearchBtn?.addEventListener('click', async () => {
+  await loadAdminUsers(ui.adminSearchInput.value.trim());
+});
+
+ui.adminSearchInput?.addEventListener('keydown', async (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    await loadAdminUsers(ui.adminSearchInput.value.trim());
   }
 });
 
@@ -1905,6 +3203,7 @@ ui.accountForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const username = ui.accountUsernameInput.value.trim();
   const email = ui.accountEmailInput.value.trim().toLowerCase();
+  const avatarUrl = ui.accountAvatarInput.value.trim();
   const dateOfBirth = normalizeDob(ui.accountDobInput.value);
   const currentPassword = ui.accountCurrentPasswordInput.value;
   const newPassword = ui.accountNewPasswordInput.value;
@@ -1926,6 +3225,7 @@ ui.accountForm.addEventListener('submit', async (event) => {
   const response = await window.api.auth.updateAccount({
     username,
     email,
+    avatarUrl,
     dateOfBirth,
     currentPassword,
     newPassword
@@ -1944,6 +3244,9 @@ ui.accountForm.addEventListener('submit', async (event) => {
     closeDobModal();
   }
   setAccountFormMessage(response.message || 'Account updated.');
+  if (String(state.user?.avatar_url || '').trim()) {
+    state.avatarPromptShown = true;
+  }
   ui.accountCurrentPasswordInput.value = '';
   ui.accountNewPasswordInput.value = '';
 });
@@ -2021,11 +3324,23 @@ ui.vcDeafenBtn.addEventListener('click', async () => {
 });
 
 ui.vcCloseBtn.addEventListener('click', () => {
+  const activeDmCallUserId = state.activeDmCallUserId;
   leaveVoiceView();
+  if (activeDmCallUserId && state.selectedDmUser?.id === activeDmCallUserId) {
+    ui.channelTitle.textContent = `@ ${state.selectedDmUser.username} (call ended)`;
+    return;
+  }
   const selected = getSelectedChannel();
   if (selected?.type === 'voice') {
     ui.channelTitle.textContent = `VC: ${selected.name} (left)`;
   }
+});
+
+ui.dmCallBtn?.addEventListener('click', async () => {
+  if (!state.selectedDmUser) {
+    return;
+  }
+  await startPersonalCall(state.selectedDmUser.id, state.selectedDmUser.username);
 });
 
 ui.createServerBtn.addEventListener('click', async () => {
@@ -2070,7 +3385,7 @@ ui.friendRequestsBtn.addEventListener('click', async () => {
 });
 
 ui.joinInviteBtn.addEventListener('click', async () => {
-  const codeInput = await showPromptDialog('Join by Invite', 'Enter invite code:');
+  const codeInput = await showPromptDialog('Join by Invite', 'Enter invite code or paste an invite link:');
   if (!codeInput) {
     return;
   }
@@ -2097,8 +3412,8 @@ ui.createInviteBtn.addEventListener('click', async () => {
     ui.channelTitle.textContent = 'Select a server first.';
     return;
   }
-  if (!state.canCreateChannels) {
-    ui.channelTitle.textContent = 'Only the server owner can create invites.';
+  if (!state.serverPermissions.create_invites) {
+    ui.channelTitle.textContent = 'You do not have permission to create invites.';
     return;
   }
 
@@ -2108,14 +3423,19 @@ ui.createInviteBtn.addEventListener('click', async () => {
     return;
   }
 
+  const inviteUrl = result.invite?.url || '';
   const code = result.invite?.code || '';
-  if (code && navigator.clipboard?.writeText) {
+  const clipboardValue = inviteUrl || code;
+  if (clipboardValue && navigator.clipboard?.writeText) {
     try {
-      await navigator.clipboard.writeText(code);
+      await navigator.clipboard.writeText(clipboardValue);
     } catch (_error) {
     }
   }
-  await showMessageDialog('Invite Code', `Invite code: ${code}${code ? '\n(Copied to clipboard when possible.)' : ''}`);
+  await showMessageDialog(
+    'Server Invite Link',
+    `${inviteUrl ? `Invite link: ${inviteUrl}\n\n` : ''}Invite code: ${code}${clipboardValue ? '\n\n(Copied to clipboard when possible.)' : ''}`
+  );
 });
 
   ui.createChannelBtn.addEventListener('click', async () => {
@@ -2123,8 +3443,8 @@ ui.createInviteBtn.addEventListener('click', async () => {
     ui.channelTitle.textContent = 'Select a server first.';
     return;
   }
-  if (!state.canCreateChannels) {
-    ui.channelTitle.textContent = 'Only the server owner can create channels.';
+  if (!state.serverPermissions.manage_channels) {
+    ui.channelTitle.textContent = 'You do not have permission to create channels.';
     return;
   }
 
@@ -2159,7 +3479,9 @@ ui.loginForm.addEventListener('submit', async (event) => {
 
   const result = await window.api.auth.login({
     email: ui.loginEmail.value,
-    password: ui.loginPassword.value
+    password: ui.loginPassword.value,
+    company: ui.loginCompany?.value || '',
+    clientElapsedMs: Math.max(0, Date.now() - authTiming.loginShownAt)
   });
 
   if (!result.ok) {
@@ -2167,16 +3489,11 @@ ui.loginForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  state.user = result.user;
-  renderAccountPanel();
-  setAuthMessage('');
-  await openChat();
-  await enforceDobIfMissing();
-  await loadServers();
-  await loadFriends();
-  if (result.realtimeToken) {
-    await ensureRealtime(result.realtimeToken);
-  }
+  await completeSignedInState(result);
+});
+
+ui.loginPasskeyBtn?.addEventListener('click', async () => {
+  await startPasskeyLogin();
 });
 
 async function fetchLegalDoc(path) {
@@ -2185,7 +3502,7 @@ async function fetchLegalDoc(path) {
     return fn ? await fn() : null;
   }
   try {
-    const base = typeof location !== 'undefined' && location.protocol === 'file:' ? (localStorage?.getItem('jellochat_api_base') || 'http://localhost:3000') : '';
+    const base = typeof location !== 'undefined' && location.protocol === 'file:' ? (localStorage?.getItem('jellochat_api_base') || 'https://chat.jellodog.com') : '';
     const res = await fetch(`${base}/api/legal/${path}`);
     return await res.json();
   } catch (e) {
@@ -2221,7 +3538,7 @@ function getPublicPageUrl(pathname) {
   if (typeof location !== 'undefined' && location.protocol !== 'file:') {
     return pathname;
   }
-  const base = String(localStorage?.getItem('jellochat_api_base') || 'http://localhost:3000').trim().replace(/\/+$/, '');
+  const base = String(localStorage?.getItem('jellochat_api_base') || 'https://chat.jellodog.com').trim().replace(/\/+$/, '');
   return `${base}${pathname}`;
 }
 
@@ -2255,7 +3572,9 @@ ui.registerForm.addEventListener('submit', async (event) => {
     username: ui.registerUsername.value,
     email: ui.registerEmail.value,
     password: ui.registerPassword.value,
-    dateOfBirth
+    dateOfBirth,
+    website: ui.registerWebsite?.value || '',
+    clientElapsedMs: Math.max(0, Date.now() - authTiming.registerShownAt)
   });
 
   if (!result.ok) {
@@ -2269,16 +3588,7 @@ ui.registerForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  state.user = result.user;
-  renderAccountPanel();
-  setAuthMessage('');
-  await openChat();
-  await enforceDobIfMissing();
-  await loadServers();
-  await loadFriends();
-  if (result.realtimeToken) {
-    await ensureRealtime(result.realtimeToken);
-  }
+  await completeSignedInState(result);
 });
 
 ui.messageForm.addEventListener('submit', async (event) => {
@@ -2338,6 +3648,7 @@ updateMobileDrawers();
 closeServerOptions();
 closeUserOptions();
 closeAccountSettingsMenu();
+syncDmCallButton();
 renderAccountPanel();
 updateVoiceButtons();
 setVcStatus('Not connected');
@@ -2345,6 +3656,70 @@ renderVoiceParticipants();
 setupPasswordToggles();
 closeDobModal();
 showLogin();
+
+function normalizeUiArtifactsInText(value) {
+  return String(value || '')
+    .replace(/ÃƒÂ¢Ã…Â Ã‹Å“/g, 'x')
+    .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢|Â·/g, '-');
+}
+
+function normalizeBrokenUiText(value) {
+  return String(value || '')
+    .replace(/(?:Ã¢Å Ëœ|ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â Ãƒâ€¹Ã…â€œ)/g, 'x')
+    .replace(/(?:Ã¢â‚¬Â¢|ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢|Ã‚Â·)/g, '-');
+}
+
+function sanitizeTextUiArtifacts(root = document.body) {
+  if (!root || root.nodeType !== Node.ELEMENT_NODE) {
+    return;
+  }
+
+  const textTargets = [root, ...root.querySelectorAll('*')];
+  for (const element of textTargets) {
+    if (element.children.length === 0 && element.textContent) {
+      const normalized = normalizeBrokenUiText(element.textContent);
+      if (normalized !== element.textContent) {
+        element.textContent = normalized;
+      }
+    }
+  }
+}
+
+sanitizeTextUiArtifacts();
+renderPasskeys();
+
+const textUiObserver = new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    if (mutation.type === 'characterData') {
+      const normalized = normalizeBrokenUiText(mutation.target.textContent);
+      if (normalized !== mutation.target.textContent) {
+        mutation.target.textContent = normalized;
+      }
+      continue;
+    }
+
+    for (const node of mutation.addedNodes) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const normalized = normalizeBrokenUiText(node.textContent);
+        if (normalized !== node.textContent) {
+          node.textContent = normalized;
+        }
+        continue;
+      }
+
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        sanitizeTextUiArtifacts(node);
+      }
+    }
+  }
+});
+
+textUiObserver.observe(document.body, {
+  childList: true,
+  characterData: true,
+  subtree: true
+});
+
 
 handleAuthDeepLinks().catch(() => {});
 
@@ -2362,16 +3737,7 @@ handleAuthDeepLinks().catch(() => {});
       return;
     }
 
-    state.user = result.user;
-    renderAccountPanel();
-    setAuthMessage('');
-    await openChat();
-    await enforceDobIfMissing();
-    await loadServers();
-    await loadFriends();
-    if (result.realtimeToken) {
-      await ensureRealtime(result.realtimeToken);
-    }
+    await completeSignedInState(result);
   } catch (_error) {
   }
 })();

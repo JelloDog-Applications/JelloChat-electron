@@ -7,6 +7,7 @@
   const TOKEN_KEY = 'jellochat_token';
   const REMEMBER_KEY = 'jellochat_remember';
   const API_BASE_KEY = 'jellochat_api_base';
+  const DEFAULT_API_BASE = 'https://chat.jellodog.com';
 
   function getToken() {
     return localStorage.getItem(TOKEN_KEY);
@@ -41,9 +42,8 @@
     if (location.protocol !== 'file:') {
       return '';
     }
-    // Android emulator default bridge to host machine.
     const fromStorage = localStorage.getItem(API_BASE_KEY);
-    return fromStorage || 'http://10.0.2.2:3000';
+    return fromStorage || DEFAULT_API_BASE;
   }
 
   async function request(method, path, body) {
@@ -60,7 +60,7 @@
     });
 
     const payload = await response.json();
-    if ((path === '/api/auth/login' || path === '/api/auth/register') && payload?.ok && payload?.realtimeToken) {
+    if ((path === '/api/auth/login' || path === '/api/auth/register' || path === '/api/auth/passkeys/login/verify') && payload?.ok && payload?.realtimeToken) {
       if (shouldRemember()) {
         setToken(payload.realtimeToken);
       }
@@ -95,6 +95,12 @@
       register: (payload) => request('POST', '/api/auth/register', payload),
       login: (payload) => request('POST', '/api/auth/login', payload),
       getSession: () => request('GET', '/api/auth/session'),
+      getPasskeys: () => request('GET', '/api/auth/passkeys'),
+      beginPasskeyRegistration: () => request('POST', '/api/auth/passkeys/register/options'),
+      finishPasskeyRegistration: (payload) => request('POST', '/api/auth/passkeys/register/verify', payload),
+      beginPasskeyLogin: () => request('POST', '/api/auth/passkeys/login/options'),
+      finishPasskeyLogin: (payload) => request('POST', '/api/auth/passkeys/login/verify', payload),
+      deletePasskey: (payload) => request('DELETE', `/api/auth/passkeys/${payload.passkeyId}`),
       setRemember,
       getRemember: shouldRemember,
       logout: () => request('POST', '/api/auth/logout'),
@@ -126,11 +132,31 @@
     },
     dm: {
       getMessages: (payload) => request('GET', `/api/dm/${payload.partnerUserId}/messages`),
-      sendMessage: (payload) => request('POST', `/api/dm/${payload.partnerUserId}/messages`, payload)
+      sendMessage: (payload) => request('POST', `/api/dm/${payload.partnerUserId}/messages`, payload),
+      startCall: (payload) => request('POST', `/api/dm/${payload.partnerUserId}/call/start`, payload),
+      joinCall: (payload) => request('POST', `/api/dm/${payload.partnerUserId}/call/join`, payload)
     },
     vc: {
       getToken: (payload) => request('POST', '/api/vc/token', payload),
       getParticipants: (payload) => request('POST', '/api/vc/participants', payload)
+    },
+    roles: {
+      getState: (payload) => request('GET', `/api/chat/servers/${payload.serverId}/roles`),
+      create: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/roles`, payload),
+      update: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/roles/${payload.roleId}`, payload),
+      delete: (payload) => request('DELETE', `/api/chat/servers/${payload.serverId}/roles/${payload.roleId}`),
+      setMemberRole: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/roles/${payload.roleId}/members`, payload)
+    },
+    admin: {
+      listUsers: (payload) => request('POST', '/api/admin/users/search', payload),
+      getUserDetails: (payload) => request('GET', `/api/admin/users/${payload.userId}`),
+      getServerView: (payload) => request('GET', `/api/admin/servers/${payload.serverId}`),
+      updateUser: (payload) => request('POST', `/api/admin/users/${payload.userId}`, payload),
+      deleteUser: (payload) => request('DELETE', `/api/admin/users/${payload.userId}`),
+      deleteServer: (payload) => request('DELETE', `/api/admin/servers/${payload.serverId}`)
+    },
+    reports: {
+      createUserReport: (payload) => request('POST', '/api/reports/users', payload)
     },
     friends: {
       list: () => request('GET', '/api/friends'),

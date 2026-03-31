@@ -116,6 +116,14 @@ body {
   width: 100%;
 }
 
+.bot-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
 .auth-form.auth-anim-out-left {
   animation: authFormOutLeft 170ms ease forwards;
 }
@@ -315,6 +323,17 @@ body {
   background: var(--accent-dark);
 }
 
+#login-passkey-btn {
+  margin-top: 0;
+  background: #2d3441;
+  color: var(--text);
+  border: 1px solid #4a5368;
+}
+
+#login-passkey-btn:hover {
+  background: #3a4255;
+}
+
 .auth-hidden,
 .hidden {
   display: none;
@@ -466,6 +485,19 @@ body {
   align-items: center;
 }
 
+.messages-header {
+  gap: 8px;
+}
+
+.messages-header h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mobile-drawer-toggle {
   display: none;
   border: none;
@@ -541,6 +573,9 @@ body {
   background: #3a4153;
   color: var(--text);
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .list button:hover {
@@ -563,6 +598,47 @@ body {
   padding: 8px 10px;
 }
 
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4ec9a6, #2d8d74);
+  color: #0c1a16;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-lg {
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+}
+
+.list-user-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-user-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .compact-list button {
   width: 100%;
   text-align: left;
@@ -571,6 +647,9 @@ body {
   color: var(--text);
   cursor: pointer;
   padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .compact-list button:hover {
@@ -737,6 +816,13 @@ body {
   background: #2f5d50;
 }
 
+.msg-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
 .msg-meta {
   color: var(--muted);
   font-size: 12px;
@@ -745,6 +831,13 @@ body {
   justify-content: space-between;
   gap: 8px;
   align-items: center;
+}
+
+.msg-meta span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .msg-actions {
@@ -804,7 +897,7 @@ body {
 .server-options-menu {
   position: absolute;
   z-index: 60;
-  width: 340px;
+  width: 420px;
   background: #2d3441;
   border: 1px solid #4a5368;
   border-radius: 10px;
@@ -839,7 +932,7 @@ body {
 
 .server-options-tabs {
   float: left;
-  width: 88px;
+  width: 96px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -859,8 +952,52 @@ body {
 }
 
 .server-options-content {
-  margin-left: 98px;
+  margin-left: 106px;
   min-height: 170px;
+}
+
+.roles-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.roles-list,
+.role-members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.role-permissions {
+  display: grid;
+  gap: 6px;
+}
+
+.role-permissions label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.role-member-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  background: #363f54;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.role-member-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .server-panel {
@@ -892,6 +1029,32 @@ body {
   gap: 8px;
   max-height: 220px;
   overflow-y: auto;
+}
+
+.notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 10px;
+}
+
+.notification-item {
+  background: #31394b;
+  border-radius: 10px;
+  padding: 10px;
+  border: 1px solid #44506a;
+}
+
+.notification-title {
+  font-weight: 700;
+}
+
+.notification-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
 }
 
 .banned-user-item {
@@ -954,7 +1117,7 @@ body {
   margin-top: auto;
   position: relative;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -1079,6 +1242,24 @@ body {
   margin: 0;
 }
 
+.account-standing-card {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #232936;
+  border: 1px solid #44506a;
+}
+
+.account-standing-label {
+  font-weight: 700;
+}
+
+.account-standing-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .account-modal-header button,
 #account-save-btn {
   border: none;
@@ -1134,6 +1315,88 @@ body {
   font-size: 12px;
 }
 
+.passkeys-panel {
+  margin-top: 14px;
+  border: 1px solid #44506a;
+  border-radius: 12px;
+  padding: 12px;
+  background: #202633;
+}
+
+.passkeys-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.passkeys-header h4 {
+  margin: 0;
+}
+
+.passkeys-header .account-form-message {
+  margin: 4px 0 0;
+  min-height: 0;
+}
+
+#add-passkey-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #3b4458;
+  color: var(--text);
+  cursor: pointer;
+}
+
+#add-passkey-btn:hover {
+  background: #4a546c;
+}
+
+.passkeys-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.passkey-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #171c27;
+  border: 1px solid #31394b;
+}
+
+.passkey-meta {
+  min-width: 0;
+}
+
+.passkey-title {
+  font-weight: 700;
+}
+
+.passkey-subtitle {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.passkey-remove-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #6a2f3a;
+  color: #ffe5e5;
+  cursor: pointer;
+}
+
+.passkey-remove-btn:hover {
+  background: #7a3947;
+}
+
 .friend-requests-list {
   display: grid;
   gap: 8px;
@@ -1141,9 +1404,148 @@ body {
   overflow-y: auto;
 }
 
+.admin-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.admin-users-list {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.admin-user-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  background: #31394b;
+  border-radius: 8px;
+  padding: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.admin-user-item:hover {
+  border-color: #5873a5;
+}
+
+.admin-user-item.active {
+  border-color: #2d8d74;
+  background: #314457;
+}
+
+.admin-user-meta {
+  min-width: 0;
+}
+
+.admin-user-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-user-email,
+.admin-user-flags {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.admin-user-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.admin-user-details {
+  margin-top: 12px;
+  background: #2a3142;
+  border: 1px solid #46516a;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-user-details h4 {
+  margin: 0;
+}
+
+.admin-user-details-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-user-servers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.admin-user-reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.admin-server-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #31394b;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.admin-server-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-server-name {
+  font-weight: 700;
+}
+
+.admin-server-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-server-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-report-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #31394b;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.admin-report-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .friend-request-item {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 8px;
   background: #31394b;

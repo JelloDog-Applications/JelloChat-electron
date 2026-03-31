@@ -9,6 +9,7 @@ const db = require('./db');
 const { sendMail } = require('./mailer');
 
 const WS_PORT = Number(process.env.WS_PORT || 3131);
+const DEFAULT_PUBLIC_URL = 'https://chat.jellodog.com';
 
 let mainWindow;
 let currentUserId = null;
@@ -21,8 +22,36 @@ function hashToken(rawToken) {
 }
 
 function buildPublicUrl(pathname) {
-  const base = String(process.env.APP_PUBLIC_URL || 'http://localhost:3000').trim().replace(/\/+$/, '');
+  const base = String(process.env.APP_PUBLIC_URL || DEFAULT_PUBLIC_URL).trim().replace(/\/+$/, '');
   return `${base}${pathname}`;
+}
+
+function buildInviteUrl(code) {
+  return buildPublicUrl(`/invite/${encodeURIComponent(String(code || '').trim().toUpperCase())}`);
+}
+
+function normalizeInviteCode(input) {
+  const value = String(input || '').trim();
+  if (!value) {
+    return '';
+  }
+
+  const inviteMatch = value.match(/\/invite\/([^/?#]+)/i);
+  if (inviteMatch?.[1]) {
+    return decodeURIComponent(inviteMatch[1]).trim().toUpperCase();
+  }
+
+  const queryMatch = value.match(/[?&]invite=([^&#]+)/i);
+  if (queryMatch?.[1]) {
+    return decodeURIComponent(queryMatch[1]).trim().toUpperCase();
+  }
+
+  return value.toUpperCase();
+}
+
+function isPackagedCloudClientMode() {
+  const base = String(process.env.APP_PUBLIC_URL || DEFAULT_PUBLIC_URL).trim().replace(/\/+$/, '');
+  return app.isPackaged && /^https?:\/\//i.test(base) && !/localhost|127\.0\.0\.1/i.test(base);
 }
 
 function buildAuthEmailUrl(mode, rawToken) {
@@ -46,6 +75,17 @@ async function sendPasswordResetEmail(email, username, rawToken) {
     subject: 'Reset your JelloChat password',
     text: `Hi ${username},\n\nReset your password:\n${resetUrl}\n\nThis link will open the app if it is installed, or fall back to the website. It expires in 1 hour.`,
     html: `<p>Hi ${username},</p><p>Reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link will open the app if it is installed, or fall back to the website. It expires in 1 hour.</p>`
+  });
+}
+
+async function sendTerminationEmail(email, username, reason) {
+  const supportUrl = buildPublicUrl('/terms-of-service');
+  const detail = String(reason || 'Your account was terminated for Terms of Service violations.').trim();
+  return sendMail({
+    to: email,
+    subject: 'Your JelloChat account has been terminated',
+    text: `Hi ${username},\n\nYour JelloChat account has been terminated.\n\nReason: ${detail}\n\nFor more information, review our Terms of Service: ${supportUrl}`,
+    html: `<p>Hi ${username},</p><p>Your JelloChat account has been terminated.</p><p><strong>Reason:</strong> ${detail}</p><p>For more information, review our <a href="${supportUrl}">Terms of Service</a>.</p>`
   });
 }
 
@@ -76,6 +116,7 @@ async function issuePasswordReset(userId, email, username) {
 }
 
 function createWindow() {
+  const packagedCloudClientMode = isPackagedCloudClientMode();
   mainWindow = new BrowserWindow({
     width: 1300,
     height: 850,
@@ -84,7 +125,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      additionalArguments: packagedCloudClientMode ? ['--jellochat-cloud-client=1'] : []
     }
   });
 
@@ -103,6 +145,321 @@ function clearAuthTokensForUser(userId) {
       authTokens.delete(token);
     }
   }
+}
+
+function disconnectRealtimeUser(userId, reason = 'Account access changed.') {
+  for (const [ws, meta] of wsClients) {
+    if (meta.userId === userId) {
+      ws.close(4003, reason);
+    }
+  }
+}
+
+async function ensurePlatformAdminExists() {
+  const existingAdmins = await db.query('SELECT id FROM users WHERE is_platform_admin = TRUE LIMIT 1');
+  if (existingAdmins.rows.length > 0) {
+    return;
+  }
+
+  const preferredEmail = String(process.env.PLATFORM_ADMIN_EMAIL || '').trim().toLowerCase();
+  if (preferredEmail) {
+    const preferred = await db.query('SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1', [preferredEmail]);
+    if (preferred.rows.length > 0) {
+      await db.query('UPDATE users SET is_platform_admin = TRUE WHERE id = $1', [preferred.rows[0].id]);
+      return;
+    }
+  }
+
+  const firstUser = await db.query('SELECT id FROM users ORDER BY id ASC LIMIT 1');
+  if (firstUser.rows.length > 0) {
+    await db.query('UPDATE users SET is_platform_admin = TRUE WHERE id = $1', [firstUser.rows[0].id]);
+  }
+}
+
+async function getUserAdminState(userId) {
+  const result = await db.query(
+    'SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, platform_ban_reason, account_standing, standing_reason, tos_violation_count, standing_updated_at FROM users WHERE id = $1',
+    [userId]
+  );
+  return result.rows[0] || null;
+}
+
+async function requirePlatformAdmin(userId) {
+  const user = await getUserAdminState(userId);
+  return Boolean(user?.is_platform_admin);
+}
+
+async function countPlatformAdmins() {
+  const result = await db.query('SELECT COUNT(*)::int AS count FROM users WHERE is_platform_admin = TRUE');
+  return result.rows[0]?.count || 0;
+}
+
+const authAttemptTracker = new Map();
+
+function trackAuthAttempts(bucketKey, limit, windowMs) {
+  const now = Date.now();
+  const state = authAttemptTracker.get(bucketKey) || [];
+  const recent = state.filter((timestamp) => now - timestamp < windowMs);
+  recent.push(now);
+  authAttemptTracker.set(bucketKey, recent);
+  return recent.length > limit;
+}
+
+function hasSuspiciousUsername(username) {
+  const value = String(username || '').trim();
+  if (/https?:\/\//i.test(value) || /discord\.gg|telegram|whatsapp|onlyfans/i.test(value)) {
+    return true;
+  }
+  if (/(.)\1{4,}/i.test(value)) {
+    return true;
+  }
+  return false;
+}
+
+function shouldBlockBotLikeAuth(payload, mode) {
+  const trapValue = String(mode === 'register' ? payload?.website || '' : payload?.company || '').trim();
+  if (trapValue) {
+    return 'Suspicious automated activity was detected.';
+  }
+  const elapsedMs = Number(payload?.clientElapsedMs || 0);
+  if (elapsedMs > 0 && elapsedMs < 1200) {
+    return 'Please wait a moment and try again.';
+  }
+  if (mode === 'register' && hasSuspiciousUsername(payload?.username)) {
+    return 'That username looks automated. Please choose a different username.';
+  }
+  return null;
+}
+
+function deriveStandingFromViolationCount(violationCount, platformBanned = false) {
+  if (platformBanned || violationCount >= 5) {
+    return 'banned';
+  }
+  if (violationCount >= 3) {
+    return 'restricted';
+  }
+  if (violationCount >= 1) {
+    return 'warning';
+  }
+  return 'good';
+}
+
+async function applyAutomaticStandingUpdate(userId, options = {}) {
+  const increment = Math.max(0, Number(options.increment || 0));
+  const reason = String(options.reason || '').trim().slice(0, 500) || null;
+  const forceStanding = String(options.forceStanding || '').trim();
+  const setPlatformBanned = Boolean(options.setPlatformBanned);
+  const platformBanReason = String(options.platformBanReason || reason || '').trim().slice(0, 500) || null;
+  const current = await getUserAdminState(userId);
+  if (!current) {
+    return null;
+  }
+
+  const nextViolationCount = Math.max(0, Number(current.tos_violation_count || 0) + increment);
+  const nextPlatformBanned = Boolean(current.platform_banned_at) || setPlatformBanned;
+  const nextStanding = forceStanding || deriveStandingFromViolationCount(nextViolationCount, nextPlatformBanned);
+  const result = await db.query(
+    `UPDATE users
+     SET account_standing = $1,
+         standing_reason = $2,
+         tos_violation_count = $3,
+         platform_banned_at = CASE WHEN $4 THEN COALESCE(platform_banned_at, NOW()) ELSE platform_banned_at END,
+         platform_ban_reason = CASE WHEN $4 THEN $5 ELSE platform_ban_reason END,
+         standing_updated_at = NOW()
+     WHERE id = $6
+     RETURNING id, username, email, avatar_url, is_platform_admin, platform_banned_at, platform_ban_reason, account_standing, standing_reason, tos_violation_count, standing_updated_at`,
+    [nextStanding, reason, nextViolationCount, nextPlatformBanned, platformBanReason, userId]
+  );
+  const updated = result.rows[0] || null;
+  if (!updated) {
+    return null;
+  }
+  if (!current.platform_banned_at && updated.platform_banned_at) {
+    clearAuthTokensForUser(userId);
+    disconnectRealtimeUser(userId, 'Account banned from JelloChat.');
+    sendTerminationEmail(updated.email, updated.username, updated.platform_ban_reason || updated.standing_reason || 'Your account was terminated for Terms of Service violations.').catch(() => {});
+  }
+  return updated;
+}
+
+function checkMinimumAutoModerationContent(content) {
+  const text = String(content || '').trim();
+  const linkCount = (text.match(/(https?:\/\/|www\.|discord\.gg\/|discord\.com\/invite\/)/gi) || []).length;
+  if (linkCount >= 3) {
+    return 'Minimum automod blocked that message for link spam.';
+  }
+  if (/(.)\1{11,}/i.test(text)) {
+    return 'Minimum automod blocked that message for excessive repeated characters.';
+  }
+  const letters = text.replace(/[^a-z]/gi, '');
+  const uppercaseLetters = text.replace(/[^A-Z]/g, '');
+  if (letters.length >= 14 && uppercaseLetters.length / letters.length >= 0.9) {
+    return 'Minimum automod blocked that message for excessive caps.';
+  }
+  return null;
+}
+
+async function checkMinimumAutoModerationRecentActivity({ userId, content, channelId = null, partnerUserId = null }) {
+  if (channelId) {
+    const duplicate = await db.query(
+      `SELECT 1
+       FROM messages
+       WHERE channel_id = $1
+         AND user_id = $2
+         AND content = $3
+         AND created_at >= NOW() - INTERVAL '20 seconds'
+       LIMIT 1`,
+      [channelId, userId, content]
+    );
+    if (duplicate.rows.length > 0) {
+      return 'Minimum automod blocked that duplicate message.';
+    }
+
+    const burst = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM messages
+       WHERE channel_id = $1
+         AND user_id = $2
+         AND created_at >= NOW() - INTERVAL '12 seconds'`,
+      [channelId, userId]
+    );
+    if ((burst.rows[0]?.count || 0) >= 5) {
+      return 'Minimum automod blocked that message for sending too quickly.';
+    }
+    return null;
+  }
+
+  if (partnerUserId) {
+    const duplicate = await db.query(
+      `SELECT 1
+       FROM dm_messages
+       WHERE sender_user_id = $1
+         AND receiver_user_id = $2
+         AND content = $3
+         AND created_at >= NOW() - INTERVAL '20 seconds'
+       LIMIT 1`,
+      [userId, partnerUserId, content]
+    );
+    if (duplicate.rows.length > 0) {
+      return 'Minimum automod blocked that duplicate message.';
+    }
+
+    const burst = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM dm_messages
+       WHERE sender_user_id = $1
+         AND receiver_user_id = $2
+         AND created_at >= NOW() - INTERVAL '12 seconds'`,
+      [userId, partnerUserId]
+    );
+    if ((burst.rows[0]?.count || 0) >= 5) {
+      return 'Minimum automod blocked that message for sending too quickly.';
+    }
+  }
+
+  return null;
+}
+
+async function runMinimumAutoModeration(context) {
+  const contentMessage = checkMinimumAutoModerationContent(context.content);
+  if (contentMessage) {
+    return contentMessage;
+  }
+  return checkMinimumAutoModerationRecentActivity(context);
+}
+
+function classifyServerAutoModerationViolation(content) {
+  const text = String(content || '').trim();
+  const linkCount = (text.match(/(https?:\/\/|www\.|discord\.gg\/|discord\.com\/invite\/)/gi) || []).length;
+  if (linkCount >= 5) {
+    return {
+      rule: 'link_spam',
+      shouldBan: true,
+      message: 'Automod banned this user for severe link spam.'
+    };
+  }
+  if (/(.)\1{17,}/i.test(text)) {
+    return {
+      rule: 'character_spam',
+      shouldBan: true,
+      message: 'Automod banned this user for severe repeated-character spam.'
+    };
+  }
+  return null;
+}
+
+async function recordServerAutoModerationEvent(serverId, userId, rule, content) {
+  const preview = String(content || '').slice(0, 240);
+  await db.query(
+    'INSERT INTO server_automod_events (server_id, user_id, rule, content_preview) VALUES ($1, $2, $3, $4)',
+    [serverId, userId, rule, preview]
+  );
+  const recent = await db.query(
+    `SELECT COUNT(*)::int AS count
+     FROM server_automod_events
+     WHERE server_id = $1
+       AND user_id = $2
+       AND created_at >= NOW() - INTERVAL '30 minutes'`,
+    [serverId, userId]
+  );
+  return recent.rows[0]?.count || 0;
+}
+
+async function enforceServerAutoBan(serverId, userId, reason) {
+  const existingBan = await db.query('SELECT 1 FROM server_bans WHERE server_id = $1 AND user_id = $2', [serverId, userId]);
+  const serverOwner = await db.query('SELECT owner_user_id FROM servers WHERE id = $1', [serverId]);
+  const bannedByUserId = serverOwner.rows[0]?.owner_user_id || userId;
+  if (existingBan.rows.length === 0) {
+    await db.query(
+      `INSERT INTO server_bans (server_id, user_id, banned_by_user_id, reason)
+       VALUES ($1, $2, $3, $4)`,
+      [serverId, userId, bannedByUserId, reason]
+    );
+  }
+  await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, userId]);
+  await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, userId]);
+  await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
+  await broadcastPresenceForUser(userId);
+}
+
+async function handleServerAutoModeration(serverId, channelId, userId, content) {
+  const severeViolation = classifyServerAutoModerationViolation(content);
+  if (severeViolation) {
+    if (!(await isServerOwner(userId, serverId))) {
+      await recordServerAutoModerationEvent(serverId, userId, severeViolation.rule, content);
+      await applyAutomaticStandingUpdate(userId, {
+        increment: 2,
+        reason: severeViolation.message,
+        forceStanding: 'restricted'
+      });
+      await enforceServerAutoBan(serverId, userId, severeViolation.message);
+      return { blocked: true, banned: true, message: severeViolation.message };
+    }
+    return { blocked: true, banned: false, message: 'Automod blocked that message, but server owners are not auto-banned.' };
+  }
+
+  const minimumMessage = await runMinimumAutoModeration({ userId, channelId, content });
+  if (!minimumMessage) {
+    return null;
+  }
+
+  const recentViolations = await recordServerAutoModerationEvent(serverId, userId, 'minimum_automod', content);
+  await applyAutomaticStandingUpdate(userId, {
+    increment: 1,
+    reason: minimumMessage
+  });
+  if (recentViolations >= 3 && !(await isServerOwner(userId, serverId))) {
+    const reason = 'Automod banned this user after repeated moderation violations.';
+    await applyAutomaticStandingUpdate(userId, {
+      increment: 1,
+      reason,
+      forceStanding: 'restricted'
+    });
+    await enforceServerAutoBan(serverId, userId, reason);
+    return { blocked: true, banned: true, message: reason };
+  }
+
+  return { blocked: true, banned: false, message: minimumMessage };
 }
 
 function getOnlineUserIds() {
@@ -264,6 +621,33 @@ async function canUsersDm(userAId, userBId) {
   return sharedServer.rows.length > 0;
 }
 
+function getDmCallRoomName(userAId, userBId) {
+  const [firstId, secondId] = [Number(userAId), Number(userBId)].sort((a, b) => a - b);
+  return `dm-call-${firstId}-${secondId}`;
+}
+
+function normalizeAvatarUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  if (raw.length > 500000) {
+    throw new Error('Profile picture is too large.');
+  }
+  if (/^data:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml);base64,[a-z0-9+/=]+$/i.test(raw)) {
+    return raw;
+  }
+  try {
+    const parsed = new URL(raw);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Profile picture URL must use http or https.');
+    }
+    return parsed.toString();
+  } catch (_error) {
+    throw new Error('Profile picture must be a valid image URL or data URL.');
+  }
+}
+
 async function createVoiceToken({ identity, name, roomName }) {
   const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
   const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
@@ -327,6 +711,118 @@ async function isServerOwner(userId, serverId) {
     return false;
   }
   return result.rows[0].owner_user_id === userId;
+}
+
+const SERVER_PERMISSION_KEYS = [
+  'manage_server',
+  'manage_roles',
+  'manage_channels',
+  'create_invites',
+  'moderate_members'
+];
+
+function emptyServerPermissions() {
+  return {
+    manage_server: false,
+    manage_roles: false,
+    manage_channels: false,
+    create_invites: false,
+    moderate_members: false
+  };
+}
+
+function normalizeServerPermissions(value) {
+  const normalized = emptyServerPermissions();
+  const raw = value && typeof value === 'object' ? value : {};
+  for (const key of SERVER_PERMISSION_KEYS) {
+    normalized[key] = Boolean(raw[key]);
+  }
+  return normalized;
+}
+
+function mergeServerPermissions(...permissionSets) {
+  const merged = emptyServerPermissions();
+  for (const set of permissionSets) {
+    const normalized = normalizeServerPermissions(set);
+    for (const key of SERVER_PERMISSION_KEYS) {
+      merged[key] = merged[key] || normalized[key];
+    }
+  }
+  return merged;
+}
+
+async function ensureServerRoles(serverId) {
+  const roles = await db.query('SELECT id, name, is_default FROM server_roles WHERE server_id = $1', [serverId]);
+  const hasDefaultRole = roles.rows.some((role) => role.is_default);
+  if (!hasDefaultRole) {
+    await db.query(
+      `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
+       VALUES ($1, '@everyone', 0, '{}'::jsonb, TRUE)`,
+      [serverId]
+    );
+  }
+
+  const hasAdminRole = roles.rows.some((role) => String(role.name || '').toLowerCase() === 'admin');
+  if (!hasAdminRole) {
+    await db.query(
+      `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
+       VALUES ($1, 'Admin', 100, $2::jsonb, FALSE)`,
+      [serverId, JSON.stringify({
+        manage_server: true,
+        manage_roles: true,
+        manage_channels: true,
+        create_invites: true,
+        moderate_members: true
+      })]
+    );
+  }
+}
+
+async function getServerRoles(serverId) {
+  await ensureServerRoles(serverId);
+  const result = await db.query(
+    `SELECT id, server_id, name, position, permissions, is_default
+     FROM server_roles
+     WHERE server_id = $1
+     ORDER BY is_default DESC, position DESC, name ASC`,
+    [serverId]
+  );
+  return result.rows.map((role) => ({
+    ...role,
+    permissions: normalizeServerPermissions(role.permissions)
+  }));
+}
+
+async function getUserServerPermissions(userId, serverId) {
+  if (await isServerOwner(userId, serverId)) {
+    return {
+      ...emptyServerPermissions(),
+      manage_server: true,
+      manage_roles: true,
+      manage_channels: true,
+      create_invites: true,
+      moderate_members: true
+    };
+  }
+
+  const roles = await getServerRoles(serverId);
+  const assigned = await db.query(
+    `SELECT r.permissions
+     FROM server_member_roles smr
+     JOIN server_roles r ON r.id = smr.role_id
+     WHERE smr.server_id = $1 AND smr.user_id = $2`,
+    [serverId, userId]
+  );
+
+  const permissionSets = [];
+  const defaultRole = roles.find((role) => role.is_default);
+  if (defaultRole) {
+    permissionSets.push(defaultRole.permissions);
+  }
+  for (const row of assigned.rows) {
+    permissionSets.push(row.permissions);
+  }
+  return mergeServerPermissions(...permissionSets);
 }
 
 function setupRealtimeServer() {
@@ -407,9 +903,16 @@ ipcMain.handle('auth:register', async (_event, payload) => {
   const email = String(payload?.email || '').trim().toLowerCase();
   const password = String(payload?.password || '');
   const dateOfBirth = normalizeDateOfBirthInput(payload?.dateOfBirth);
+  const botBlock = shouldBlockBotLikeAuth(payload, 'register');
 
   if (!requestedUsername || !email || !password) {
     return { ok: false, message: 'Username, email, and password are required.' };
+  }
+  if (botBlock) {
+    return { ok: false, message: botBlock };
+  }
+  if (trackAuthAttempts(`register:${email}`, 4, 10 * 60 * 1000)) {
+    return { ok: false, message: 'Too many signup attempts. Please try again later.' };
   }
   if (baseUsername(requestedUsername).length < 2 || baseUsername(requestedUsername).length > 50) {
     return { ok: false, message: 'Username must be between 2 and 50 characters.' };
@@ -434,7 +937,7 @@ ipcMain.handle('auth:register', async (_event, payload) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified) VALUES ($1, $2, $3, $4, FALSE) RETURNING id, username, email, date_of_birth',
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified) VALUES ($1, $2, $3, $4, FALSE) RETURNING id, username, email, avatar_url, date_of_birth',
       [allocated.username, email, passwordHash, dateOfBirth]
     );
 
@@ -449,6 +952,8 @@ ipcMain.handle('auth:register', async (_event, payload) => {
         [newUser.id, defaultServer.rows[0].id]
       );
     }
+
+    await ensurePlatformAdminExists();
 
     const mailResult = await issueEmailVerification(newUser.id, newUser.email, newUser.username);
     if (!mailResult.ok) {
@@ -471,13 +976,20 @@ ipcMain.handle('auth:register', async (_event, payload) => {
 ipcMain.handle('auth:login', async (_event, payload) => {
   const email = String(payload?.email || '').trim().toLowerCase();
   const password = String(payload?.password || '');
+  const botBlock = shouldBlockBotLikeAuth(payload, 'login');
 
   if (!email || !password) {
     return { ok: false, message: 'Email and password are required.' };
   }
+  if (botBlock) {
+    return { ok: false, message: botBlock };
+  }
+  if (trackAuthAttempts(`login:${email}`, 8, 10 * 60 * 1000)) {
+    return { ok: false, message: 'Too many login attempts. Please try again later.' };
+  }
 
   try {
-    const result = await db.query('SELECT id, username, email, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return { ok: false, message: 'Invalid email or password.' };
     }
@@ -494,12 +1006,15 @@ ipcMain.handle('auth:login', async (_event, payload) => {
         message: 'Please verify your email before logging in.'
       };
     }
+    if (user.platform_banned_at) {
+      return { ok: false, message: 'This account has been banned from JelloChat.' };
+    }
 
     currentUserId = user.id;
     const realtimeToken = issueAuthToken(user.id);
     return {
       ok: true,
-      user: { id: user.id, username: user.username, email: user.email, date_of_birth: user.date_of_birth },
+      user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url, is_platform_admin: user.is_platform_admin, account_standing: user.account_standing, standing_reason: user.standing_reason, tos_violation_count: user.tos_violation_count, date_of_birth: user.date_of_birth },
       realtimeToken
     };
   } catch (error) {
@@ -521,18 +1036,30 @@ ipcMain.handle('auth:getSession', async () => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, date_of_birth FROM users WHERE id = $1', [currentUserId]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, date_of_birth FROM users WHERE id = $1', [currentUserId]);
     if (result.rows.length === 0) {
       currentUserId = null;
       return { ok: false, message: 'Session not found.' };
     }
     const user = result.rows[0];
+    if (user.platform_banned_at) {
+      clearAuthTokensForUser(user.id);
+      currentUserId = null;
+      return { ok: false, message: 'This account has been banned from JelloChat.' };
+    }
     const realtimeToken = issueAuthToken(user.id);
     return { ok: true, user, realtimeToken };
   } catch (error) {
     return { ok: false, message: `Failed to restore session: ${error.message}` };
   }
 });
+
+ipcMain.handle('auth:getPasskeys', async () => ({ ok: true, supported: false, passkeys: [] }));
+ipcMain.handle('auth:beginPasskeyRegistration', async () => ({ ok: false, supported: false, message: 'Passkeys are available in the web app on a secure origin.' }));
+ipcMain.handle('auth:finishPasskeyRegistration', async () => ({ ok: false, supported: false, message: 'Passkeys are available in the web app on a secure origin.' }));
+ipcMain.handle('auth:beginPasskeyLogin', async () => ({ ok: false, supported: false, message: 'Passkeys are available in the web app on a secure origin.' }));
+ipcMain.handle('auth:finishPasskeyLogin', async () => ({ ok: false, supported: false, message: 'Passkeys are available in the web app on a secure origin.' }));
+ipcMain.handle('auth:deletePasskey', async () => ({ ok: false, supported: false, message: 'Passkeys are available in the web app on a secure origin.' }));
 
 ipcMain.handle('auth:resendVerification', async (_event, payload) => {
   const email = String(payload?.email || '').trim().toLowerCase();
@@ -669,7 +1196,8 @@ ipcMain.handle('auth:updateAccount', async (_event, payload) => {
   }
 
   try {
-    const existing = await db.query('SELECT id, username, email, password_hash, date_of_birth FROM users WHERE id = $1', [currentUserId]);
+    const avatarUrl = normalizeAvatarUrl(payload?.avatarUrl);
+    const existing = await db.query('SELECT id, username, email, avatar_url, password_hash, date_of_birth FROM users WHERE id = $1', [currentUserId]);
     if (existing.rows.length === 0) {
       return { ok: false, message: 'User not found.' };
     }
@@ -701,8 +1229,8 @@ ipcMain.handle('auth:updateAccount', async (_event, payload) => {
 
     const allocated = await allocateUniqueUsername(requestedUsername, currentUserId);
     const updated = await db.query(
-      'UPDATE users SET username = $1, email = $2, password_hash = $3, date_of_birth = $4 WHERE id = $5 RETURNING id, username, email, date_of_birth',
-      [allocated.username, email, passwordHash, nextDateOfBirth, currentUserId]
+      'UPDATE users SET username = $1, email = $2, avatar_url = $3, password_hash = $4, date_of_birth = $5 WHERE id = $6 RETURNING id, username, email, avatar_url, is_platform_admin, account_standing, standing_reason, tos_violation_count, date_of_birth',
+      [allocated.username, email, avatarUrl, passwordHash, nextDateOfBirth, currentUserId]
     );
 
     return {
@@ -739,7 +1267,9 @@ ipcMain.handle('auth:deleteAccount', async (_event, payload) => {
     const deletedUserId = currentUserId;
     await db.query('DELETE FROM users WHERE id = $1', [deletedUserId]);
     clearAuthTokensForUser(deletedUserId);
+    disconnectRealtimeUser(deletedUserId, 'Account deleted.');
     currentUserId = null;
+    await ensurePlatformAdminExists();
     return { ok: true };
   } catch (error) {
     return { ok: false, message: `Failed to delete account: ${error.message}` };
@@ -812,6 +1342,7 @@ ipcMain.handle('chat:createServer', async (_event, payload) => {
       'INSERT INTO server_members (user_id, server_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [currentUserId, server.id]
     );
+    await ensureServerRoles(server.id);
     await db.query('INSERT INTO channels (server_id, type, name) VALUES ($1, $2, $3)', [server.id, 'text', 'general']);
 
     await broadcastToServerMembers(server.id, { type: 'server-created', server });
@@ -845,6 +1376,7 @@ ipcMain.handle('chat:leaveServer', async (_event, payload) => {
       return { ok: false, message: 'Server not found.' };
     }
 
+    await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, currentUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, currentUserId]);
 
     if (server.rows[0].owner_user_id === currentUserId) {
@@ -883,9 +1415,9 @@ ipcMain.handle('chat:kickMember', async (_event, payload) => {
   }
 
   try {
-    const owner = await isServerOwner(currentUserId, serverId);
-    if (!owner) {
-      return { ok: false, message: 'Only the server owner can kick members.' };
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.moderate_members) {
+      return { ok: false, message: 'You do not have permission to kick members.' };
     }
 
     const targetMembership = await db.query(
@@ -896,6 +1428,7 @@ ipcMain.handle('chat:kickMember', async (_event, payload) => {
       return { ok: false, message: 'User is not in this server.' };
     }
 
+    await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
     await broadcastPresenceForUser(targetUserId);
@@ -921,9 +1454,9 @@ ipcMain.handle('chat:banMember', async (_event, payload) => {
   }
 
   try {
-    const owner = await isServerOwner(currentUserId, serverId);
-    if (!owner) {
-      return { ok: false, message: 'Only the server owner can ban members.' };
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.moderate_members) {
+      return { ok: false, message: 'You do not have permission to ban members.' };
     }
 
     await db.query(
@@ -935,6 +1468,7 @@ ipcMain.handle('chat:banMember', async (_event, payload) => {
                      created_at = NOW()`,
       [serverId, targetUserId, currentUserId, reason || null]
     );
+    await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
 
     await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
@@ -958,9 +1492,9 @@ ipcMain.handle('chat:unbanMember', async (_event, payload) => {
   }
 
   try {
-    const owner = await isServerOwner(currentUserId, serverId);
-    if (!owner) {
-      return { ok: false, message: 'Only the server owner can unban members.' };
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.moderate_members) {
+      return { ok: false, message: 'You do not have permission to unban members.' };
     }
 
     let resolvedUserId = targetUserId;
@@ -1003,9 +1537,9 @@ ipcMain.handle('chat:getBannedUsers', async (_event, payload) => {
   }
 
   try {
-    const owner = await isServerOwner(currentUserId, serverId);
-    if (!owner) {
-      return { ok: false, message: 'Only the server owner can view banned users.' };
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.moderate_members) {
+      return { ok: false, message: 'You do not have permission to view banned users.' };
     }
 
     const result = await db.query(
@@ -1034,9 +1568,9 @@ ipcMain.handle('chat:renameServer', async (_event, payload) => {
   }
 
   try {
-    const owner = await isServerOwner(currentUserId, serverId);
-    if (!owner) {
-      return { ok: false, message: 'Only the server owner can rename the server.' };
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.manage_server) {
+      return { ok: false, message: 'You do not have permission to rename the server.' };
     }
 
     const updated = await db.query(
@@ -1069,7 +1603,7 @@ ipcMain.handle('chat:getChannels', async (_event, serverId) => {
       return { ok: false, message: 'Access denied.' };
     }
 
-    const owner = await db.query('SELECT owner_user_id FROM servers WHERE id = $1', [serverId]);
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
     const channels = await db.query(
       'SELECT id, type, name, server_id FROM channels WHERE server_id = $1 ORDER BY name',
       [serverId]
@@ -1078,7 +1612,8 @@ ipcMain.handle('chat:getChannels', async (_event, serverId) => {
     return {
       ok: true,
       channels: channels.rows,
-      canCreateChannels: owner.rows[0]?.owner_user_id === currentUserId
+      canCreateChannels: permissions.manage_channels,
+      permissions
     };
   } catch (error) {
     return { ok: false, message: `Failed to load channels: ${error.message}` };
@@ -1098,15 +1633,13 @@ ipcMain.handle('chat:createChannel', async (_event, payload) => {
   }
 
   try {
-    const owner = await db.query(
-      'SELECT owner_user_id FROM servers WHERE id = $1',
-      [serverId]
-    );
-    if (owner.rows.length === 0) {
+    const server = await db.query('SELECT id FROM servers WHERE id = $1', [serverId]);
+    if (server.rows.length === 0) {
       return { ok: false, message: 'Server not found.' };
     }
-    if (owner.rows[0].owner_user_id !== currentUserId) {
-      return { ok: false, message: 'Only the server owner can create channels.' };
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.manage_channels) {
+      return { ok: false, message: 'You do not have permission to create channels.' };
     }
 
     const created = await db.query(
@@ -1222,12 +1755,13 @@ ipcMain.handle('chat:createInvite', async (_event, payload) => {
   }
 
   try {
-    const owner = await db.query('SELECT id, name, owner_user_id FROM servers WHERE id = $1', [serverId]);
-    if (owner.rows.length === 0) {
+    const server = await db.query('SELECT id, name FROM servers WHERE id = $1', [serverId]);
+    if (server.rows.length === 0) {
       return { ok: false, message: 'Server not found.' };
     }
-    if (owner.rows[0].owner_user_id !== currentUserId) {
-      return { ok: false, message: 'Only the server owner can create invites.' };
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.create_invites) {
+      return { ok: false, message: 'You do not have permission to create invites.' };
     }
 
     let code = '';
@@ -1249,7 +1783,7 @@ ipcMain.handle('chat:createInvite', async (_event, payload) => {
       [serverId, code, currentUserId]
     );
 
-    return { ok: true, invite: { code, serverId, serverName: owner.rows[0].name } };
+    return { ok: true, invite: { code, serverId, serverName: server.rows[0].name, url: buildInviteUrl(code) } };
   } catch (error) {
     return { ok: false, message: `Failed to create invite: ${error.message}` };
   }
@@ -1260,7 +1794,7 @@ ipcMain.handle('chat:joinByInvite', async (_event, payload) => {
     return { ok: false, message: 'Not authenticated.' };
   }
 
-  const code = String(payload?.code || '').trim().toUpperCase();
+  const code = normalizeInviteCode(payload?.code);
   if (!code) {
     return { ok: false, message: 'Invite code is required.' };
   }
@@ -1337,19 +1871,551 @@ ipcMain.handle('chat:getServerPresence', async (_event, serverId) => {
       return { ok: false, message: 'Access denied.' };
     }
 
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
     const members = await db.query(
-      `SELECT u.id, u.username
+      `SELECT u.id, u.username, u.avatar_url,
+              COALESCE(
+                ARRAY_AGG(r.name ORDER BY r.position DESC, r.name ASC) FILTER (WHERE r.id IS NOT NULL),
+                '{}'::text[]
+              ) AS role_names
        FROM server_members sm
        JOIN users u ON u.id = sm.user_id
+       LEFT JOIN server_member_roles smr ON smr.server_id = sm.server_id AND smr.user_id = sm.user_id
+       LEFT JOIN server_roles r ON r.id = smr.role_id
        WHERE sm.server_id = $1
+         AND u.platform_banned_at IS NULL
+       GROUP BY u.id, u.username, u.avatar_url
        ORDER BY u.username`,
       [serverId]
     );
     const onlineIds = getOnlineUserIds();
     const users = members.rows.map((row) => ({ ...row, online: onlineIds.has(row.id) }));
-    return { ok: true, users };
+    return { ok: true, users, permissions };
   } catch (error) {
     return { ok: false, message: `Failed to load server presence: ${error.message}` };
+  }
+});
+
+ipcMain.handle('roles:getState', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+  const serverId = Number(payload?.serverId);
+  if (!serverId) {
+    return { ok: false, message: 'Valid server id is required.' };
+  }
+
+  try {
+    const membership = await db.query('SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, currentUserId]);
+    if (membership.rows.length === 0) {
+      return { ok: false, message: 'Access denied.' };
+    }
+
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    const roles = await getServerRoles(serverId);
+    const members = await db.query(
+      `SELECT u.id, u.username, u.avatar_url,
+              COALESCE(
+                ARRAY_AGG(smr.role_id ORDER BY smr.role_id) FILTER (WHERE smr.role_id IS NOT NULL),
+                '{}'::int[]
+              ) AS role_ids
+       FROM server_members sm
+       JOIN users u ON u.id = sm.user_id
+       LEFT JOIN server_member_roles smr ON smr.server_id = sm.server_id AND smr.user_id = sm.user_id
+       WHERE sm.server_id = $1
+       GROUP BY u.id, u.username, u.avatar_url
+       ORDER BY u.username`,
+      [serverId]
+    );
+
+    return { ok: true, permissions, roles, members: members.rows };
+  } catch (error) {
+    return { ok: false, message: `Failed to load roles: ${error.message}` };
+  }
+});
+
+ipcMain.handle('roles:create', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+  const serverId = Number(payload?.serverId);
+  const name = String(payload?.name || '').trim();
+  if (!serverId || name.length < 2 || name.length > 80) {
+    return { ok: false, message: 'Role name must be between 2 and 80 characters.' };
+  }
+
+  try {
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.manage_roles) {
+      return { ok: false, message: 'You do not have permission to manage roles.' };
+    }
+    const created = await db.query(
+      `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
+       VALUES ($1, $2, 1, '{}'::jsonb, FALSE)
+       RETURNING id, server_id, name, position, permissions, is_default`,
+      [serverId, name]
+    );
+    return { ok: true, role: { ...created.rows[0], permissions: normalizeServerPermissions(created.rows[0].permissions) } };
+  } catch (error) {
+    return { ok: false, message: `Failed to create role: ${error.message}` };
+  }
+});
+
+ipcMain.handle('roles:update', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+  const serverId = Number(payload?.serverId);
+  const roleId = Number(payload?.roleId);
+  const name = String(payload?.name || '').trim();
+  const rolePermissions = normalizeServerPermissions(payload?.permissions);
+  if (!serverId || !roleId || name.length < 2 || name.length > 80) {
+    return { ok: false, message: 'Valid server, role, and role name are required.' };
+  }
+
+  try {
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.manage_roles) {
+      return { ok: false, message: 'You do not have permission to manage roles.' };
+    }
+    const existing = await db.query(
+      'SELECT id, is_default FROM server_roles WHERE id = $1 AND server_id = $2',
+      [roleId, serverId]
+    );
+    if (existing.rows.length === 0) {
+      return { ok: false, message: 'Role not found.' };
+    }
+    const nextName = existing.rows[0].is_default ? '@everyone' : name;
+    const updated = await db.query(
+      `UPDATE server_roles
+       SET name = $1, permissions = $2::jsonb
+       WHERE id = $3 AND server_id = $4
+       RETURNING id, server_id, name, position, permissions, is_default`,
+      [nextName, JSON.stringify(rolePermissions), roleId, serverId]
+    );
+    return { ok: true, role: { ...updated.rows[0], permissions: normalizeServerPermissions(updated.rows[0].permissions) } };
+  } catch (error) {
+    return { ok: false, message: `Failed to update role: ${error.message}` };
+  }
+});
+
+ipcMain.handle('roles:delete', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+  const serverId = Number(payload?.serverId);
+  const roleId = Number(payload?.roleId);
+  if (!serverId || !roleId) {
+    return { ok: false, message: 'Valid server and role are required.' };
+  }
+
+  try {
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.manage_roles) {
+      return { ok: false, message: 'You do not have permission to manage roles.' };
+    }
+    const existing = await db.query(
+      'SELECT id, is_default FROM server_roles WHERE id = $1 AND server_id = $2',
+      [roleId, serverId]
+    );
+    if (existing.rows.length === 0) {
+      return { ok: false, message: 'Role not found.' };
+    }
+    if (existing.rows[0].is_default) {
+      return { ok: false, message: 'The default role cannot be deleted.' };
+    }
+    await db.query('DELETE FROM server_roles WHERE id = $1 AND server_id = $2', [roleId, serverId]);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Failed to delete role: ${error.message}` };
+  }
+});
+
+ipcMain.handle('roles:setMemberRole', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+  const serverId = Number(payload?.serverId);
+  const roleId = Number(payload?.roleId);
+  const targetUserId = Number(payload?.targetUserId);
+  const enabled = Boolean(payload?.enabled);
+  if (!serverId || !roleId || !targetUserId) {
+    return { ok: false, message: 'Valid server, role, and member are required.' };
+  }
+
+  try {
+    const permissions = await getUserServerPermissions(currentUserId, serverId);
+    if (!permissions.manage_roles) {
+      return { ok: false, message: 'You do not have permission to manage roles.' };
+    }
+    if (await isServerOwner(targetUserId, serverId)) {
+      return { ok: false, message: 'You cannot modify the server owner roles.' };
+    }
+    const member = await db.query('SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
+    if (member.rows.length === 0) {
+      return { ok: false, message: 'User is not in this server.' };
+    }
+    const role = await db.query('SELECT id, is_default FROM server_roles WHERE id = $1 AND server_id = $2', [roleId, serverId]);
+    if (role.rows.length === 0) {
+      return { ok: false, message: 'Role not found.' };
+    }
+    if (role.rows[0].is_default) {
+      return { ok: false, message: 'The default role is applied automatically.' };
+    }
+
+    if (enabled) {
+      await db.query(
+        'INSERT INTO server_member_roles (user_id, server_id, role_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        [targetUserId, serverId, roleId]
+      );
+    } else {
+      await db.query(
+        'DELETE FROM server_member_roles WHERE user_id = $1 AND server_id = $2 AND role_id = $3',
+        [targetUserId, serverId, roleId]
+      );
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Failed to update member role: ${error.message}` };
+  }
+});
+
+ipcMain.handle('admin:listUsers', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(currentUserId))) {
+      return { ok: false, message: 'Platform admin access required.' };
+    }
+
+    const query = String(payload?.query || '').trim();
+    const like = `%${query}%`;
+    const result = await db.query(
+      `SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, platform_ban_reason, account_standing, standing_reason, tos_violation_count
+       FROM users
+       WHERE $1 = '%%'
+          OR username ILIKE $1
+          OR email ILIKE $1
+       ORDER BY is_platform_admin DESC, username ASC
+       LIMIT 100`,
+      [like]
+    );
+    return { ok: true, users: result.rows };
+  } catch (error) {
+    return { ok: false, message: `Failed to load users: ${error.message}` };
+  }
+});
+
+ipcMain.handle('admin:getUserDetails', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const targetUserId = Number(payload?.userId);
+  if (!targetUserId) {
+    return { ok: false, message: 'Valid user id is required.' };
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(currentUserId))) {
+      return { ok: false, message: 'Platform admin access required.' };
+    }
+
+    const user = await getUserAdminState(targetUserId);
+    if (!user) {
+      return { ok: false, message: 'User not found.' };
+    }
+
+    const memberships = await db.query(
+      `SELECT s.id, s.name, sm.joined_at, (s.owner_user_id = sm.user_id) AS is_owner,
+              COALESCE(
+                ARRAY_AGG(r.name ORDER BY r.position DESC, r.name ASC) FILTER (WHERE r.id IS NOT NULL),
+                '{}'::text[]
+              ) AS role_names
+       FROM server_members sm
+       JOIN servers s ON s.id = sm.server_id
+       LEFT JOIN server_member_roles smr ON smr.user_id = sm.user_id AND smr.server_id = sm.server_id
+       LEFT JOIN server_roles r ON r.id = smr.role_id
+       WHERE sm.user_id = $1
+       GROUP BY s.id, s.name, sm.joined_at, s.owner_user_id, sm.user_id
+       ORDER BY LOWER(s.name), s.id`,
+      [targetUserId]
+    );
+    const reports = await db.query(
+      `SELECT ur.id, ur.reason, ur.created_at, ur.server_id, ur.reporter_user_id,
+              reporter.username AS reporter_username, s.name AS server_name
+       FROM user_reports ur
+       JOIN users reporter ON reporter.id = ur.reporter_user_id
+       LEFT JOIN servers s ON s.id = ur.server_id
+       WHERE ur.target_user_id = $1
+       ORDER BY ur.created_at DESC
+       LIMIT 50`,
+      [targetUserId]
+    );
+
+    return { ok: true, user, servers: memberships.rows, reports: reports.rows };
+  } catch (error) {
+    return { ok: false, message: `Failed to load user details: ${error.message}` };
+  }
+});
+
+ipcMain.handle('reports:createUserReport', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const targetUserId = Number(payload?.targetUserId);
+  const serverId = payload?.serverId ? Number(payload.serverId) : null;
+  const reason = String(payload?.reason || '').trim();
+  if (!targetUserId || reason.length < 5 || reason.length > 500) {
+    return { ok: false, message: 'Report reason must be between 5 and 500 characters.' };
+  }
+  if (targetUserId === currentUserId) {
+    return { ok: false, message: 'You cannot report yourself.' };
+  }
+
+  try {
+    const target = await db.query('SELECT id FROM users WHERE id = $1', [targetUserId]);
+    if (target.rows.length === 0) {
+      return { ok: false, message: 'User not found.' };
+    }
+    if (serverId) {
+      const access = await db.query('SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, currentUserId]);
+      if (access.rows.length === 0) {
+        return { ok: false, message: 'You can only attach reports to servers you are in.' };
+      }
+    }
+
+    await db.query(
+      'INSERT INTO user_reports (reporter_user_id, target_user_id, server_id, reason) VALUES ($1, $2, $3, $4)',
+      [currentUserId, targetUserId, serverId, reason]
+    );
+    const reportVolume = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM user_reports
+       WHERE target_user_id = $1
+         AND created_at >= NOW() - INTERVAL '30 days'`,
+      [targetUserId]
+    );
+    if ((reportVolume.rows[0]?.count || 0) >= 3) {
+      await applyAutomaticStandingUpdate(targetUserId, {
+        increment: 1,
+        reason: 'Multiple user reports were received for this account.'
+      });
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Failed to submit report: ${error.message}` };
+  }
+});
+
+ipcMain.handle('admin:getServerView', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const serverId = Number(payload?.serverId);
+  if (!serverId) {
+    return { ok: false, message: 'Valid server id is required.' };
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(currentUserId))) {
+      return { ok: false, message: 'Platform admin access required.' };
+    }
+
+    const server = await db.query('SELECT id, name, owner_user_id, created_at FROM servers WHERE id = $1', [serverId]);
+    if (server.rows.length === 0) {
+      return { ok: false, message: 'Server not found.' };
+    }
+
+    const channels = await db.query(
+      `SELECT id, name, type, created_at
+       FROM channels
+       WHERE server_id = $1
+       ORDER BY type DESC, LOWER(name), id`,
+      [serverId]
+    );
+    const members = await db.query(
+      `SELECT u.id, u.username, u.avatar_url, u.platform_banned_at, sm.joined_at,
+              (s.owner_user_id = u.id) AS is_owner,
+              COALESCE(
+                ARRAY_AGG(r.name ORDER BY r.position DESC, r.name ASC) FILTER (WHERE r.id IS NOT NULL),
+                '{}'::text[]
+              ) AS role_names
+       FROM server_members sm
+       JOIN servers s ON s.id = sm.server_id
+       JOIN users u ON u.id = sm.user_id
+       LEFT JOIN server_member_roles smr ON smr.user_id = sm.user_id AND smr.server_id = sm.server_id
+       LEFT JOIN server_roles r ON r.id = smr.role_id
+       WHERE sm.server_id = $1
+       GROUP BY u.id, u.username, u.avatar_url, u.platform_banned_at, sm.joined_at, s.owner_user_id
+       ORDER BY LOWER(u.username), u.id`,
+      [serverId]
+    );
+
+    return { ok: true, server: server.rows[0], channels: channels.rows, members: members.rows };
+  } catch (error) {
+    return { ok: false, message: `Failed to load server view: ${error.message}` };
+  }
+});
+
+ipcMain.handle('admin:updateUser', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const targetUserId = Number(payload?.userId);
+  if (!targetUserId) {
+    return { ok: false, message: 'Valid user id is required.' };
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(currentUserId))) {
+      return { ok: false, message: 'Platform admin access required.' };
+    }
+
+    const target = await getUserAdminState(targetUserId);
+    if (!target) {
+      return { ok: false, message: 'User not found.' };
+    }
+    if (target.id === currentUserId) {
+      return { ok: false, message: 'You cannot change your own platform admin status here.' };
+    }
+
+    let nextAdmin = target.is_platform_admin;
+    if (typeof payload?.isPlatformAdmin === 'boolean') {
+      nextAdmin = payload.isPlatformAdmin;
+    }
+
+    let nextBanned = Boolean(target.platform_banned_at);
+    if (typeof payload?.platformBanned === 'boolean') {
+      nextBanned = payload.platformBanned;
+    }
+    const allowedStandings = new Set(['good', 'warning', 'restricted', 'banned']);
+    let nextStanding = allowedStandings.has(String(payload?.accountStanding || '').trim())
+      ? String(payload.accountStanding).trim()
+      : (target.account_standing || 'good');
+    let nextStandingReason = typeof payload?.standingReason === 'string'
+      ? String(payload.standingReason || '').trim().slice(0, 500) || null
+      : (target.standing_reason || null);
+    let nextViolationCount = Number(target.tos_violation_count || 0);
+    if (payload?.resetViolations) {
+      nextViolationCount = 0;
+    }
+    if (payload?.incrementViolations) {
+      nextViolationCount += 1;
+    }
+    if (target.is_platform_admin && (!nextAdmin || nextBanned)) {
+      const adminCount = await countPlatformAdmins();
+      if (adminCount <= 1) {
+        return { ok: false, message: 'JelloChat must always keep at least one platform admin.' };
+      }
+    }
+
+    const nextBanReason = nextBanned ? String(payload?.platformBanReason || '').trim().slice(0, 500) || null : null;
+    if (nextBanned) {
+      nextStanding = 'banned';
+      if (!nextStandingReason) {
+        nextStandingReason = nextBanReason || 'Account terminated for Terms of Service violations.';
+      }
+    }
+    const updated = await db.query(
+      `UPDATE users
+       SET is_platform_admin = $1,
+           platform_banned_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+           platform_ban_reason = $3,
+           account_standing = $4,
+           standing_reason = $5,
+           tos_violation_count = $6,
+           standing_updated_at = NOW()
+       WHERE id = $7
+       RETURNING id, username, email, avatar_url, is_platform_admin, platform_banned_at, platform_ban_reason, account_standing, standing_reason, tos_violation_count, standing_updated_at`,
+      [nextAdmin, nextBanned, nextBanReason, nextStanding, nextStandingReason, nextViolationCount, targetUserId]
+    );
+
+    if (nextBanned) {
+      clearAuthTokensForUser(targetUserId);
+      disconnectRealtimeUser(targetUserId, 'Account banned from JelloChat.');
+    }
+    if (!target.platform_banned_at && nextBanned) {
+      sendTerminationEmail(updated.rows[0].email, updated.rows[0].username, nextBanReason || nextStandingReason || 'Your account was terminated for Terms of Service violations.').catch(() => {});
+    }
+
+    return { ok: true, user: updated.rows[0] };
+  } catch (error) {
+    return { ok: false, message: `Failed to update user: ${error.message}` };
+  }
+});
+
+ipcMain.handle('admin:deleteServer', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const serverId = Number(payload?.serverId);
+  if (!serverId) {
+    return { ok: false, message: 'Valid server id is required.' };
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(currentUserId))) {
+      return { ok: false, message: 'Platform admin access required.' };
+    }
+
+    const server = await db.query('SELECT id, name FROM servers WHERE id = $1', [serverId]);
+    if (server.rows.length === 0) {
+      return { ok: false, message: 'Server not found.' };
+    }
+
+    const memberIds = await db.query('SELECT user_id FROM server_members WHERE server_id = $1', [serverId]);
+    await db.query('DELETE FROM servers WHERE id = $1', [serverId]);
+    broadcastToUsers(memberIds.rows.map((row) => row.user_id), { type: 'server-membership-changed', serverId });
+    return { ok: true, serverName: server.rows[0].name };
+  } catch (error) {
+    return { ok: false, message: `Failed to delete server: ${error.message}` };
+  }
+});
+
+ipcMain.handle('admin:deleteUser', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const targetUserId = Number(payload?.userId);
+  if (!targetUserId) {
+    return { ok: false, message: 'Valid user id is required.' };
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(currentUserId))) {
+      return { ok: false, message: 'Platform admin access required.' };
+    }
+
+    if (targetUserId === currentUserId) {
+      return { ok: false, message: 'You cannot delete your own account from the admin panel.' };
+    }
+
+    const target = await getUserAdminState(targetUserId);
+    if (!target) {
+      return { ok: false, message: 'User not found.' };
+    }
+    if (target.is_platform_admin) {
+      const adminCount = await countPlatformAdmins();
+      if (adminCount <= 1) {
+        return { ok: false, message: 'JelloChat must always keep at least one platform admin.' };
+      }
+    }
+
+    await db.query('DELETE FROM users WHERE id = $1', [targetUserId]);
+    clearAuthTokensForUser(targetUserId);
+    disconnectRealtimeUser(targetUserId, 'Account deleted.');
+    await ensurePlatformAdminExists();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Failed to delete user: ${error.message}` };
   }
 });
 
@@ -1360,7 +2426,7 @@ ipcMain.handle('friends:list', async () => {
 
   try {
     const result = await db.query(
-      `SELECT u.id, u.username
+      `SELECT u.id, u.username, u.avatar_url
        FROM friendships f
        JOIN users u ON u.id = f.friend_user_id
        WHERE f.user_id = $1
@@ -1382,7 +2448,7 @@ ipcMain.handle('friends:getRequests', async () => {
 
   try {
     const result = await db.query(
-      `SELECT fr.id, fr.sender_user_id, u.username, fr.created_at
+      `SELECT fr.id, fr.sender_user_id, u.username, u.avatar_url, fr.created_at
        FROM friend_requests fr
        JOIN users u ON u.id = fr.sender_user_id
        WHERE fr.receiver_user_id = $1 AND fr.status = 'pending'
@@ -1528,13 +2594,13 @@ ipcMain.handle('dm:getMessages', async (_event, payload) => {
       return { ok: false, message: 'You can only DM friends or users in a shared server.' };
     }
 
-    const partner = await db.query('SELECT id, username FROM users WHERE id = $1', [partnerUserId]);
+    const partner = await db.query('SELECT id, username, avatar_url FROM users WHERE id = $1', [partnerUserId]);
     if (partner.rows.length === 0) {
       return { ok: false, message: 'User not found.' };
     }
 
     const messages = await db.query(
-      `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at, u.username
+      `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at, u.username, u.avatar_url
        FROM dm_messages m
        JOIN users u ON u.id = m.sender_user_id
        WHERE (m.sender_user_id = $1 AND m.receiver_user_id = $2)
@@ -1567,20 +2633,30 @@ ipcMain.handle('dm:sendMessage', async (_event, payload) => {
       return { ok: false, message: 'You can only DM friends or users in a shared server.' };
     }
 
+    const moderationMessage = await runMinimumAutoModeration({
+      userId: currentUserId,
+      partnerUserId,
+      content
+    });
+    if (moderationMessage) {
+      return { ok: false, message: moderationMessage };
+    }
+
     const inserted = await db.query(
       `INSERT INTO dm_messages (sender_user_id, receiver_user_id, content)
        VALUES ($1, $2, $3)
        RETURNING id, sender_user_id, receiver_user_id, content, created_at`,
       [currentUserId, partnerUserId, content]
     );
-    const me = await db.query('SELECT username FROM users WHERE id = $1', [currentUserId]);
+    const me = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [currentUserId]);
     const message = {
       id: inserted.rows[0].id,
       user_id: inserted.rows[0].sender_user_id,
       receiver_user_id: inserted.rows[0].receiver_user_id,
       content: inserted.rows[0].content,
       created_at: inserted.rows[0].created_at,
-      username: me.rows[0]?.username || 'Unknown'
+      username: me.rows[0]?.username || 'Unknown',
+      avatar_url: me.rows[0]?.avatar_url || ''
     };
 
     broadcastToUsers([currentUserId, partnerUserId], {
@@ -1594,6 +2670,106 @@ ipcMain.handle('dm:sendMessage', async (_event, payload) => {
   }
 });
 
+ipcMain.handle('dm:startCall', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const partnerUserId = Number(payload?.partnerUserId);
+  if (!partnerUserId) {
+    return { ok: false, message: 'Valid partner user id is required.' };
+  }
+
+  try {
+    const canDm = await canUsersDm(currentUserId, partnerUserId);
+    if (!canDm) {
+      return { ok: false, message: 'You can only call friends or users in a shared server.' };
+    }
+
+    const users = await db.query(
+      'SELECT id, username FROM users WHERE id = ANY($1::int[])',
+      [[currentUserId, partnerUserId]]
+    );
+    if (users.rows.length < 2) {
+      return { ok: false, message: 'User not found.' };
+    }
+
+    const me = users.rows.find((user) => user.id === currentUserId);
+    const partner = users.rows.find((user) => user.id === partnerUserId);
+    const roomName = getDmCallRoomName(currentUserId, partnerUserId);
+    const voice = await createVoiceToken({
+      identity: String(currentUserId),
+      name: me?.username || `user-${currentUserId}`,
+      roomName
+    });
+
+    broadcastToUsers([partnerUserId], {
+      type: 'dm-call-started',
+      fromUserId: currentUserId,
+      fromUsername: me?.username || 'Unknown',
+      partnerUserId,
+      roomName
+    });
+
+    return {
+      ok: true,
+      roomName,
+      livekitUrl: voice.livekitUrl,
+      token: voice.token,
+      debug: voice.debug,
+      partner: partner || null
+    };
+  } catch (error) {
+    return { ok: false, message: `Failed to start personal call: ${error.message}` };
+  }
+});
+
+ipcMain.handle('dm:joinCall', async (_event, payload) => {
+  if (!currentUserId) {
+    return { ok: false, message: 'Not authenticated.' };
+  }
+
+  const partnerUserId = Number(payload?.partnerUserId);
+  if (!partnerUserId) {
+    return { ok: false, message: 'Valid partner user id is required.' };
+  }
+
+  try {
+    const canDm = await canUsersDm(currentUserId, partnerUserId);
+    if (!canDm) {
+      return { ok: false, message: 'You can only call friends or users in a shared server.' };
+    }
+
+    const users = await db.query(
+      'SELECT id, username FROM users WHERE id = ANY($1::int[])',
+      [[currentUserId, partnerUserId]]
+    );
+    if (users.rows.length < 2) {
+      return { ok: false, message: 'User not found.' };
+    }
+
+    const me = users.rows.find((user) => user.id === currentUserId);
+    const partner = users.rows.find((user) => user.id === partnerUserId);
+    const roomName = getDmCallRoomName(currentUserId, partnerUserId);
+    const voice = await createVoiceToken({
+      identity: String(currentUserId),
+      name: me?.username || `user-${currentUserId}`,
+      roomName
+    });
+
+    return {
+      ok: true,
+      roomName,
+      livekitUrl: voice.livekitUrl,
+      token: voice.token,
+      debug: voice.debug,
+      partner: partner || null
+    };
+  } catch (error) {
+    return { ok: false, message: `Failed to join personal call: ${error.message}` };
+  }
+});
+
 ipcMain.handle('chat:getMessages', async (_event, channelId) => {
   if (!currentUserId) {
     return { ok: false, message: 'Not authenticated.' };
@@ -1601,7 +2777,7 @@ ipcMain.handle('chat:getMessages', async (_event, channelId) => {
 
   try {
     const access = await db.query(
-      `SELECT 1
+      `SELECT c.server_id
        FROM channels c
        JOIN server_members sm ON sm.server_id = c.server_id
        WHERE c.id = $1 AND sm.user_id = $2`,
@@ -1613,7 +2789,7 @@ ipcMain.handle('chat:getMessages', async (_event, channelId) => {
     }
 
     const messages = await db.query(
-      `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at, u.username
+      `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at, u.username, u.avatar_url
        FROM messages m
        JOIN users u ON u.id = m.user_id
        WHERE m.channel_id = $1
@@ -1642,7 +2818,7 @@ ipcMain.handle('chat:sendMessage', async (_event, payload) => {
 
   try {
     const access = await db.query(
-      `SELECT 1
+      `SELECT c.server_id
        FROM channels c
        JOIN server_members sm ON sm.server_id = c.server_id
        WHERE c.id = $1 AND sm.user_id = $2`,
@@ -1653,6 +2829,11 @@ ipcMain.handle('chat:sendMessage', async (_event, payload) => {
       return { ok: false, message: 'Access denied.' };
     }
 
+    const moderationResult = await handleServerAutoModeration(access.rows[0].server_id, channelId, currentUserId, content);
+    if (moderationResult?.blocked) {
+      return { ok: false, message: moderationResult.message };
+    }
+
     const inserted = await db.query(
       `INSERT INTO messages (channel_id, user_id, content)
        VALUES ($1, $2, $3)
@@ -1660,10 +2841,11 @@ ipcMain.handle('chat:sendMessage', async (_event, payload) => {
       [channelId, currentUserId, content]
     );
 
-    const user = await db.query('SELECT username FROM users WHERE id = $1', [currentUserId]);
+    const user = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [currentUserId]);
     const message = {
       ...inserted.rows[0],
-      username: user.rows[0]?.username || 'Unknown'
+      username: user.rows[0]?.username || 'Unknown',
+      avatar_url: user.rows[0]?.avatar_url || ''
     };
 
     broadcastToChannel(channelId, { type: 'message-created', channelId, message });
@@ -1708,10 +2890,11 @@ ipcMain.handle('chat:updateMessage', async (_event, payload) => {
        RETURNING id, channel_id, user_id, content, created_at`,
       [content, messageId]
     );
-    const user = await db.query('SELECT username FROM users WHERE id = $1', [currentUserId]);
+    const user = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [currentUserId]);
     const message = {
       ...updated.rows[0],
-      username: user.rows[0]?.username || 'Unknown'
+      username: user.rows[0]?.username || 'Unknown',
+      avatar_url: user.rows[0]?.avatar_url || ''
     };
 
     broadcastToChannel(message.channel_id, { type: 'message-updated', channelId: message.channel_id, message });
@@ -1759,6 +2942,7 @@ ipcMain.handle('chat:deleteMessage', async (_event, payload) => {
 app.whenReady().then(async () => {
   try {
     await db.connect();
+    await ensurePlatformAdminExists();
     setupRealtimeServer();
     createWindow();
   } catch (error) {
