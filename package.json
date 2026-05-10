@@ -2,6 +2,7 @@
   "name": "jellochat",
   "version": "1.0.0",
   "description": "Electron chat app with PostgreSQL",
+  "author": "JelloChat",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -37,6 +38,7 @@
       "main.js",
       "preload.js",
       "db.js",
+      "mailer.js",
       "server.js",
       "sql/**/*",
       "src/**/*",
@@ -44,6 +46,7 @@
       "node_modules/**/*"
     ],
     "win": {
+      "icon": "assets/image.ico",
       "target": [
         {
           "target": "nsis",

@@ -53,6 +53,18 @@ const loadedEnvPath = loadEnv();
 
 let pool;
 
+async function applySchema() {
+  const schemaPath = path.join(__dirname, 'sql', 'schema.sql');
+  if (!fs.existsSync(schemaPath)) {
+    return;
+  }
+  const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+  if (!schemaSql.trim()) {
+    return;
+  }
+  await pool.query(schemaSql);
+}
+
 function createPool() {
   return new Pool({
     host: process.env.DB_HOST || 'localhost',
@@ -70,6 +82,7 @@ async function connect() {
   try {
     const client = await pool.connect();
     client.release();
+    await applySchema();
   } catch (error) {
     const envSource = loadedEnvPath || 'defaults/environment';
     error.message = `${error.message} (env source: ${envSource})`;
