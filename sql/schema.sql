@@ -160,6 +160,25 @@ CREATE TABLE IF NOT EXISTS user_passkeys (
 CREATE INDEX IF NOT EXISTS idx_user_passkeys_user_id
 ON user_passkeys (user_id);
 
+CREATE TABLE IF NOT EXISTS user_ip_events (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(id) ON DELETE SET NULL,
+  ip_address INET NOT NULL,
+  event_type VARCHAR(40) NOT NULL,
+  user_agent TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_ip_events_user_created_at
+ON user_ip_events (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_user_ip_events_ip_created_at
+ON user_ip_events (ip_address, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_user_ip_events_event_created_at
+ON user_ip_events (event_type, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS server_automod_events (
   id BIGSERIAL PRIMARY KEY,
   server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
