@@ -281,7 +281,20 @@
               <button id="account-modal-close-btn" type="button">Close</button>
             </div>
             <div id="account-standing-card" class="account-standing-card">
-              <div id="account-standing-label" class="account-standing-label">Standing: Good</div>
+              <div class="account-standing-topline">
+                <div>
+                  <div class="account-standing-kicker">Account Standing</div>
+                  <div id="account-standing-label" class="account-standing-label">All Good</div>
+                </div>
+                <div id="account-standing-badge" class="account-standing-badge">0/5</div>
+              </div>
+              <div id="account-standing-meter" class="account-standing-meter" aria-label="Account standing progress">
+                <span class="standing-dot standing-dot-good" title="All Good"></span>
+                <span class="standing-dot standing-dot-limited" title="Limited"></span>
+                <span class="standing-dot standing-dot-very-limited" title="Very Limited"></span>
+                <span class="standing-dot standing-dot-at-risk" title="At Risk"></span>
+                <span class="standing-dot standing-dot-suspended" title="Suspended"></span>
+              </div>
               <div id="account-standing-meta" class="account-standing-meta">No recent Terms of Service violations.</div>
             </div>
             <form id="account-form" class="account-form">

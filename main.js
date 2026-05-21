@@ -250,7 +250,16 @@ function clearAuthTokensForUser(userId) {
 function disconnectRealtimeUser(userId, reason = 'Account access changed.') {
   for (const [ws, meta] of wsClients) {
     if (meta.userId === userId) {
-      ws.close(4003, reason);
+      sendWs(ws, {
+        type: 'account-access-revoked',
+        title: 'Account Access Revoked',
+        message: reason
+      });
+      setTimeout(() => {
+        if (ws.readyState === 1) {
+          ws.close(4003, reason);
+        }
+      }, 100);
     }
   }
 }
@@ -1591,6 +1600,12 @@ ipcMain.handle('chat:banMember', async (_event, payload) => {
     await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
 
+    broadcastToUsers([targetUserId], {
+      type: 'server-banned',
+      serverId,
+      title: 'Removed From Server',
+      message: reason ? `You were banned from this server. Reason: ${reason}` : 'You were banned from this server.'
+    });
     await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
     await broadcastPresenceForUser(targetUserId);
     return { ok: true };
@@ -1825,6 +1840,15 @@ ipcMain.handle('vc:getToken', async (_event, payload) => {
   }
 });
 
+function sanitizeUserFacingMessage(row) {
+  const isBanned = Boolean(row?.author_platform_banned_at || row?.platform_banned_at);
+  return {
+    ...row,
+    username: isBanned ? 'Banned User' : (row.username || 'Unknown'),
+    avatar_url: isBanned ? '' : (row.avatar_url || '')
+  };
+}
+
 ipcMain.handle('vc:getParticipants', async (_event, payload) => {
   if (!currentUserId) {
     return { ok: false, message: 'Not authenticated.' };
@@ -2043,6 +2067,7 @@ ipcMain.handle('roles:getState', async (_event, payload) => {
        JOIN users u ON u.id = sm.user_id
        LEFT JOIN server_member_roles smr ON smr.server_id = sm.server_id AND smr.user_id = sm.user_id
        WHERE sm.server_id = $1
+         AND u.platform_banned_at IS NULL
        GROUP BY u.id, u.username, u.avatar_url
        ORDER BY u.username`,
       [serverId]
@@ -2550,6 +2575,7 @@ ipcMain.handle('friends:list', async () => {
        FROM friendships f
        JOIN users u ON u.id = f.friend_user_id
        WHERE f.user_id = $1
+         AND u.platform_banned_at IS NULL
        ORDER BY u.username`,
       [currentUserId]
     );
@@ -2571,7 +2597,9 @@ ipcMain.handle('friends:getRequests', async () => {
       `SELECT fr.id, fr.sender_user_id, u.username, u.avatar_url, fr.created_at
        FROM friend_requests fr
        JOIN users u ON u.id = fr.sender_user_id
-       WHERE fr.receiver_user_id = $1 AND fr.status = 'pending'
+       WHERE fr.receiver_user_id = $1
+         AND fr.status = 'pending'
+         AND u.platform_banned_at IS NULL
        ORDER BY fr.created_at DESC`,
       [currentUserId]
     );
@@ -2714,13 +2742,20 @@ ipcMain.handle('dm:getMessages', async (_event, payload) => {
       return { ok: false, message: 'You can only DM friends or users in a shared server.' };
     }
 
-    const partner = await db.query('SELECT id, username, avatar_url FROM users WHERE id = $1', [partnerUserId]);
+    const partner = await db.query(
+      `SELECT id, username, avatar_url
+       FROM users
+       WHERE id = $1
+         AND platform_banned_at IS NULL`,
+      [partnerUserId]
+    );
     if (partner.rows.length === 0) {
       return { ok: false, message: 'User not found.' };
     }
 
     const messages = await db.query(
-      `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at, u.username, u.avatar_url
+      `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at,
+              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at
        FROM dm_messages m
        JOIN users u ON u.id = m.sender_user_id
        WHERE (m.sender_user_id = $1 AND m.receiver_user_id = $2)
@@ -2730,7 +2765,7 @@ ipcMain.handle('dm:getMessages', async (_event, payload) => {
       [currentUserId, partnerUserId]
     );
 
-    return { ok: true, messages: messages.rows, currentUserId, partner: partner.rows[0] };
+    return { ok: true, messages: messages.rows.map(sanitizeUserFacingMessage), currentUserId, partner: partner.rows[0] };
   } catch (error) {
     return { ok: false, message: `Failed to load DM messages: ${error.message}` };
   }
@@ -2914,7 +2949,8 @@ ipcMain.handle('chat:getMessages', async (_event, channelId) => {
     }
 
     const messages = await db.query(
-      `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at, u.username, u.avatar_url
+      `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at,
+              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at
        FROM messages m
        JOIN users u ON u.id = m.user_id
        WHERE m.channel_id = $1
@@ -2923,7 +2959,7 @@ ipcMain.handle('chat:getMessages', async (_event, channelId) => {
       [channelId]
     );
 
-    return { ok: true, messages: messages.rows, currentUserId };
+    return { ok: true, messages: messages.rows.map(sanitizeUserFacingMessage), currentUserId };
   } catch (error) {
     return { ok: false, message: `Failed to load messages: ${error.message}` };
   }

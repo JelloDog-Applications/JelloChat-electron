@@ -127,8 +127,11 @@ const ui = {
   accountAdminBtn: document.getElementById('account-admin-btn'),
   accountModal: document.getElementById('account-modal'),
   accountModalCloseBtn: document.getElementById('account-modal-close-btn'),
+  accountStandingCard: document.getElementById('account-standing-card'),
   accountStandingLabel: document.getElementById('account-standing-label'),
   accountStandingMeta: document.getElementById('account-standing-meta'),
+  accountStandingBadge: document.getElementById('account-standing-badge'),
+  accountStandingMeter: document.getElementById('account-standing-meter'),
   accountForm: document.getElementById('account-form'),
   accountUsernameInput: document.getElementById('account-username-input'),
   accountEmailInput: document.getElementById('account-email-input'),
@@ -939,14 +942,71 @@ function renderAccountPanel() {
   ui.accountEmail.textContent = state.user?.email || '';
   setAvatarContent(ui.accountAvatar, state.user, state.user?.username || 'User');
   ui.accountAdminBtn?.classList.toggle('hidden', !state.user?.is_platform_admin);
-  const standing = String(state.user?.account_standing || 'good').replace(/_/g, ' ');
+  const standingDetails = getAccountStandingDetails(state.user);
   const violationCount = Number(state.user?.tos_violation_count || 0);
-  ui.accountStandingLabel.textContent = `Standing: ${standing.charAt(0).toUpperCase()}${standing.slice(1)}`;
+  ui.accountStandingCard.className = `account-standing-card standing-${standingDetails.key}`;
+  ui.accountStandingLabel.textContent = standingDetails.label;
+  ui.accountStandingBadge.textContent = standingDetails.badge;
+  const dots = Array.from(ui.accountStandingMeter?.querySelectorAll('.standing-dot') || []);
+  dots.forEach((dot, index) => {
+    dot.classList.toggle('is-active', index === standingDetails.index);
+    dot.classList.toggle('is-filled', index <= standingDetails.index);
+  });
   ui.accountStandingMeta.textContent = state.user?.standing_reason
     ? `${state.user.standing_reason} (${violationCount} violation${violationCount === 1 ? '' : 's'})`
     : violationCount > 0
       ? `${violationCount} Terms of Service violation${violationCount === 1 ? '' : 's'} on record.`
-      : 'No recent Terms of Service violations.';
+      : standingDetails.description;
+}
+
+function getAccountStandingDetails(user) {
+  const rawStanding = String(user?.account_standing || 'good').toLowerCase();
+  const violationCount = Number(user?.tos_violation_count || 0);
+  const isBanned = rawStanding === 'banned' || Boolean(user?.platform_banned_at) || violationCount >= 5;
+
+  if (isBanned) {
+    return {
+      key: 'suspended',
+      index: 4,
+      label: 'Suspended',
+      badge: '5/5',
+      description: 'This account is suspended from JelloChat.'
+    };
+  }
+  if (rawStanding === 'restricted' || violationCount >= 3) {
+    return {
+      key: 'at-risk',
+      index: 3,
+      label: 'At Risk',
+      badge: `${Math.min(4, Math.max(3, violationCount))}/5`,
+      description: 'This account has serious limits because of repeated Terms violations.'
+    };
+  }
+  if (violationCount >= 2) {
+    return {
+      key: 'very-limited',
+      index: 2,
+      label: 'Very Limited',
+      badge: '2/5',
+      description: 'This account has stronger limits because of recent Terms violations.'
+    };
+  }
+  if (rawStanding === 'warning' || violationCount >= 1) {
+    return {
+      key: 'limited',
+      index: 1,
+      label: 'Limited',
+      badge: '1/5',
+      description: 'This account has a warning from a recent Terms violation.'
+    };
+  }
+  return {
+    key: 'good',
+    index: 0,
+    label: 'All Good',
+    badge: '0/5',
+    description: 'No recent Terms of Service violations.'
+  };
 }
 
 function renderPasskeys() {
@@ -3104,6 +3164,26 @@ async function ensureRealtime(token) {
     try {
       payload = JSON.parse(event.data);
     } catch {
+      return;
+    }
+
+    if (payload.type === 'account-access-revoked') {
+      const message = payload.message || 'Your account access changed. Please sign in again.';
+      notifyUser(payload.title || 'Account Access Revoked', message);
+      await performLogout(false);
+      setAuthMessage(message, true);
+      await showMessageDialog(payload.title || 'Account Access Revoked', message);
+      return;
+    }
+
+    if (payload.type === 'server-banned') {
+      const message = payload.message || 'You were removed from a server.';
+      notifyUser(payload.title || 'Removed From Server', message);
+      await loadServers(false);
+      if (state.selectedServerId === payload.serverId) {
+        await loadServers(false);
+      }
+      await showMessageDialog(payload.title || 'Removed From Server', message);
       return;
     }
 

@@ -667,7 +667,16 @@ function clearAuthTokensForUser(userId) {
 function disconnectRealtimeUser(userId, reason = 'Account access changed.') {
   for (const [ws, meta] of wsClients) {
     if (meta.userId === userId) {
-      ws.close(4003, reason);
+      sendWs(ws, {
+        type: 'account-access-revoked',
+        title: 'Account Access Revoked',
+        message: reason
+      });
+      setTimeout(() => {
+        if (ws.readyState === 1) {
+          ws.close(4003, reason);
+        }
+      }, 100);
     }
   }
 }
@@ -1482,6 +1491,15 @@ async function getMessageAccess(userId, messageId) {
     [messageId, userId]
   );
   return access.rows[0] || null;
+}
+
+function sanitizeUserFacingMessage(row) {
+  const isBanned = Boolean(row?.author_platform_banned_at || row?.platform_banned_at);
+  return {
+    ...row,
+    username: isBanned ? 'Banned User' : (row.username || 'Unknown'),
+    avatar_url: isBanned ? '' : (row.avatar_url || '')
+  };
 }
 
 app.post('/api/auth/register', async (req, res) => {
@@ -2379,6 +2397,12 @@ app.post('/api/chat/servers/:serverId/ban', authMiddleware, async (req, res) => 
     await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
 
+    broadcastToUsers([targetUserId], {
+      type: 'server-banned',
+      serverId,
+      title: 'Removed From Server',
+      message: reason ? `You were banned from this server. Reason: ${reason}` : 'You were banned from this server.'
+    });
     await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
     await broadcastPresenceForUser(targetUserId);
     res.json({ ok: true });
@@ -2808,6 +2832,7 @@ app.get('/api/chat/servers/:serverId/roles', authMiddleware, async (req, res) =>
        JOIN users u ON u.id = sm.user_id
        LEFT JOIN server_member_roles smr ON smr.server_id = sm.server_id AND smr.user_id = sm.user_id
        WHERE sm.server_id = $1
+         AND u.platform_banned_at IS NULL
        GROUP BY u.id, u.username, u.avatar_url
        ORDER BY u.username`,
       [serverId]
@@ -3297,6 +3322,7 @@ app.get('/api/friends', authMiddleware, async (req, res) => {
        FROM friendships f
        JOIN users u ON u.id = f.friend_user_id
        WHERE f.user_id = $1
+         AND u.platform_banned_at IS NULL
        ORDER BY u.username`,
       [req.userId]
     );
@@ -3322,14 +3348,21 @@ app.get('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => {
       return;
     }
 
-    const partner = await db.query('SELECT id, username, avatar_url FROM users WHERE id = $1', [partnerUserId]);
+    const partner = await db.query(
+      `SELECT id, username, avatar_url
+       FROM users
+       WHERE id = $1
+         AND platform_banned_at IS NULL`,
+      [partnerUserId]
+    );
     if (partner.rows.length === 0) {
       res.status(404).json({ ok: false, message: 'User not found.' });
       return;
     }
 
     const messages = await db.query(
-      `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at, u.username, u.avatar_url
+      `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at,
+              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at
        FROM dm_messages m
        JOIN users u ON u.id = m.sender_user_id
        WHERE (m.sender_user_id = $1 AND m.receiver_user_id = $2)
@@ -3339,7 +3372,7 @@ app.get('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => {
       [req.userId, partnerUserId]
     );
 
-    res.json({ ok: true, messages: messages.rows, currentUserId: req.userId, partner: partner.rows[0] });
+    res.json({ ok: true, messages: messages.rows.map(sanitizeUserFacingMessage), currentUserId: req.userId, partner: partner.rows[0] });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load DM messages: ${error.message}` });
   }
@@ -3409,7 +3442,9 @@ app.get('/api/friends/requests', authMiddleware, async (req, res) => {
       `SELECT fr.id, fr.sender_user_id, u.username, u.avatar_url, fr.created_at
        FROM friend_requests fr
        JOIN users u ON u.id = fr.sender_user_id
-       WHERE fr.receiver_user_id = $1 AND fr.status = 'pending'
+       WHERE fr.receiver_user_id = $1
+         AND fr.status = 'pending'
+         AND u.platform_banned_at IS NULL
        ORDER BY fr.created_at DESC`,
       [req.userId]
     );
@@ -3656,7 +3691,8 @@ app.get('/api/chat/channels/:channelId/messages', authMiddleware, async (req, re
     }
 
     const messages = await db.query(
-      `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at, u.username, u.avatar_url
+      `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at,
+              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at
        FROM messages m
        JOIN users u ON u.id = m.user_id
        WHERE m.channel_id = $1
@@ -3664,7 +3700,7 @@ app.get('/api/chat/channels/:channelId/messages', authMiddleware, async (req, re
        LIMIT 200`,
       [channelId]
     );
-    res.json({ ok: true, messages: messages.rows, currentUserId: req.userId });
+    res.json({ ok: true, messages: messages.rows.map(sanitizeUserFacingMessage), currentUserId: req.userId });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load messages: ${error.message}` });
   }

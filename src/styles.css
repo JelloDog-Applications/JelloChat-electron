@@ -2383,20 +2383,117 @@ button svg + span {
 
 .account-standing-card {
   margin-bottom: 12px;
-  padding: 10px 12px;
+  padding: 14px;
   border-radius: 10px;
-  background: #232936;
+  background: linear-gradient(180deg, #263043 0%, #202736 100%);
   border: 1px solid #44506a;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+}
+
+.account-standing-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-standing-kicker {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .account-standing-label {
+  margin-top: 2px;
   font-weight: 700;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.account-standing-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.account-standing-meter {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.standing-dot {
+  height: 9px;
+  border-radius: 999px;
+  background: #3a4356;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0.78;
+}
+
+.standing-dot.is-filled {
+  opacity: 1;
+}
+
+.standing-dot-good.is-filled {
+  background: #57d7a4;
+}
+
+.standing-dot-limited.is-filled {
+  background: #f5c84c;
+}
+
+.standing-dot-very-limited.is-filled {
+  background: #f59e42;
+}
+
+.standing-dot-at-risk.is-filled {
+  background: #ef6a5f;
+}
+
+.standing-dot-suspended.is-filled {
+  background: #f43f5e;
+}
+
+.standing-dot.is-active {
+  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.22);
 }
 
 .account-standing-meta {
-  margin-top: 4px;
+  margin-top: 10px;
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.45;
+}
+
+.account-standing-card.standing-good {
+  border-color: rgba(87, 215, 164, 0.42);
+}
+
+.account-standing-card.standing-limited {
+  border-color: rgba(245, 200, 76, 0.52);
+}
+
+.account-standing-card.standing-very-limited {
+  border-color: rgba(245, 158, 66, 0.56);
+}
+
+.account-standing-card.standing-at-risk {
+  border-color: rgba(239, 106, 95, 0.6);
+}
+
+.account-standing-card.standing-suspended {
+  border-color: rgba(244, 63, 94, 0.68);
 }
 
 .account-modal-header button,
