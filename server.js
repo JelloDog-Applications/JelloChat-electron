@@ -357,7 +357,18 @@ app.use((req, res, next) => {
   res.redirect(buildAndroidDownloadUrl());
 });
 
-app.use(express.static(path.join(__dirname, 'src')));
+app.use((req, res, next) => {
+  const pathname = String(req.path || '');
+  if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html' || /\.(?:css|js)$/i.test(pathname))) {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+  }
+  next();
+});
+
+app.use(express.static(path.join(__dirname, 'src'), {
+  etag: false,
+  lastModified: false
+}));
 
 function buildAuthWebUrl(mode, rawToken) {
   if (mode === 'verify') {

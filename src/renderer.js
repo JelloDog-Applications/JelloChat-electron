@@ -942,6 +942,7 @@ function renderAccountPanel() {
   ui.accountEmail.textContent = state.user?.email || '';
   setAvatarContent(ui.accountAvatar, state.user, state.user?.username || 'User');
   ui.accountAdminBtn?.classList.toggle('hidden', !state.user?.is_platform_admin);
+  ensureAccountStandingMeter();
   const standingDetails = getAccountStandingDetails(state.user);
   const violationCount = Number(state.user?.tos_violation_count || 0);
   ui.accountStandingCard.className = `account-standing-card standing-${standingDetails.key}`;
@@ -957,6 +958,35 @@ function renderAccountPanel() {
     : violationCount > 0
       ? `${violationCount} Terms of Service violation${violationCount === 1 ? '' : 's'} on record.`
       : standingDetails.description;
+}
+
+function ensureAccountStandingMeter() {
+  if (!ui.accountStandingCard || ui.accountStandingMeter) {
+    return;
+  }
+
+  const meter = document.createElement('div');
+  meter.id = 'account-standing-meter';
+  meter.className = 'account-standing-meter';
+  meter.setAttribute('aria-label', 'Account standing progress');
+
+  const levels = [
+    ['standing-dot-good', 'All Good'],
+    ['standing-dot-limited', 'Limited'],
+    ['standing-dot-very-limited', 'Very Limited'],
+    ['standing-dot-at-risk', 'At Risk'],
+    ['standing-dot-suspended', 'Suspended']
+  ];
+
+  for (const [className, title] of levels) {
+    const dot = document.createElement('span');
+    dot.className = `standing-dot ${className}`;
+    dot.title = title;
+    meter.appendChild(dot);
+  }
+
+  ui.accountStandingCard.insertBefore(meter, ui.accountStandingMeta || null);
+  ui.accountStandingMeter = meter;
 }
 
 function getAccountStandingDetails(user) {
