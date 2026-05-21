@@ -160,6 +160,59 @@ function buildInviteUrl(code) {
   return buildPublicUrl(`/invite/${encodeURIComponent(String(code || '').trim().toUpperCase())}`);
 }
 
+function buildAssetUrl(pathname) {
+  return buildPublicUrl(`/assets/${String(pathname || '').replace(/^\/+/, '')}`);
+}
+
+function renderEmbedLandingPage(options = {}) {
+  const title = String(options.title || 'JelloChat').trim();
+  const description = String(options.description || 'Chat, servers, friends, direct messages, voice, and screen sharing.').trim();
+  const canonicalUrl = String(options.url || buildPublicUrl('/')).trim();
+  const imageUrl = String(options.imageUrl || buildAssetUrl('app-icon-1024.png')).trim();
+  const redirectUrl = String(options.redirectUrl || canonicalUrl).trim();
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <meta name="description" content="${escapeHtml(description)}" />
+    <meta property="og:site_name" content="JelloChat" />
+    <meta property="og:title" content="${escapeHtml(title)}" />
+    <meta property="og:description" content="${escapeHtml(description)}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
+    <meta property="og:image" content="${escapeHtml(imageUrl)}" />
+    <meta name="theme-color" content="#57d7a4" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="${escapeHtml(title)}" />
+    <meta name="twitter:description" content="${escapeHtml(description)}" />
+    <meta name="twitter:image" content="${escapeHtml(imageUrl)}" />
+    <style>
+      body { margin: 0; font-family: Arial, sans-serif; background: #111827; color: #f8fafc; display: grid; min-height: 100vh; place-items: center; }
+      main { width: min(92vw, 520px); background: #1f2937; border: 1px solid #44506a; border-radius: 14px; padding: 24px; }
+      h1 { margin: 0 0 10px; }
+      p { color: #cbd5e1; line-height: 1.5; }
+      a { display: inline-flex; margin-top: 12px; border-radius: 8px; padding: 10px 14px; background: #57d7a4; color: #0c1a16; font-weight: 700; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(description)}</p>
+      <a href="${escapeHtml(redirectUrl)}">Open JelloChat</a>
+    </main>
+    <script>
+      const bot = /discordbot|twitterbot|facebookexternalhit|slackbot|embedly|telegrambot|whatsapp/i.test(navigator.userAgent || '');
+      if (!bot) {
+        window.location.replace(${JSON.stringify(redirectUrl)});
+      }
+    </script>
+  </body>
+</html>`;
+}
+
 function normalizeInviteCode(input) {
   const value = String(input || '').trim();
   if (!value) {
@@ -357,6 +410,12 @@ app.use((req, res, next) => {
 
   res.redirect(buildAndroidDownloadUrl());
 });
+
+app.use('/assets', express.static(path.join(__dirname, 'assets'), {
+  etag: false,
+  lastModified: false,
+  maxAge: '1h'
+}));
 
 app.use((req, res, next) => {
   const pathname = String(req.path || '');
@@ -596,8 +655,44 @@ app.get('/verify-email', (_req, res) => {
   res.sendFile(path.join(__dirname, 'src', 'index.html'));
 });
 
-app.get('/invite/:code', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'src', 'index.html'));
+app.get('/invite/:code', async (req, res) => {
+  const code = normalizeInviteCode(req.params.code);
+  const canonicalUrl = buildInviteUrl(code);
+  const redirectUrl = buildPublicUrl(`/?invite=${encodeURIComponent(code)}`);
+
+  try {
+    const invite = await db.query(
+      `SELECT i.code, i.is_active, i.expires_at, i.max_uses, i.uses_count, s.name AS server_name
+       FROM server_invites i
+       JOIN servers s ON s.id = i.server_id
+       WHERE i.code = $1
+       LIMIT 1`,
+      [code]
+    );
+    const row = invite.rows[0] || null;
+    const isExpired = row?.expires_at && new Date(row.expires_at) < new Date();
+    const isFull = row?.max_uses && row.uses_count >= row.max_uses;
+    const valid = Boolean(row && row.is_active && !isExpired && !isFull);
+    const serverName = row?.server_name || 'a JelloChat server';
+
+    res.type('html').send(renderEmbedLandingPage({
+      title: valid ? `Join ${serverName} on JelloChat` : 'JelloChat invite',
+      description: valid
+        ? `You were invited to join ${serverName}. Open JelloChat to accept the invite.`
+        : 'This JelloChat invite may be expired or unavailable.',
+      url: canonicalUrl,
+      redirectUrl,
+      imageUrl: buildAssetUrl('app-icon-1024.png')
+    }));
+  } catch (_error) {
+    res.type('html').send(renderEmbedLandingPage({
+      title: 'JelloChat invite',
+      description: 'Open JelloChat to view this invite.',
+      url: canonicalUrl,
+      redirectUrl,
+      imageUrl: buildAssetUrl('app-icon-1024.png')
+    }));
+  }
 });
 
 app.get('/privacy-policy', (_req, res) => {
