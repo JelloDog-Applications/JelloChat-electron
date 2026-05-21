@@ -838,10 +838,10 @@ function shouldBlockBotLikeAuth(payload, mode, req = null) {
   if (mode === 'register' && (!Number.isFinite(elapsedMs) || elapsedMs <= 0)) {
     return 'Please use the JelloChat app form to create an account.';
   }
-  if (elapsedMs > 0 && elapsedMs < 1200) {
+  if (mode === 'register' && elapsedMs > 0 && elapsedMs < 1200) {
     return 'Please wait a moment and try again.';
   }
-  if (elapsedMs > 30 * 60 * 1000) {
+  if (mode === 'register' && elapsedMs > 30 * 60 * 1000) {
     return 'This form expired. Please refresh and try again.';
   }
   if (mode === 'register' && hasSuspiciousUsername(payload?.username)) {
