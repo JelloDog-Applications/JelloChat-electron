@@ -13,7 +13,8 @@ const WEB_PORT = Number(process.env.WEB_PORT || 3000);
 const IP_REPUTATION_BLOCK_THRESHOLD = Number(process.env.IP_REPUTATION_BLOCK_THRESHOLD || 8);
 const IP_REPUTATION_BLOCK_MINUTES = Number(process.env.IP_REPUTATION_BLOCK_MINUTES || 30);
 const IP_REPUTATION_DECAY_HOURS = Number(process.env.IP_REPUTATION_DECAY_HOURS || 6);
-const CURRENT_TOS_VERSION = '2026-05-20-bot-accounts';
+const CURRENT_TOS_VERSION = '2026-05-20-protections';
+const CURRENT_PRIVACY_VERSION = '2026-05-20-protections';
 
 const app = express();
 app.disable('x-powered-by');
@@ -426,6 +427,16 @@ async function sendTermsUpdatedEmail(email, username) {
   });
 }
 
+async function sendPrivacyUpdatedEmail(email, username) {
+  const privacyUrl = buildPublicUrl('/privacy-policy');
+  return sendMail({
+    to: email,
+    subject: 'JelloChat Privacy Policy updated',
+    text: `Hi ${username},\n\nWe updated the JelloChat Privacy Policy.\n\nReview the updated Privacy Policy here: ${privacyUrl}`,
+    html: `<p>Hi ${escapeHtml(username)},</p><p>We updated the JelloChat Privacy Policy.</p><p>Review the updated Privacy Policy here: <a href="${privacyUrl}">${privacyUrl}</a></p>`
+  });
+}
+
 async function maybeNotifyTermsUpdate(user) {
   if (!user?.id || user.tos_notified_version === CURRENT_TOS_VERSION) {
     return null;
@@ -437,6 +448,20 @@ async function maybeNotifyTermsUpdate(user) {
     version: CURRENT_TOS_VERSION,
     title: 'Terms of Service updated',
     message: 'JelloChat updated the Terms of Service. Bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts may be terminated.'
+  };
+}
+
+async function maybeNotifyPrivacyUpdate(user) {
+  if (!user?.id || user.privacy_notified_version === CURRENT_PRIVACY_VERSION) {
+    return null;
+  }
+
+  await db.query('UPDATE users SET privacy_notified_version = $1 WHERE id = $2', [CURRENT_PRIVACY_VERSION, user.id]);
+
+  return {
+    version: CURRENT_PRIVACY_VERSION,
+    title: 'Privacy Policy updated',
+    message: 'JelloChat updated the Privacy Policy. Please review the latest privacy details when you have a moment.'
   };
 }
 
@@ -466,6 +491,36 @@ async function sendTermsUpdateEmailsOnStartup() {
       await db.query('UPDATE users SET tos_email_notified_version = $1 WHERE id = $2', [CURRENT_TOS_VERSION, user.id]);
     } catch (error) {
       console.warn(`Terms update email failed for user ${user.id}: ${error.message}`);
+    }
+  }
+}
+
+async function sendPrivacyUpdateEmailsOnStartup() {
+  const result = await db.query(
+    `SELECT id, username, email
+     FROM users
+     WHERE email_verified = TRUE
+       AND platform_banned_at IS NULL
+       AND COALESCE(privacy_email_notified_version, '') <> $1
+     ORDER BY id ASC`,
+    [CURRENT_PRIVACY_VERSION]
+  );
+
+  if (result.rows.length === 0) {
+    return;
+  }
+
+  console.log(`Sending Privacy Policy update email to ${result.rows.length} JelloChat user(s).`);
+  for (const user of result.rows) {
+    try {
+      const mailResult = await sendPrivacyUpdatedEmail(user.email, user.username);
+      if (!mailResult?.ok) {
+        console.warn(`Privacy Policy update email skipped for user ${user.id}: ${mailResult?.message || 'unknown mail error'}`);
+        continue;
+      }
+      await db.query('UPDATE users SET privacy_email_notified_version = $1 WHERE id = $2', [CURRENT_PRIVACY_VERSION, user.id]);
+    } catch (error) {
+      console.warn(`Privacy Policy update email failed for user ${user.id}: ${error.message}`);
     }
   }
 }
@@ -1568,8 +1623,8 @@ app.post('/api/auth/register', async (req, res) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const created = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version, tos_email_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5, $5) RETURNING id, username, email, avatar_url, date_of_birth',
-      [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION]
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version, tos_email_notified_version, privacy_notified_version, privacy_email_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5, $5, $6, $6) RETURNING id, username, email, avatar_url, date_of_birth',
+      [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION, CURRENT_PRIVACY_VERSION]
     );
     const user = created.rows[0];
 
@@ -1628,7 +1683,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, privacy_notified_version, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       penalizeIp(requestIp, 1, 'login-miss');
       res.status(401).json({ ok: false, message: 'Invalid email or password.' });
@@ -1663,12 +1718,14 @@ app.post('/api/auth/login', async (req, res) => {
 
     const realtimeToken = issueAuthToken(user.id);
     const tosNotice = await maybeNotifyTermsUpdate(user);
+    const privacyNotice = await maybeNotifyPrivacyUpdate(user);
     rewardIp(requestIp, 2);
     res.json({
       ok: true,
       user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url, is_platform_admin: user.is_platform_admin, account_standing: user.account_standing, standing_reason: user.standing_reason, tos_violation_count: user.tos_violation_count, date_of_birth: user.date_of_birth },
       realtimeToken,
-      tosNotice
+      tosNotice,
+      privacyNotice
     });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Login failed: ${error.message}` });
@@ -1682,7 +1739,7 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
 
 app.get('/api/auth/session', authMiddleware, async (req, res) => {
   try {
-    const userResult = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, date_of_birth FROM users WHERE id = $1', [req.userId]);
+    const userResult = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, privacy_notified_version, date_of_birth FROM users WHERE id = $1', [req.userId]);
     if (userResult.rows.length === 0) {
       res.status(401).json({ ok: false, message: 'Session not found.' });
       return;
@@ -1696,8 +1753,10 @@ app.get('/api/auth/session', authMiddleware, async (req, res) => {
     }
     const realtimeToken = issueAuthToken(user.id);
     const tosNotice = await maybeNotifyTermsUpdate(user);
+    const privacyNotice = await maybeNotifyPrivacyUpdate(user);
     delete user.tos_notified_version;
-    res.json({ ok: true, user, realtimeToken, tosNotice });
+    delete user.privacy_notified_version;
+    res.json({ ok: true, user, realtimeToken, tosNotice, privacyNotice });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to restore session: ${error.message}` });
   }
@@ -1890,7 +1949,7 @@ app.post('/api/auth/passkeys/login/verify', async (req, res) => {
     const credentialResult = await db.query(
       `SELECT p.id, p.user_id, p.public_key_spki, p.counter, u.username, u.email, u.avatar_url,
               u.is_platform_admin, u.platform_banned_at, u.account_standing, u.standing_reason,
-              u.tos_violation_count, u.tos_notified_version, u.date_of_birth, u.email_verified
+              u.tos_violation_count, u.tos_notified_version, u.privacy_notified_version, u.date_of_birth, u.email_verified
        FROM user_passkeys p
        JOIN users u ON u.id = p.user_id
        WHERE p.credential_id = $1`,
@@ -1943,6 +2002,12 @@ app.post('/api/auth/passkeys/login/verify', async (req, res) => {
       email: credential.email,
       tos_notified_version: credential.tos_notified_version
     });
+    const privacyNotice = await maybeNotifyPrivacyUpdate({
+      id: credential.user_id,
+      username: credential.username,
+      email: credential.email,
+      privacy_notified_version: credential.privacy_notified_version
+    });
     res.json({
       ok: true,
       supported: true,
@@ -1958,7 +2023,8 @@ app.post('/api/auth/passkeys/login/verify', async (req, res) => {
         date_of_birth: credential.date_of_birth
       },
       realtimeToken,
-      tosNotice
+      tosNotice,
+      privacyNotice
     });
   } catch (error) {
     res.status(500).json({ ok: false, supported: true, message: `Passkey sign-in failed: ${error.message}` });
@@ -3832,6 +3898,9 @@ async function start() {
   await ensurePlatformAdminExists();
   sendTermsUpdateEmailsOnStartup().catch((error) => {
     console.warn(`Terms update email job failed: ${error.message}`);
+  });
+  sendPrivacyUpdateEmailsOnStartup().catch((error) => {
+    console.warn(`Privacy Policy update email job failed: ${error.message}`);
   });
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });

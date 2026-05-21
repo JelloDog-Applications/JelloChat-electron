@@ -64,6 +64,12 @@ ADD COLUMN IF NOT EXISTS tos_notified_version VARCHAR(40);
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS tos_email_notified_version VARCHAR(40);
 
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS privacy_notified_version VARCHAR(40);
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS privacy_email_notified_version VARCHAR(40);
+
 DO $$
 DECLARE
   rec RECORD;

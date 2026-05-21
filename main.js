@@ -10,7 +10,8 @@ const { sendMail } = require('./mailer');
 
 const WS_PORT = Number(process.env.WS_PORT || 3131);
 const DEFAULT_PUBLIC_URL = 'https://chat.jellodog.com';
-const CURRENT_TOS_VERSION = '2026-05-20-bot-accounts';
+const CURRENT_TOS_VERSION = '2026-05-20-protections';
+const CURRENT_PRIVACY_VERSION = '2026-05-20-protections';
 
 app.commandLine.appendSwitch(
   'disable-features',
@@ -119,6 +120,16 @@ async function sendTermsUpdatedEmail(email, username) {
   });
 }
 
+async function sendPrivacyUpdatedEmail(email, username) {
+  const privacyUrl = buildPublicUrl('/privacy-policy');
+  return sendMail({
+    to: email,
+    subject: 'JelloChat Privacy Policy updated',
+    text: `Hi ${username},\n\nWe updated the JelloChat Privacy Policy.\n\nReview the updated Privacy Policy here: ${privacyUrl}`,
+    html: `<p>Hi ${escapeHtml(username)},</p><p>We updated the JelloChat Privacy Policy.</p><p>Review the updated Privacy Policy here: <a href="${privacyUrl}">${privacyUrl}</a></p>`
+  });
+}
+
 async function maybeNotifyTermsUpdate(user) {
   if (!user?.id || user.tos_notified_version === CURRENT_TOS_VERSION) {
     return null;
@@ -130,6 +141,20 @@ async function maybeNotifyTermsUpdate(user) {
     version: CURRENT_TOS_VERSION,
     title: 'Terms of Service updated',
     message: 'JelloChat updated the Terms of Service. Bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts may be terminated.'
+  };
+}
+
+async function maybeNotifyPrivacyUpdate(user) {
+  if (!user?.id || user.privacy_notified_version === CURRENT_PRIVACY_VERSION) {
+    return null;
+  }
+
+  await db.query('UPDATE users SET privacy_notified_version = $1 WHERE id = $2', [CURRENT_PRIVACY_VERSION, user.id]);
+
+  return {
+    version: CURRENT_PRIVACY_VERSION,
+    title: 'Privacy Policy updated',
+    message: 'JelloChat updated the Privacy Policy. Please review the latest privacy details when you have a moment.'
   };
 }
 
@@ -1061,8 +1086,8 @@ ipcMain.handle('auth:register', async (_event, payload) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version, tos_email_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5, $5) RETURNING id, username, email, avatar_url, date_of_birth',
-      [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION]
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version, tos_email_notified_version, privacy_notified_version, privacy_email_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5, $5, $6, $6) RETURNING id, username, email, avatar_url, date_of_birth',
+      [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION, CURRENT_PRIVACY_VERSION]
     );
 
     const newUser = result.rows[0];
@@ -1110,7 +1135,7 @@ ipcMain.handle('auth:login', async (_event, payload) => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, privacy_notified_version, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return { ok: false, message: 'Invalid email or password.' };
     }
@@ -1138,11 +1163,13 @@ ipcMain.handle('auth:login', async (_event, payload) => {
     currentUserId = user.id;
     const realtimeToken = issueAuthToken(user.id);
     const tosNotice = await maybeNotifyTermsUpdate(user);
+    const privacyNotice = await maybeNotifyPrivacyUpdate(user);
     return {
       ok: true,
       user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url, is_platform_admin: user.is_platform_admin, account_standing: user.account_standing, standing_reason: user.standing_reason, tos_violation_count: user.tos_violation_count, date_of_birth: user.date_of_birth },
       realtimeToken,
-      tosNotice
+      tosNotice,
+      privacyNotice
     };
   } catch (error) {
     return { ok: false, message: `Login failed: ${error.message}` };
@@ -1163,7 +1190,7 @@ ipcMain.handle('auth:getSession', async () => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, date_of_birth FROM users WHERE id = $1', [currentUserId]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, privacy_notified_version, date_of_birth FROM users WHERE id = $1', [currentUserId]);
     if (result.rows.length === 0) {
       currentUserId = null;
       return { ok: false, message: 'Session not found.' };
@@ -1176,8 +1203,10 @@ ipcMain.handle('auth:getSession', async () => {
     }
     const realtimeToken = issueAuthToken(user.id);
     const tosNotice = await maybeNotifyTermsUpdate(user);
+    const privacyNotice = await maybeNotifyPrivacyUpdate(user);
     delete user.tos_notified_version;
-    return { ok: true, user, realtimeToken, tosNotice };
+    delete user.privacy_notified_version;
+    return { ok: true, user, realtimeToken, tosNotice, privacyNotice };
   } catch (error) {
     return { ok: false, message: `Failed to restore session: ${error.message}` };
   }

@@ -1145,6 +1145,10 @@ async function completeSignedInState(result) {
     notifyUser(result.tosNotice.title || 'Terms of Service updated', result.tosNotice.message);
     await showMessageDialog(result.tosNotice.title || 'Terms of Service updated', result.tosNotice.message);
   }
+  if (result.privacyNotice?.message) {
+    notifyUser(result.privacyNotice.title || 'Privacy Policy updated', result.privacyNotice.message);
+    await showMessageDialog(result.privacyNotice.title || 'Privacy Policy updated', result.privacyNotice.message);
+  }
 }
 
 function closeAccountSettingsMenu() {
