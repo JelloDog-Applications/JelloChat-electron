@@ -13,6 +13,7 @@ const WEB_PORT = Number(process.env.WEB_PORT || 3000);
 const IP_REPUTATION_BLOCK_THRESHOLD = Number(process.env.IP_REPUTATION_BLOCK_THRESHOLD || 8);
 const IP_REPUTATION_BLOCK_MINUTES = Number(process.env.IP_REPUTATION_BLOCK_MINUTES || 30);
 const IP_REPUTATION_DECAY_HOURS = Number(process.env.IP_REPUTATION_DECAY_HOURS || 6);
+const CURRENT_TOS_VERSION = '2026-05-20-bot-accounts';
 
 const app = express();
 app.disable('x-powered-by');
@@ -404,6 +405,31 @@ async function sendTerminationEmail(email, username, reason) {
   });
 }
 
+async function sendTermsUpdatedEmail(email, username) {
+  const termsUrl = buildPublicUrl('/terms-of-service');
+  return sendMail({
+    to: email,
+    subject: 'JelloChat Terms of Service updated',
+    text: `Hi ${username},\n\nWe updated the JelloChat Terms of Service.\n\nThe update now makes clear that bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts are not allowed and may be terminated.\n\nReview the updated Terms here: ${termsUrl}`,
+    html: `<p>Hi ${escapeHtml(username)},</p><p>We updated the JelloChat Terms of Service.</p><p>The update now makes clear that bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts are not allowed and may be terminated.</p><p>Review the updated Terms here: <a href="${termsUrl}">${termsUrl}</a></p>`
+  });
+}
+
+async function maybeNotifyTermsUpdate(user) {
+  if (!user?.id || user.tos_notified_version === CURRENT_TOS_VERSION) {
+    return null;
+  }
+
+  sendTermsUpdatedEmail(user.email, user.username).catch(() => {});
+  await db.query('UPDATE users SET tos_notified_version = $1 WHERE id = $2', [CURRENT_TOS_VERSION, user.id]);
+
+  return {
+    version: CURRENT_TOS_VERSION,
+    title: 'Terms of Service updated',
+    message: 'JelloChat updated the Terms of Service. Bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts may be terminated.'
+  };
+}
+
 app.get('/auth-link', (req, res) => {
   const mode = String(req.query?.mode || '').trim().toLowerCase();
   const token = String(req.query?.token || '').trim();
@@ -733,14 +759,52 @@ function hasSuspiciousUsername(username) {
   return false;
 }
 
-function shouldBlockBotLikeAuth(payload, mode) {
+function getAutomatedRequestSignal(req) {
+  const userAgent = String(req?.headers?.['user-agent'] || '').trim();
+  const acceptLanguage = String(req?.headers?.['accept-language'] || '').trim();
+  const contentType = String(req?.headers?.['content-type'] || '').toLowerCase();
+
+  if (!userAgent) {
+    return 'Missing browser identity.';
+  }
+  if (/(curl|wget|python-requests|aiohttp|httpclient|okhttp|postman|insomnia|scrapy|spider|crawler|bot\b|headless|phantomjs|selenium|puppeteer|playwright)/i.test(userAgent)) {
+    return 'Automated client signature.';
+  }
+  if (req?.method === 'POST' && !contentType.includes('application/json')) {
+    return 'Unexpected request format.';
+  }
+  if (!acceptLanguage && !/JelloChatAndroidApp/i.test(userAgent)) {
+    return 'Missing browser language signal.';
+  }
+  return null;
+}
+
+function shouldBlockBotLikeAuth(payload, mode, req = null) {
+  const requestSignal = req ? getAutomatedRequestSignal(req) : null;
+  if (requestSignal) {
+    return 'Suspicious automated activity was detected.';
+  }
   const trapValue = String(mode === 'register' ? payload?.website || '' : payload?.company || '').trim();
   if (trapValue) {
     return 'Suspicious automated activity was detected.';
   }
+  const clientSignal = payload?.clientSignal || {};
+  const timezone = String(clientSignal.timezone || '').trim();
+  const viewport = clientSignal.viewport || {};
+  const viewportWidth = Number(viewport.width || 0);
+  const viewportHeight = Number(viewport.height || 0);
+  if (mode === 'register' && (!timezone || viewportWidth <= 0 || viewportHeight <= 0)) {
+    return 'Suspicious automated activity was detected.';
+  }
   const elapsedMs = Number(payload?.clientElapsedMs || 0);
+  if (mode === 'register' && (!Number.isFinite(elapsedMs) || elapsedMs <= 0)) {
+    return 'Please use the JelloChat app form to create an account.';
+  }
   if (elapsedMs > 0 && elapsedMs < 1200) {
     return 'Please wait a moment and try again.';
+  }
+  if (elapsedMs > 30 * 60 * 1000) {
+    return 'This form expired. Please refresh and try again.';
   }
   if (mode === 'register' && hasSuspiciousUsername(payload?.username)) {
     return 'That username looks automated. Please choose a different username.';
@@ -952,17 +1016,9 @@ async function enforceServerAutoBan(serverId, userId, reason) {
 async function handleServerAutoModeration(serverId, channelId, userId, content) {
   const severeViolation = classifyServerAutoModerationViolation(content);
   if (severeViolation) {
-    if (!(await isServerOwner(userId, serverId))) {
-      await recordServerAutoModerationEvent(serverId, userId, severeViolation.rule, content);
-      await applyAutomaticStandingUpdate(userId, {
-        increment: 2,
-        reason: severeViolation.message,
-        forceStanding: 'restricted'
-      });
-      await enforceServerAutoBan(serverId, userId, severeViolation.message);
-      return { blocked: true, banned: true, message: severeViolation.message };
-    }
-    return { blocked: true, banned: false, message: 'Automod blocked that message, but server owners are not auto-banned.' };
+    await recordServerAutoModerationEvent(serverId, userId, severeViolation.rule, content);
+    await autoTerminateBotAccount(userId, `Account terminated for automated bot spam: ${severeViolation.rule}.`);
+    return { blocked: true, banned: true, terminated: true, message: 'This account has been terminated for automated bot activity.' };
   }
 
   const minimumMessage = await runMinimumAutoModeration({ userId, channelId, content });
@@ -975,15 +1031,10 @@ async function handleServerAutoModeration(serverId, channelId, userId, content) 
     increment: 1,
     reason: minimumMessage
   });
-  if (recentViolations >= 3 && !(await isServerOwner(userId, serverId))) {
-    const reason = 'Automod banned this user after repeated moderation violations.';
-    await applyAutomaticStandingUpdate(userId, {
-      increment: 1,
-      reason,
-      forceStanding: 'restricted'
-    });
-    await enforceServerAutoBan(serverId, userId, reason);
-    return { blocked: true, banned: true, message: reason };
+  if (recentViolations >= 3) {
+    const reason = 'Account terminated for repeated automated moderation violations.';
+    await autoTerminateBotAccount(userId, reason);
+    return { blocked: true, banned: true, terminated: true, message: 'This account has been terminated for automated bot activity.' };
   }
 
   return { blocked: true, banned: false, message: minimumMessage };
@@ -1410,7 +1461,7 @@ app.post('/api/auth/register', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
   const dateOfBirth = normalizeDateOfBirthInput(req.body?.dateOfBirth);
-  const botBlock = shouldBlockBotLikeAuth(req.body, 'register');
+  const botBlock = shouldBlockBotLikeAuth(req.body, 'register', req);
 
   if (isIpTemporarilyBlocked(requestIp)) {
     res.status(429).json({ ok: false, message: 'This IP has been temporarily blocked for suspicious activity. Please try again later.' });
@@ -1459,8 +1510,8 @@ app.post('/api/auth/register', async (req, res) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const created = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified) VALUES ($1, $2, $3, $4, FALSE) RETURNING id, username, email, avatar_url, date_of_birth',
-      [allocated.username, email, passwordHash, dateOfBirth]
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5) RETURNING id, username, email, avatar_url, date_of_birth',
+      [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION]
     );
     const user = created.rows[0];
 
@@ -1502,7 +1553,7 @@ app.post('/api/auth/login', async (req, res) => {
   const requestIp = normalizeIpAddress(req.ip);
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
-  const botBlock = shouldBlockBotLikeAuth(req.body, 'login');
+  const botBlock = shouldBlockBotLikeAuth(req.body, 'login', req);
   const ipBlocked = isIpTemporarilyBlocked(requestIp);
 
   if (!email || !password) {
@@ -1519,7 +1570,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       penalizeIp(requestIp, 1, 'login-miss');
       res.status(401).json({ ok: false, message: 'Invalid email or password.' });
@@ -1553,11 +1604,13 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const realtimeToken = issueAuthToken(user.id);
+    const tosNotice = await maybeNotifyTermsUpdate(user);
     rewardIp(requestIp, 2);
     res.json({
       ok: true,
       user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url, is_platform_admin: user.is_platform_admin, account_standing: user.account_standing, standing_reason: user.standing_reason, tos_violation_count: user.tos_violation_count, date_of_birth: user.date_of_birth },
-      realtimeToken
+      realtimeToken,
+      tosNotice
     });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Login failed: ${error.message}` });
@@ -1571,7 +1624,7 @@ app.post('/api/auth/logout', authMiddleware, async (req, res) => {
 
 app.get('/api/auth/session', authMiddleware, async (req, res) => {
   try {
-    const userResult = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, date_of_birth FROM users WHERE id = $1', [req.userId]);
+    const userResult = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, date_of_birth FROM users WHERE id = $1', [req.userId]);
     if (userResult.rows.length === 0) {
       res.status(401).json({ ok: false, message: 'Session not found.' });
       return;
@@ -1584,7 +1637,9 @@ app.get('/api/auth/session', authMiddleware, async (req, res) => {
       return;
     }
     const realtimeToken = issueAuthToken(user.id);
-    res.json({ ok: true, user, realtimeToken });
+    const tosNotice = await maybeNotifyTermsUpdate(user);
+    delete user.tos_notified_version;
+    res.json({ ok: true, user, realtimeToken, tosNotice });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to restore session: ${error.message}` });
   }
@@ -1777,7 +1832,7 @@ app.post('/api/auth/passkeys/login/verify', async (req, res) => {
     const credentialResult = await db.query(
       `SELECT p.id, p.user_id, p.public_key_spki, p.counter, u.username, u.email, u.avatar_url,
               u.is_platform_admin, u.platform_banned_at, u.account_standing, u.standing_reason,
-              u.tos_violation_count, u.date_of_birth, u.email_verified
+              u.tos_violation_count, u.tos_notified_version, u.date_of_birth, u.email_verified
        FROM user_passkeys p
        JOIN users u ON u.id = p.user_id
        WHERE p.credential_id = $1`,
@@ -1824,6 +1879,12 @@ app.post('/api/auth/passkeys/login/verify', async (req, res) => {
     );
 
     const realtimeToken = issueAuthToken(credential.user_id);
+    const tosNotice = await maybeNotifyTermsUpdate({
+      id: credential.user_id,
+      username: credential.username,
+      email: credential.email,
+      tos_notified_version: credential.tos_notified_version
+    });
     res.json({
       ok: true,
       supported: true,
@@ -1838,7 +1899,8 @@ app.post('/api/auth/passkeys/login/verify', async (req, res) => {
         tos_violation_count: credential.tos_violation_count,
         date_of_birth: credential.date_of_birth
       },
-      realtimeToken
+      realtimeToken,
+      tosNotice
     });
   } catch (error) {
     res.status(500).json({ ok: false, supported: true, message: `Passkey sign-in failed: ${error.message}` });
@@ -3275,6 +3337,12 @@ app.post('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => 
       content
     });
     if (moderationMessage) {
+      const severeViolation = classifyServerAutoModerationViolation(content);
+      if (severeViolation) {
+        await autoTerminateBotAccount(req.userId, `Account terminated for automated bot spam in DMs: ${severeViolation.rule}.`);
+        res.status(403).json({ ok: false, message: 'This account has been terminated for automated bot activity.' });
+        return;
+      }
       res.status(400).json({ ok: false, message: moderationMessage });
       return;
     }

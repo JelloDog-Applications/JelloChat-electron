@@ -10,6 +10,7 @@ const { sendMail } = require('./mailer');
 
 const WS_PORT = Number(process.env.WS_PORT || 3131);
 const DEFAULT_PUBLIC_URL = 'https://chat.jellodog.com';
+const CURRENT_TOS_VERSION = '2026-05-20-bot-accounts';
 
 app.commandLine.appendSwitch(
   'disable-features',
@@ -34,6 +35,15 @@ function hashToken(rawToken) {
 function buildPublicUrl(pathname) {
   const base = String(process.env.APP_PUBLIC_URL || DEFAULT_PUBLIC_URL).trim().replace(/\/+$/, '');
   return `${base}${pathname}`;
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function buildInviteUrl(code) {
@@ -97,6 +107,31 @@ async function sendTerminationEmail(email, username, reason) {
     text: `Hi ${username},\n\nYour JelloChat account has been terminated.\n\nReason: ${detail}\n\nFor more information, review our Terms of Service: ${supportUrl}`,
     html: `<p>Hi ${username},</p><p>Your JelloChat account has been terminated.</p><p><strong>Reason:</strong> ${detail}</p><p>For more information, review our <a href="${supportUrl}">Terms of Service</a>.</p>`
   });
+}
+
+async function sendTermsUpdatedEmail(email, username) {
+  const termsUrl = buildPublicUrl('/terms-of-service');
+  return sendMail({
+    to: email,
+    subject: 'JelloChat Terms of Service updated',
+    text: `Hi ${username},\n\nWe updated the JelloChat Terms of Service.\n\nThe update now makes clear that bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts are not allowed and may be terminated.\n\nReview the updated Terms here: ${termsUrl}`,
+    html: `<p>Hi ${escapeHtml(username)},</p><p>We updated the JelloChat Terms of Service.</p><p>The update now makes clear that bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts are not allowed and may be terminated.</p><p>Review the updated Terms here: <a href="${termsUrl}">${termsUrl}</a></p>`
+  });
+}
+
+async function maybeNotifyTermsUpdate(user) {
+  if (!user?.id || user.tos_notified_version === CURRENT_TOS_VERSION) {
+    return null;
+  }
+
+  sendTermsUpdatedEmail(user.email, user.username).catch(() => {});
+  await db.query('UPDATE users SET tos_notified_version = $1 WHERE id = $2', [CURRENT_TOS_VERSION, user.id]);
+
+  return {
+    version: CURRENT_TOS_VERSION,
+    title: 'Terms of Service updated',
+    message: 'JelloChat updated the Terms of Service. Bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts may be terminated.'
+  };
 }
 
 async function issueEmailVerification(userId, email, username) {
@@ -287,9 +322,23 @@ function shouldBlockBotLikeAuth(payload, mode) {
   if (trapValue) {
     return 'Suspicious automated activity was detected.';
   }
+  const clientSignal = payload?.clientSignal || {};
+  const timezone = String(clientSignal.timezone || '').trim();
+  const viewport = clientSignal.viewport || {};
+  const viewportWidth = Number(viewport.width || 0);
+  const viewportHeight = Number(viewport.height || 0);
+  if (mode === 'register' && (!timezone || viewportWidth <= 0 || viewportHeight <= 0)) {
+    return 'Suspicious automated activity was detected.';
+  }
   const elapsedMs = Number(payload?.clientElapsedMs || 0);
+  if (mode === 'register' && (!Number.isFinite(elapsedMs) || elapsedMs <= 0)) {
+    return 'Please use the JelloChat app form to create an account.';
+  }
   if (elapsedMs > 0 && elapsedMs < 1200) {
     return 'Please wait a moment and try again.';
+  }
+  if (elapsedMs > 30 * 60 * 1000) {
+    return 'This form expired. Please refresh and try again.';
   }
   if (mode === 'register' && hasSuspiciousUsername(payload?.username)) {
     return 'That username looks automated. Please choose a different username.';
@@ -344,6 +393,20 @@ async function applyAutomaticStandingUpdate(userId, options = {}) {
     clearAuthTokensForUser(userId);
     disconnectRealtimeUser(userId, 'Account banned from JelloChat.');
     sendTerminationEmail(updated.email, updated.username, updated.platform_ban_reason || updated.standing_reason || 'Your account was terminated for Terms of Service violations.').catch(() => {});
+  }
+  return updated;
+}
+
+async function autoTerminateBotAccount(userId, reason) {
+  const updated = await applyAutomaticStandingUpdate(userId, {
+    increment: 3,
+    reason,
+    forceStanding: 'banned',
+    setPlatformBanned: true,
+    platformBanReason: reason
+  });
+  if (updated && currentUserId === userId) {
+    currentUserId = null;
   }
   return updated;
 }
@@ -491,17 +554,9 @@ async function enforceServerAutoBan(serverId, userId, reason) {
 async function handleServerAutoModeration(serverId, channelId, userId, content) {
   const severeViolation = classifyServerAutoModerationViolation(content);
   if (severeViolation) {
-    if (!(await isServerOwner(userId, serverId))) {
-      await recordServerAutoModerationEvent(serverId, userId, severeViolation.rule, content);
-      await applyAutomaticStandingUpdate(userId, {
-        increment: 2,
-        reason: severeViolation.message,
-        forceStanding: 'restricted'
-      });
-      await enforceServerAutoBan(serverId, userId, severeViolation.message);
-      return { blocked: true, banned: true, message: severeViolation.message };
-    }
-    return { blocked: true, banned: false, message: 'Automod blocked that message, but server owners are not auto-banned.' };
+    await recordServerAutoModerationEvent(serverId, userId, severeViolation.rule, content);
+    await autoTerminateBotAccount(userId, `Account terminated for automated bot spam: ${severeViolation.rule}.`);
+    return { blocked: true, banned: true, terminated: true, message: 'This account has been terminated for automated bot activity.' };
   }
 
   const minimumMessage = await runMinimumAutoModeration({ userId, channelId, content });
@@ -514,15 +569,10 @@ async function handleServerAutoModeration(serverId, channelId, userId, content) 
     increment: 1,
     reason: minimumMessage
   });
-  if (recentViolations >= 3 && !(await isServerOwner(userId, serverId))) {
-    const reason = 'Automod banned this user after repeated moderation violations.';
-    await applyAutomaticStandingUpdate(userId, {
-      increment: 1,
-      reason,
-      forceStanding: 'restricted'
-    });
-    await enforceServerAutoBan(serverId, userId, reason);
-    return { blocked: true, banned: true, message: reason };
+  if (recentViolations >= 3) {
+    const reason = 'Account terminated for repeated automated moderation violations.';
+    await autoTerminateBotAccount(userId, reason);
+    return { blocked: true, banned: true, terminated: true, message: 'This account has been terminated for automated bot activity.' };
   }
 
   return { blocked: true, banned: false, message: minimumMessage };
@@ -1003,8 +1053,8 @@ ipcMain.handle('auth:register', async (_event, payload) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified) VALUES ($1, $2, $3, $4, FALSE) RETURNING id, username, email, avatar_url, date_of_birth',
-      [allocated.username, email, passwordHash, dateOfBirth]
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5) RETURNING id, username, email, avatar_url, date_of_birth',
+      [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION]
     );
 
     const newUser = result.rows[0];
@@ -1047,15 +1097,12 @@ ipcMain.handle('auth:login', async (_event, payload) => {
   if (!email || !password) {
     return { ok: false, message: 'Email and password are required.' };
   }
-  if (botBlock) {
-    return { ok: false, message: botBlock };
-  }
   if (trackAuthAttempts(`login:${email}`, 8, 10 * 60 * 1000)) {
     return { ok: false, message: 'Too many login attempts. Please try again later.' };
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, password_hash, email_verified, date_of_birth FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return { ok: false, message: 'Invalid email or password.' };
     }
@@ -1064,6 +1111,10 @@ ipcMain.handle('auth:login', async (_event, payload) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return { ok: false, message: 'Invalid email or password.' };
+    }
+    if (botBlock) {
+      await autoTerminateBotAccount(user.id, botBlock);
+      return { ok: false, message: 'This account has been terminated for automated bot activity.' };
     }
     if (!user.email_verified) {
       return {
@@ -1078,10 +1129,12 @@ ipcMain.handle('auth:login', async (_event, payload) => {
 
     currentUserId = user.id;
     const realtimeToken = issueAuthToken(user.id);
+    const tosNotice = await maybeNotifyTermsUpdate(user);
     return {
       ok: true,
       user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url, is_platform_admin: user.is_platform_admin, account_standing: user.account_standing, standing_reason: user.standing_reason, tos_violation_count: user.tos_violation_count, date_of_birth: user.date_of_birth },
-      realtimeToken
+      realtimeToken,
+      tosNotice
     };
   } catch (error) {
     return { ok: false, message: `Login failed: ${error.message}` };
@@ -1102,7 +1155,7 @@ ipcMain.handle('auth:getSession', async () => {
   }
 
   try {
-    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, date_of_birth FROM users WHERE id = $1', [currentUserId]);
+    const result = await db.query('SELECT id, username, email, avatar_url, is_platform_admin, platform_banned_at, account_standing, standing_reason, tos_violation_count, tos_notified_version, date_of_birth FROM users WHERE id = $1', [currentUserId]);
     if (result.rows.length === 0) {
       currentUserId = null;
       return { ok: false, message: 'Session not found.' };
@@ -1114,7 +1167,9 @@ ipcMain.handle('auth:getSession', async () => {
       return { ok: false, message: 'This account has been banned from JelloChat.' };
     }
     const realtimeToken = issueAuthToken(user.id);
-    return { ok: true, user, realtimeToken };
+    const tosNotice = await maybeNotifyTermsUpdate(user);
+    delete user.tos_notified_version;
+    return { ok: true, user, realtimeToken, tosNotice };
   } catch (error) {
     return { ok: false, message: `Failed to restore session: ${error.message}` };
   }
@@ -2705,6 +2760,11 @@ ipcMain.handle('dm:sendMessage', async (_event, payload) => {
       content
     });
     if (moderationMessage) {
+      const severeViolation = classifyServerAutoModerationViolation(content);
+      if (severeViolation) {
+        await autoTerminateBotAccount(currentUserId, `Account terminated for automated bot spam in DMs: ${severeViolation.rule}.`);
+        return { ok: false, message: 'This account has been terminated for automated bot activity.' };
+      }
       return { ok: false, message: moderationMessage };
     }
 

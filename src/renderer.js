@@ -1051,6 +1051,10 @@ async function completeSignedInState(result) {
   if (result.realtimeToken) {
     await ensureRealtime(result.realtimeToken);
   }
+  if (result.tosNotice?.message) {
+    notifyUser(result.tosNotice.title || 'Terms of Service updated', result.tosNotice.message);
+    await showMessageDialog(result.tosNotice.title || 'Terms of Service updated', result.tosNotice.message);
+  }
 }
 
 function closeAccountSettingsMenu() {
@@ -2159,6 +2163,18 @@ function switchAuthForms(fromForm, toForm, direction) {
       authSwitchTimer = null;
     }, 190);
   }, 170);
+}
+
+function getAuthClientSignal() {
+  return {
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    language: navigator.language || '',
+    viewport: {
+      width: window.innerWidth || 0,
+      height: window.innerHeight || 0
+    },
+    touch: navigator.maxTouchPoints || 0
+  };
 }
 
 async function handleAuthDeepLinks() {
@@ -4552,6 +4568,7 @@ ui.loginForm.addEventListener('submit', async (event) => {
     email: ui.loginEmail.value,
     password: ui.loginPassword.value,
     company: ui.loginCompany?.value || '',
+    clientSignal: getAuthClientSignal(),
     clientElapsedMs: Math.max(0, Date.now() - authTiming.loginShownAt)
   });
 
@@ -4645,6 +4662,7 @@ ui.registerForm.addEventListener('submit', async (event) => {
     password: ui.registerPassword.value,
     dateOfBirth,
     website: ui.registerWebsite?.value || '',
+    clientSignal: getAuthClientSignal(),
     clientElapsedMs: Math.max(0, Date.now() - authTiming.registerShownAt)
   });
 

@@ -1,6 +1,6 @@
 # JelloChat Terms of Service
 
-Last updated: February 13, 2026
+Last updated: May 20, 2026
 
 **Experimental Service.** JelloChat is an experimental service. Features, availability, and policies may change without notice. Use at your own risk.
 
@@ -20,6 +20,8 @@ You are responsible for:
 - Activity that occurs under your account.
 
 You must not share or transfer your account in unauthorized ways.
+
+Bot accounts, automated signups, scripted abuse, or accounts used to bypass platform rules are not allowed. JelloChat may terminate bot accounts without warning when automated activity, spam, evasion, or abuse is detected.
 
 ## 4. Acceptable Use
 You agree not to:
@@ -50,7 +52,7 @@ JelloChat may rely on third-party infrastructure (for example email and voice se
 JelloChat is provided on an "as is" and "as available" basis. We may modify, suspend, or discontinue features at any time.
 
 ## 10. Termination
-You may stop using the service at any time. We may suspend or terminate accounts for Terms violations, abuse, security risks, or legal requirements.
+You may stop using the service at any time. We may suspend or terminate accounts for Terms violations, bot activity, automated abuse, security risks, or legal requirements.
 
 ## 11. Disclaimer of Warranties
 To the fullest extent allowed by law, we disclaim warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement.
@@ -62,11 +64,10 @@ To the fullest extent allowed by law, JelloChat and its operators are not liable
 You agree to indemnify and hold harmless JelloChat and its operators from claims, damages, and expenses arising from your misuse of the service or violation of these Terms.
 
 ## 14. Changes to Terms
-We may update these Terms. Continued use after updates means you accept the revised Terms.
+We may update these Terms. When these Terms materially change, we may notify users by email and show an in-app notice after login. Continued use after updates means you accept the revised Terms.
 
 ## 15. Governing Law
 These Terms are governed by applicable law in the jurisdiction selected by the service operator, unless otherwise required by law.
 
 ## 16. Contact
 For Terms questions, contact: `legal@jellochat.example`
-
