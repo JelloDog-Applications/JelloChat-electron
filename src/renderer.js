@@ -4929,6 +4929,61 @@ textUiObserver.observe(document.body, {
   subtree: true
 });
 
+function setupAndroidAppPrompt() {
+  const prompt = document.getElementById('android-app-prompt');
+  const openBtn = document.getElementById('android-app-open');
+  const continueBtn = document.getElementById('android-app-continue');
+  const dontAsk = document.getElementById('android-app-dont-ask');
+  if (!prompt || !openBtn || !continueBtn || !dontAsk) {
+    return;
+  }
+
+  const userAgent = String(navigator.userAgent || '').toLowerCase();
+  const isAndroid = userAgent.includes('android');
+  const isAppWebView = userAgent.includes('jellochatandroidapp');
+  const canPromptHere = ['http:', 'https:'].includes(window.location.protocol);
+  if (!isAndroid || isAppWebView || !canPromptHere) {
+    return;
+  }
+
+  try {
+    if (window.localStorage.getItem('jellochat_android_app_prompt_hidden') === '1') {
+      return;
+    }
+  } catch (_error) {
+  }
+
+  const rememberChoice = () => {
+    if (!dontAsk.checked) {
+      return;
+    }
+    try {
+      window.localStorage.setItem('jellochat_android_app_prompt_hidden', '1');
+    } catch (_error) {
+    }
+  };
+
+  const closePrompt = () => {
+    prompt.classList.add('hidden');
+  };
+
+  continueBtn.addEventListener('click', () => {
+    rememberChoice();
+    closePrompt();
+  });
+
+  openBtn.addEventListener('click', () => {
+    rememberChoice();
+    window.location.href = '/download/android';
+  });
+
+  window.setTimeout(() => {
+    prompt.classList.remove('hidden');
+  }, 700);
+}
+
+setupAndroidAppPrompt();
+
 if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js').catch(() => {});

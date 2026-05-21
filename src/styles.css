@@ -2954,6 +2954,101 @@ button svg + span {
   font-weight: 700;
 }
 
+.android-app-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  display: grid;
+  place-items: end center;
+  padding:
+    max(16px, var(--safe-top))
+    max(16px, var(--safe-right))
+    max(16px, var(--safe-bottom))
+    max(16px, var(--safe-left));
+  background: rgba(0, 0, 0, 0.52);
+}
+
+.android-app-prompt.hidden {
+  display: none;
+}
+
+.android-app-card {
+  width: min(460px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+  padding: 18px;
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  gap: 14px;
+}
+
+.android-app-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  background: var(--accent-dark);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+}
+
+.android-app-copy {
+  min-width: 0;
+}
+
+.android-app-copy h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.android-app-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.android-app-choice {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.android-app-choice input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.android-app-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.android-app-actions button {
+  border: none;
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-weight: 800;
+  color: #0c1a16;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.android-app-actions .secondary-btn {
+  color: var(--text);
+  background: var(--button-bg);
+}
+
 .screen-source-modal {
   position: fixed;
   inset: 0;

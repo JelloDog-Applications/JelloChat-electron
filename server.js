@@ -403,12 +403,7 @@ function shouldRedirectAndroidToDownload(req) {
 }
 
 app.use((req, res, next) => {
-  if (!shouldRedirectAndroidToDownload(req)) {
-    next();
-    return;
-  }
-
-  res.redirect(buildAndroidDownloadUrl());
+  next();
 });
 
 app.use('/assets', express.static(path.join(__dirname, 'assets'), {
