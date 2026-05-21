@@ -1,0 +1,42 @@
+{
+  "name": "JelloChat",
+  "short_name": "JelloChat",
+  "description": "Chat with friends, join servers, send direct messages, and use voice with screen sharing.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait-primary",
+  "background_color": "#111827",
+  "theme_color": "#57d7a4",
+  "categories": ["social", "communication"],
+  "icons": [
+    {
+      "src": "/assets/app-icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/app-icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open JelloChat",
+      "short_name": "Chat",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/assets/app-icon-256.png",
+          "sizes": "256x256",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

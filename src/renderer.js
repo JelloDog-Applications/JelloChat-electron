@@ -4929,6 +4929,12 @@ textUiObserver.observe(document.body, {
   subtree: true
 });
 
+if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+  });
+}
+
 
 handleAuthDeepLinks().catch(() => {});
 

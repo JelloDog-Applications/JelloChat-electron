@@ -419,7 +419,13 @@ app.use('/assets', express.static(path.join(__dirname, 'assets'), {
 
 app.use((req, res, next) => {
   const pathname = String(req.path || '');
-  if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html' || /\.(?:css|js)$/i.test(pathname))) {
+  if (req.method === 'GET' && (
+    pathname === '/'
+    || pathname === '/index.html'
+    || pathname === '/manifest.webmanifest'
+    || pathname === '/service-worker.js'
+    || /\.(?:css|js)$/i.test(pathname)
+  )) {
     res.setHeader('Cache-Control', 'no-store, max-age=0');
   }
   next();
