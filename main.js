@@ -124,7 +124,6 @@ async function maybeNotifyTermsUpdate(user) {
     return null;
   }
 
-  sendTermsUpdatedEmail(user.email, user.username).catch(() => {});
   await db.query('UPDATE users SET tos_notified_version = $1 WHERE id = $2', [CURRENT_TOS_VERSION, user.id]);
 
   return {
@@ -1053,7 +1052,7 @@ ipcMain.handle('auth:register', async (_event, payload) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5) RETURNING id, username, email, avatar_url, date_of_birth',
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version, tos_email_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5, $5) RETURNING id, username, email, avatar_url, date_of_birth',
       [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION]
     );
 

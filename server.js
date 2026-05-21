@@ -420,7 +420,6 @@ async function maybeNotifyTermsUpdate(user) {
     return null;
   }
 
-  sendTermsUpdatedEmail(user.email, user.username).catch(() => {});
   await db.query('UPDATE users SET tos_notified_version = $1 WHERE id = $2', [CURRENT_TOS_VERSION, user.id]);
 
   return {
@@ -428,6 +427,36 @@ async function maybeNotifyTermsUpdate(user) {
     title: 'Terms of Service updated',
     message: 'JelloChat updated the Terms of Service. Bot accounts, automated signups, scripted abuse, spam, and rule-evasion accounts may be terminated.'
   };
+}
+
+async function sendTermsUpdateEmailsOnStartup() {
+  const result = await db.query(
+    `SELECT id, username, email
+     FROM users
+     WHERE email_verified = TRUE
+       AND platform_banned_at IS NULL
+       AND COALESCE(tos_email_notified_version, '') <> $1
+     ORDER BY id ASC`,
+    [CURRENT_TOS_VERSION]
+  );
+
+  if (result.rows.length === 0) {
+    return;
+  }
+
+  console.log(`Sending Terms update email to ${result.rows.length} JelloChat user(s).`);
+  for (const user of result.rows) {
+    try {
+      const mailResult = await sendTermsUpdatedEmail(user.email, user.username);
+      if (!mailResult?.ok) {
+        console.warn(`Terms update email skipped for user ${user.id}: ${mailResult?.message || 'unknown mail error'}`);
+        continue;
+      }
+      await db.query('UPDATE users SET tos_email_notified_version = $1 WHERE id = $2', [CURRENT_TOS_VERSION, user.id]);
+    } catch (error) {
+      console.warn(`Terms update email failed for user ${user.id}: ${error.message}`);
+    }
+  }
 }
 
 app.get('/auth-link', (req, res) => {
@@ -1510,7 +1539,7 @@ app.post('/api/auth/register', async (req, res) => {
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const created = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5) RETURNING id, username, email, avatar_url, date_of_birth',
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version, tos_email_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5, $5) RETURNING id, username, email, avatar_url, date_of_birth',
       [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION]
     );
     const user = created.rows[0];
@@ -3754,6 +3783,9 @@ app.get('*', (_req, res) => {
 async function start() {
   await db.connect();
   await ensurePlatformAdminExists();
+  sendTermsUpdateEmailsOnStartup().catch((error) => {
+    console.warn(`Terms update email job failed: ${error.message}`);
+  });
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
 
