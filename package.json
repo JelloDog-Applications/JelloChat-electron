@@ -9,6 +9,10 @@
     "dev": "electron .",
     "web": "node server.js",
     "build:win": "electron-builder --win nsis",
+    "build:linux": "electron-builder --linux AppImage",
+    "build:linux:dir": "electron-builder --linux dir",
+    "flatpak:prepare": "node scripts/prepare-flatpak.js",
+    "build:flatpak": "npm run build:linux:dir && npm run flatpak:prepare && flatpak-builder --force-clean --user --install-deps-from=flathub dist/flatpak-build flatpak/com.jellochat.app.yml",
     "sync:android-assets": "node scripts/sync-android-assets.js",
     "cap:sync": "npm run sync:android-assets && npx cap sync android",
     "cap:open": "npx cap open android",
@@ -16,6 +20,7 @@
   },
   "dependencies": {
     "@capacitor/core": "^7.6.0",
+    "@capacitor/push-notifications": "^7.0.6",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
@@ -55,6 +60,14 @@
           ]
         }
       ]
+    },
+    "linux": {
+      "icon": "assets/app-icon-1024.png",
+      "target": [
+        "AppImage",
+        "dir"
+      ],
+      "category": "Network"
     }
   }
 }

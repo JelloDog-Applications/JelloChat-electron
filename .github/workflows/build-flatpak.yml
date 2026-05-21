@@ -1,0 +1,80 @@
+name: Build Flatpak
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - .github/workflows/build-flatpak.yml
+      - flatpak/**
+      - scripts/prepare-flatpak.js
+      - assets/**
+      - src/**
+      - sql/**
+      - main.js
+      - preload.js
+      - server.js
+      - db.js
+      - mailer.js
+      - package.json
+      - package-lock.json
+  workflow_dispatch:
+
+jobs:
+  build-flatpak:
+    name: Build Linux Flatpak
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Electron Linux directory
+        run: npm run build:linux:dir
+        env:
+          APP_PUBLIC_URL: https://chat.jellodog.com
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare Flatpak source
+        run: npm run flatpak:prepare
+
+      - name: Build Flatpak repository
+        run: |
+          flatpak-builder \
+            --force-clean \
+            --repo=dist/flatpak-repo \
+            --install-deps-from=flathub \
+            dist/flatpak-build \
+            flatpak/com.jellochat.app.yml
+
+      - name: Export Flatpak bundle
+        run: |
+          mkdir -p dist/artifacts
+          flatpak build-bundle \
+            dist/flatpak-repo \
+            dist/artifacts/JelloChat.flatpak \
+            com.jellochat.app
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jellochat-flatpak
+          path: dist/artifacts/JelloChat.flatpak
+          if-no-files-found: error

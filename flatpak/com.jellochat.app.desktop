@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=JelloChat
+Comment=Chat with friends, servers, DMs, voice, and screen sharing.
+Exec=jellochat
+Icon=com.jellochat.app
+Terminal=false
+Categories=Network;Chat;InstantMessaging;
+StartupWMClass=JelloChat
