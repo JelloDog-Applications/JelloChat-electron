@@ -52,12 +52,31 @@ const ui = {
   channelsList: document.getElementById('channels-list'),
   serverTitle: document.getElementById('server-title'),
   channelTitle: document.getElementById('channel-title'),
+  friendsHomeBtn: document.getElementById('friends-home-btn'),
+  friendsMenuBtn: document.getElementById('friends-menu-btn'),
+  friendsHomeView: document.getElementById('friends-home-view'),
+  friendsTabOnline: document.getElementById('friends-tab-online'),
+  friendsTabAll: document.getElementById('friends-tab-all'),
+  friendsTabPending: document.getElementById('friends-tab-pending'),
+  friendsTabAdd: document.getElementById('friends-tab-add'),
+  friendsCloseBtn: document.getElementById('friends-close-btn'),
+  friendsSearchInput: document.getElementById('friends-search-input'),
+  friendsHomeCount: document.getElementById('friends-home-count'),
+  friendsHomeList: document.getElementById('friends-home-list'),
+  activeNowList: document.getElementById('active-now-list'),
   vcPanel: document.getElementById('vc-panel'),
   vcRoomTitle: document.getElementById('vc-room-title'),
   vcStatus: document.getElementById('vc-status'),
+  vcMicSensitivity: document.getElementById('vc-mic-sensitivity'),
+  vcMicSensitivityValue: document.getElementById('vc-mic-sensitivity-value'),
+  vcMicMeterFill: document.getElementById('vc-mic-meter-fill'),
   vcAudioSink: document.getElementById('vc-audio-sink'),
+  vcVideoSink: document.getElementById('vc-video-sink'),
+  vcVideoFullscreenBtn: document.getElementById('vc-video-fullscreen-btn'),
   vcMuteBtn: document.getElementById('vc-mute-btn'),
+  vcMicSettingsBtn: document.getElementById('vc-mic-settings-btn'),
   vcDeafenBtn: document.getElementById('vc-deafen-btn'),
+  vcScreenBtn: document.getElementById('vc-screen-btn'),
   vcCloseBtn: document.getElementById('vc-close-btn'),
   vcParticipantsList: document.getElementById('vc-participants-list'),
   messagesList: document.getElementById('messages-list'),
@@ -132,7 +151,10 @@ const ui = {
   appDialogMessage: document.getElementById('app-dialog-message'),
   appDialogInput: document.getElementById('app-dialog-input'),
   appDialogCancelBtn: document.getElementById('app-dialog-cancel-btn'),
-  appDialogOkBtn: document.getElementById('app-dialog-ok-btn')
+  appDialogOkBtn: document.getElementById('app-dialog-ok-btn'),
+  screenSourceModal: document.getElementById('screen-source-modal'),
+  screenSourceGrid: document.getElementById('screen-source-grid'),
+  screenSourceCancelBtn: document.getElementById('screen-source-cancel-btn')
 };
 
 const state = {
@@ -150,6 +172,9 @@ const state = {
   canCreateChannels: false,
   onlineUsers: [],
   friends: [],
+  friendRequests: [],
+  isFriendsHomeOpen: false,
+  friendsHomeTab: 'online',
   mobileServersOpen: false,
   mobileUsersOpen: false,
   serverOptionsServerId: null,
@@ -169,9 +194,22 @@ const state = {
   activeVoiceChannelId: null,
   voiceRoom: null,
   voiceAudioEls: new Map(),
+  voiceVideoEls: new Map(),
+  localMicMediaTrack: null,
+  localMicPublication: null,
+  micSourceStream: null,
+  micAudioContext: null,
+  micGainNode: null,
+  micAnalyser: null,
+  micLevelTimer: null,
+  micSensitivity: 100,
   voiceActiveSpeakerIds: new Set(),
   isVoiceMuted: false,
   isVoiceDeafened: false,
+  isScreenSharing: false,
+  screenShareMediaTrack: null,
+  localScreenVideoEl: null,
+  isScreenFocused: false,
   isDobRequired: false,
   activeDmCallUserId: null,
   activeVoiceLabel: '',
@@ -185,6 +223,10 @@ const state = {
 };
 
 const dialogState = {
+  resolver: null
+};
+
+const screenSourceState = {
   resolver: null
 };
 
@@ -247,6 +289,27 @@ function syncVoicePanelVisibility() {
 function syncDmCallButton() {
   const canCall = Boolean(ui.dmCallBtn && state.selectedDmUser);
   ui.dmCallBtn?.classList.toggle('hidden', !canCall);
+}
+
+function setFriendsHomeOpen(open) {
+  state.isFriendsHomeOpen = Boolean(open);
+  ui.chatPanel?.classList.toggle('friends-view-active', state.isFriendsHomeOpen);
+  ui.friendsHomeView?.classList.toggle('hidden', !state.isFriendsHomeOpen);
+  ui.messagesList?.classList.toggle('hidden', state.isFriendsHomeOpen);
+  ui.messageForm?.classList.toggle('hidden', state.isFriendsHomeOpen);
+  ui.vcPanel?.classList.toggle('friends-view-suppressed', state.isFriendsHomeOpen);
+  ui.friendsHomeBtn?.classList.toggle('active', state.isFriendsHomeOpen);
+}
+
+function closeFriendsHome() {
+  setFriendsHomeOpen(false);
+  const selectedChannel = getSelectedChannel();
+  if (selectedChannel) {
+    ui.channelTitle.textContent = selectedChannel.type === 'voice' ? `VC ${selectedChannel.name}` : `# ${selectedChannel.name}`;
+  } else if (state.selectedDmUser) {
+    ui.channelTitle.textContent = `@ ${state.selectedDmUser.username}`;
+  }
+  syncVoicePanelVisibility();
 }
 
 function pickDefaultChannelId(channels) {
@@ -323,6 +386,16 @@ function isParticipantMuted(participant) {
   return publications.every((pub) => pub.isMuted);
 }
 
+function isScreenSharePublication(publication) {
+  const source = String(publication?.source || '').toLowerCase();
+  return source.includes('screen');
+}
+
+function isParticipantScreenSharing(participant) {
+  const publications = Array.from(participant.videoTrackPublications?.values?.() || []);
+  return publications.some((publication) => !publication.isMuted && isScreenSharePublication(publication));
+}
+
 function renderVoiceParticipants() {
   ui.vcParticipantsList.innerHTML = '';
   if (!state.voiceRoom) {
@@ -343,10 +416,12 @@ function renderVoiceParticipants() {
   for (const participant of participants) {
     const item = document.createElement('li');
     item.className = 'vc-participant';
+    item.title = getParticipantDisplayName(participant);
     if (state.voiceActiveSpeakerIds.has(participant.identity)) {
       item.classList.add('vc-speaking');
     }
 
+    const avatar = createAvatarElement({ username: getParticipantDisplayName(participant) }, 'avatar vc-participant-avatar');
     const name = document.createElement('span');
     name.textContent = getParticipantDisplayName(participant);
 
@@ -361,18 +436,71 @@ function renderVoiceParticipants() {
       if (state.isVoiceDeafened) {
         parts.push('Deafened');
       }
+      if (state.isScreenSharing || isParticipantScreenSharing(participant)) {
+        parts.push('Sharing');
+      }
     } else if (isParticipantMuted(participant)) {
       parts.push('Muted');
     }
+    if (!participant.isLocal && isParticipantScreenSharing(participant)) {
+      parts.push('Sharing');
+    }
     badges.textContent = parts.join(' · ');
 
-    item.append(name, badges);
+    item.append(avatar, name, badges);
     ui.vcParticipantsList.appendChild(item);
   }
 }
 
+function renderPendingVoiceParticipants(label = 'You') {
+  ui.vcParticipantsList.innerHTML = '';
+  const item = document.createElement('li');
+  item.className = 'vc-participant vc-speaking';
+  item.title = label;
+  const avatar = createAvatarElement(state.user || { username: label }, 'avatar vc-participant-avatar', label);
+  const name = document.createElement('span');
+  name.textContent = label;
+  const badges = document.createElement('span');
+  badges.className = 'vc-badges';
+  badges.textContent = 'Connecting';
+  item.append(avatar, name, badges);
+  ui.vcParticipantsList.appendChild(item);
+}
+
 function setVcStatus(message) {
   ui.vcStatus.textContent = message;
+}
+
+function updateScreenShareLayout() {
+  const hasSharedVideo = state.isScreenSharing || state.voiceVideoEls.size > 0;
+  if (!hasSharedVideo) {
+    state.isScreenFocused = false;
+  }
+  ui.vcPanel?.classList.toggle('vc-sharing', hasSharedVideo);
+  ui.vcPanel?.classList.toggle('vc-screen-focused', hasSharedVideo && state.isScreenFocused);
+  ui.vcPanel?.classList.toggle('voice-call-active', Boolean(state.voiceRoom));
+  ui.chatPanel?.classList.toggle('screen-share-active', hasSharedVideo);
+  ui.vcVideoFullscreenBtn?.classList.toggle('hidden', !hasSharedVideo);
+}
+
+function updateMicSensitivityUi() {
+  if (ui.vcMicSensitivity) {
+    ui.vcMicSensitivity.value = String(state.micSensitivity);
+  }
+  if (ui.vcMicSensitivityValue) {
+    ui.vcMicSensitivityValue.textContent = `${state.micSensitivity}%`;
+  }
+  if (state.micGainNode) {
+    state.micGainNode.gain.value = state.micSensitivity / 100;
+  }
+}
+
+function updateMicMeter(level = 0) {
+  if (!ui.vcMicMeterFill) {
+    return;
+  }
+  const clamped = Math.max(0, Math.min(100, Math.round(level)));
+  ui.vcMicMeterFill.style.width = `${clamped}%`;
 }
 
 function canUseMicrophoneApi() {
@@ -384,11 +512,97 @@ function canUseMicrophoneApi() {
   return Boolean(hasMediaDevices && secureOk);
 }
 
+function setIconButtonContent(button, iconClass, label) {
+  if (!button) {
+    return;
+  }
+  const icon = document.createElement('i');
+  icon.className = iconClass;
+  icon.setAttribute('aria-hidden', 'true');
+  icon.dataset.fallback = getIconFallback(iconClass, label);
+  const text = document.createElement('span');
+  text.textContent = label;
+  button.replaceChildren(icon, text);
+}
+
+function setIconOnlyButtonContent(button, iconClass, label) {
+  if (!button) {
+    return;
+  }
+  const icon = document.createElement('i');
+  icon.className = iconClass;
+  icon.setAttribute('aria-hidden', 'true');
+  icon.dataset.fallback = getIconFallback(iconClass, label);
+  button.setAttribute('aria-label', label);
+  button.replaceChildren(icon);
+}
+
+function getIconFallback(iconClass = '', label = '') {
+  const iconName = String(iconClass || '').split(/\s+/).find((part) => part.startsWith('fa-') && part !== 'fa-solid') || '';
+  const fallbacks = {
+    'fa-ban': '!',
+    'fa-bars': '=',
+    'fa-bell': '!',
+    'fa-check': '+',
+    'fa-display': '[]',
+    'fa-envelope-circle-check': '@',
+    'fa-expand': '<>',
+    'fa-eye': 'o',
+    'fa-eye-slash': 'x',
+    'fa-gear': '*',
+    'fa-headphones': 'HP',
+    'fa-key': 'key',
+    'fa-lock': 'lock',
+    'fa-microphone': 'mic',
+    'fa-microphone-slash': 'mut',
+    'fa-paper-plane': '>',
+    'fa-pen': 'edit',
+    'fa-phone': 'call',
+    'fa-phone-slash': 'end',
+    'fa-plus': '+',
+    'fa-right-to-bracket': 'in',
+    'fa-shield-halved': 'ok',
+    'fa-stop': 'stop',
+    'fa-trash': 'del',
+    'fa-triangle-exclamation': '!',
+    'fa-unlock': 'open',
+    'fa-unlock-keyhole': 'key',
+    'fa-user-clock': 'req',
+    'fa-user-minus': '-',
+    'fa-user-plus': '+',
+    'fa-user-shield': 'admin',
+    'fa-users': 'users',
+    'fa-volume-xmark': 'off',
+    'fa-xmark': 'x'
+  };
+  return fallbacks[iconName] || String(label || '').slice(0, 3) || '?';
+}
+
+function installFontAwesomeFallback() {
+  const applyFallbackLabels = () => {
+    for (const icon of document.querySelectorAll('i.fa-solid')) {
+      if (!icon.dataset.fallback) {
+        icon.dataset.fallback = getIconFallback(icon.className, icon.closest('button')?.textContent || '');
+      }
+    }
+  };
+  applyFallbackLabels();
+}
+
+
 function updateVoiceButtons() {
   ui.vcMuteBtn.classList.toggle('vc-control-on', state.isVoiceMuted);
   ui.vcDeafenBtn.classList.toggle('vc-control-on', state.isVoiceDeafened);
-  ui.vcMuteBtn.textContent = state.isVoiceMuted ? 'Unmute' : 'Mute';
-  ui.vcDeafenBtn.textContent = state.isVoiceDeafened ? 'Undeafen' : 'Deafen';
+  ui.vcScreenBtn?.classList.toggle('vc-control-on', state.isScreenSharing);
+  updateScreenShareLayout();
+  setIconButtonContent(ui.vcMuteBtn, state.isVoiceMuted ? 'fa-solid fa-microphone-slash' : 'fa-solid fa-microphone', state.isVoiceMuted ? 'Unmute' : 'Mute');
+  setIconOnlyButtonContent(ui.vcMicSettingsBtn, 'fa-solid fa-chevron-down', 'Mic settings');
+  ui.vcMicSettingsBtn?.setAttribute('aria-expanded', ui.vcPanel?.classList.contains('mic-settings-open') ? 'true' : 'false');
+  setIconButtonContent(ui.vcDeafenBtn, state.isVoiceDeafened ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-headphones', state.isVoiceDeafened ? 'Undeafen' : 'Deafen');
+  setIconButtonContent(ui.vcCloseBtn, 'fa-solid fa-phone-slash', state.activeDmCallUserId ? 'End Call' : 'Leave VC');
+  if (ui.vcScreenBtn) {
+    setIconButtonContent(ui.vcScreenBtn, state.isScreenSharing ? 'fa-solid fa-stop' : 'fa-solid fa-display', state.isScreenSharing ? 'Stop Sharing' : 'Share Screen');
+  }
 }
 
 function detachAllVoiceAudio() {
@@ -401,10 +615,192 @@ function detachAllVoiceAudio() {
   state.voiceAudioEls.clear();
 }
 
+function stopMicLevelMeter() {
+  if (state.micLevelTimer) {
+    clearInterval(state.micLevelTimer);
+    state.micLevelTimer = null;
+  }
+  updateMicMeter(0);
+}
+
+function startMicLevelMeter() {
+  stopMicLevelMeter();
+  if (!state.micAnalyser) {
+    return;
+  }
+
+  const samples = new Uint8Array(state.micAnalyser.fftSize);
+  state.micLevelTimer = setInterval(() => {
+    state.micAnalyser.getByteTimeDomainData(samples);
+    let sum = 0;
+    for (const sample of samples) {
+      const centered = (sample - 128) / 128;
+      sum += centered * centered;
+    }
+    const rms = Math.sqrt(sum / samples.length);
+    updateMicMeter(rms * 180);
+  }, 100);
+}
+
+function cleanupLocalMic() {
+  stopMicLevelMeter();
+  if (state.localMicMediaTrack) {
+    try {
+      state.localMicMediaTrack.stop();
+    } catch (_error) {
+    }
+  }
+  if (state.micSourceStream) {
+    for (const track of state.micSourceStream.getTracks()) {
+      try {
+        track.stop();
+      } catch (_error) {
+      }
+    }
+  }
+  if (state.micAudioContext) {
+    state.micAudioContext.close().catch(() => {});
+  }
+  state.localMicMediaTrack = null;
+  state.localMicPublication = null;
+  state.micSourceStream = null;
+  state.micAudioContext = null;
+  state.micGainNode = null;
+  state.micAnalyser = null;
+}
+
+async function createGainControlledMicTrack() {
+  const sourceStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    },
+    video: false
+  });
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    const [fallbackTrack] = sourceStream.getAudioTracks();
+    state.micSourceStream = sourceStream;
+    state.localMicMediaTrack = fallbackTrack || null;
+    return fallbackTrack || null;
+  }
+
+  const audioContext = new AudioContextClass();
+  const source = audioContext.createMediaStreamSource(sourceStream);
+  const gainNode = audioContext.createGain();
+  const analyser = audioContext.createAnalyser();
+  const destination = audioContext.createMediaStreamDestination();
+  analyser.fftSize = 256;
+
+  source.connect(gainNode);
+  gainNode.connect(analyser);
+  analyser.connect(destination);
+  gainNode.gain.value = state.micSensitivity / 100;
+
+  const [processedTrack] = destination.stream.getAudioTracks();
+  state.micSourceStream = sourceStream;
+  state.micAudioContext = audioContext;
+  state.micGainNode = gainNode;
+  state.micAnalyser = analyser;
+  state.localMicMediaTrack = processedTrack || null;
+  startMicLevelMeter();
+  return processedTrack || null;
+}
+
+function detachAllVoiceVideo() {
+  for (const [, videoEl] of state.voiceVideoEls) {
+    try {
+      videoEl.remove();
+    } catch (_error) {
+    }
+  }
+  state.voiceVideoEls.clear();
+  detachLocalScreenPreview();
+  if (ui.vcVideoSink) {
+    ui.vcVideoSink.textContent = 'No one is sharing right now.';
+  }
+  updateScreenShareLayout();
+}
+
+function attachLocalScreenPreview(mediaTrack) {
+  if (!ui.vcVideoSink || !mediaTrack) {
+    return;
+  }
+  detachLocalScreenPreview();
+  ui.vcVideoSink.textContent = '';
+  const videoEl = document.createElement('video');
+  videoEl.autoplay = true;
+  videoEl.playsInline = true;
+  videoEl.muted = true;
+  videoEl.srcObject = new MediaStream([mediaTrack]);
+  videoEl.dataset.localScreenShare = 'true';
+  ui.vcVideoSink.appendChild(videoEl);
+  state.localScreenVideoEl = videoEl;
+}
+
+function detachLocalScreenPreview() {
+  if (!state.localScreenVideoEl) {
+    return;
+  }
+  try {
+    state.localScreenVideoEl.srcObject = null;
+    state.localScreenVideoEl.remove();
+  } catch (_error) {
+  }
+  state.localScreenVideoEl = null;
+}
+
+function toggleFocusedScreenShare() {
+  const hasSharedVideo = state.isScreenSharing || state.voiceVideoEls.size > 0;
+  if (!hasSharedVideo) {
+    return;
+  }
+  state.isScreenFocused = !state.isScreenFocused;
+  updateScreenShareLayout();
+}
+
+async function requestScreenShareFullscreen() {
+  const target = ui.vcVideoSink?.querySelector('video') || ui.vcVideoSink;
+  if (!target) {
+    return;
+  }
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else if (target.requestFullscreen) {
+      await target.requestFullscreen();
+    }
+  } catch (error) {
+    setVcStatus(`Fullscreen failed: ${error.message || error}`);
+  }
+}
+
 function setAudioSinkMuted(muted) {
   for (const [, audioEl] of state.voiceAudioEls) {
     audioEl.muted = muted;
   }
+}
+
+function attachRemoteVideo(track, participant) {
+  if (!track || track.kind !== 'video') {
+    return;
+  }
+  const key = `${participant.identity}:${track.sid}`;
+  if (state.voiceVideoEls.has(key)) {
+    return;
+  }
+  if (ui.vcVideoSink) {
+    ui.vcVideoSink.textContent = '';
+  }
+  const videoEl = track.attach();
+  videoEl.autoplay = true;
+  videoEl.playsInline = true;
+  videoEl.muted = true;
+  ui.vcVideoSink?.appendChild(videoEl);
+  state.voiceVideoEls.set(key, videoEl);
+  updateScreenShareLayout();
 }
 
 function attachRemoteAudio(track, participant) {
@@ -423,6 +819,27 @@ function attachRemoteAudio(track, participant) {
   audioEl.muted = state.isVoiceDeafened;
   ui.vcAudioSink.appendChild(audioEl);
   state.voiceAudioEls.set(key, audioEl);
+}
+
+function detachRemoteVideo(track, participant) {
+  if (!track || track.kind !== 'video') {
+    return;
+  }
+  const key = `${participant.identity}:${track.sid}`;
+  const videoEl = state.voiceVideoEls.get(key);
+  if (!videoEl) {
+    return;
+  }
+  try {
+    track.detach(videoEl);
+  } catch (_error) {
+  }
+  videoEl.remove();
+  state.voiceVideoEls.delete(key);
+  if (!state.voiceVideoEls.size && ui.vcVideoSink) {
+    ui.vcVideoSink.textContent = 'No one is sharing right now.';
+  }
+  updateScreenShareLayout();
 }
 
 function detachRemoteAudio(track, participant) {
@@ -452,17 +869,27 @@ function wireRoomEvents(room) {
   room.on(RoomEvent.ParticipantDisconnected, () => renderVoiceParticipants());
   room.on(RoomEvent.TrackMuted, () => renderVoiceParticipants());
   room.on(RoomEvent.TrackUnmuted, () => renderVoiceParticipants());
-  room.on(RoomEvent.LocalTrackPublished, () => renderVoiceParticipants());
-  room.on(RoomEvent.LocalTrackUnpublished, () => renderVoiceParticipants());
+  room.on(RoomEvent.LocalTrackPublished, (publication, participant) => {
+    state.isScreenSharing = isParticipantScreenSharing(room.localParticipant);
+    renderVoiceParticipants();
+    updateVoiceButtons();
+  });
+  room.on(RoomEvent.LocalTrackUnpublished, (publication, participant) => {
+    state.isScreenSharing = isParticipantScreenSharing(room.localParticipant);
+    renderVoiceParticipants();
+    updateVoiceButtons();
+  });
   room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
     state.voiceActiveSpeakerIds = new Set((speakers || []).map((participant) => participant.identity));
     renderVoiceParticipants();
   });
   room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+    attachRemoteVideo(track, participant);
     attachRemoteAudio(track, participant);
     renderVoiceParticipants();
   });
   room.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
+    detachRemoteVideo(track, participant);
     detachRemoteAudio(track, participant);
     renderVoiceParticipants();
   });
@@ -475,6 +902,15 @@ function wireRoomEvents(room) {
 }
 
 function leaveVoiceView(disconnect = true) {
+  const screenShareMediaTrack = state.screenShareMediaTrack;
+  state.screenShareMediaTrack = null;
+  if (screenShareMediaTrack) {
+    try {
+      screenShareMediaTrack.stop();
+    } catch (_error) {
+    }
+  }
+  cleanupLocalMic();
   if (disconnect && state.voiceRoom) {
     try {
       state.voiceRoom.disconnect();
@@ -483,9 +919,12 @@ function leaveVoiceView(disconnect = true) {
   }
   state.voiceRoom = null;
   detachAllVoiceAudio();
+  detachAllVoiceVideo();
   state.voiceActiveSpeakerIds = new Set();
   state.isVoiceMuted = false;
   state.isVoiceDeafened = false;
+  state.isScreenSharing = false;
+  state.isScreenFocused = false;
   updateVoiceButtons();
   setVcStatus('Not connected');
   renderVoiceParticipants();
@@ -721,6 +1160,59 @@ function openNotificationsModal() {
   animateShowOverlay(ui.notificationsModal);
 }
 
+function closeScreenSourceModal(selectedSource = null) {
+  animateHideOverlay(ui.screenSourceModal);
+  if (ui.screenSourceGrid) {
+    ui.screenSourceGrid.innerHTML = '';
+  }
+  if (screenSourceState.resolver) {
+    const resolve = screenSourceState.resolver;
+    screenSourceState.resolver = null;
+    resolve(selectedSource);
+  }
+}
+
+function chooseScreenSource(sources) {
+  if (!ui.screenSourceModal || !ui.screenSourceGrid) {
+    return Promise.resolve(sources?.[0] || null);
+  }
+
+  ui.screenSourceGrid.innerHTML = '';
+  for (const source of sources || []) {
+    const button = document.createElement('button');
+    button.className = 'screen-source-option';
+    button.type = 'button';
+
+    if (source.thumbnail) {
+      const thumbnail = document.createElement('img');
+      thumbnail.src = source.thumbnail;
+      thumbnail.alt = '';
+      button.appendChild(thumbnail);
+    } else {
+      const fallback = document.createElement('div');
+      fallback.className = 'screen-source-thumb-fallback';
+      fallback.textContent = 'No preview';
+      button.appendChild(fallback);
+    }
+
+    const name = document.createElement('span');
+    name.className = 'screen-source-name';
+    name.textContent = source.name || 'Untitled source';
+    button.appendChild(name);
+
+    button.addEventListener('click', () => closeScreenSourceModal(source));
+    ui.screenSourceGrid.appendChild(button);
+  }
+
+  animateShowOverlay(ui.screenSourceModal);
+  const firstOption = ui.screenSourceGrid.querySelector('.screen-source-option');
+  firstOption?.focus();
+
+  return new Promise((resolve) => {
+    screenSourceState.resolver = resolve;
+  });
+}
+
 function pushNotificationItem(title, body) {
   state.notifications.unshift({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -804,6 +1296,26 @@ function escapeHtmlText(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function sanitizeDialogHtml(html) {
+  const template = document.createElement('template');
+  template.innerHTML = String(html || '');
+  const blockedTags = new Set(['script', 'iframe', 'object', 'embed', 'link', 'meta', 'style']);
+  for (const element of template.content.querySelectorAll('*')) {
+    if (blockedTags.has(element.tagName.toLowerCase())) {
+      element.remove();
+      continue;
+    }
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      const value = String(attribute.value || '').trim().toLowerCase();
+      if (name.startsWith('on') || value.startsWith('javascript:') || value.startsWith('data:text/html')) {
+        element.removeAttribute(attribute.name);
+      }
+    }
+  }
+  return template.innerHTML;
 }
 
 function formatStandingLabel(standing) {
@@ -898,14 +1410,14 @@ function renderAdminUserDetails() {
 
     const viewBtn = document.createElement('button');
     viewBtn.type = 'button';
-    viewBtn.textContent = 'View';
+    setIconButtonContent(viewBtn, 'fa-solid fa-eye', 'View');
     viewBtn.addEventListener('click', async () => {
       await showAdminServerView(server.id);
     });
 
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
-    deleteBtn.textContent = 'Delete Server';
+    setIconButtonContent(deleteBtn, 'fa-solid fa-trash', 'Delete Server');
     deleteBtn.addEventListener('click', async () => {
       await deleteAdminServer(server.id, server.name);
     });
@@ -984,18 +1496,23 @@ function renderAdminUsers() {
     const avatar = createAvatarElement(user);
     const meta = document.createElement('div');
     meta.className = 'admin-user-meta';
-    meta.innerHTML = `
-      <div class="admin-user-name">${user.username}</div>
-      <div class="admin-user-email">${user.email}</div>
-      <div class="admin-user-flags">${user.is_platform_admin ? 'Admin' : 'Member'}${user.platform_banned_at ? ' • Banned' : ''}</div>
-    `;
+    const name = document.createElement('div');
+    name.className = 'admin-user-name';
+    name.textContent = user.username || 'Unknown';
+    const email = document.createElement('div');
+    email.className = 'admin-user-email';
+    email.textContent = user.email || '';
+    const flags = document.createElement('div');
+    flags.className = 'admin-user-flags';
+    flags.textContent = `${user.is_platform_admin ? 'Admin' : 'Member'}${user.platform_banned_at ? ' - Banned' : ''}`;
+    meta.append(name, email, flags);
 
     const actions = document.createElement('div');
     actions.className = 'admin-user-actions';
 
     const warnBtn = document.createElement('button');
     warnBtn.type = 'button';
-    warnBtn.textContent = 'Warn';
+    setIconButtonContent(warnBtn, 'fa-solid fa-triangle-exclamation', 'Warn');
     warnBtn.disabled = user.id === state.user?.id;
     warnBtn.addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -1021,7 +1538,7 @@ function renderAdminUsers() {
 
     const restrictBtn = document.createElement('button');
     restrictBtn.type = 'button';
-    restrictBtn.textContent = 'Restrict';
+    setIconButtonContent(restrictBtn, 'fa-solid fa-lock', 'Restrict');
     restrictBtn.disabled = user.id === state.user?.id;
     restrictBtn.addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -1047,7 +1564,7 @@ function renderAdminUsers() {
 
     const adminBtn = document.createElement('button');
     adminBtn.type = 'button';
-    adminBtn.textContent = user.is_platform_admin ? 'Remove Admin' : 'Make Admin';
+    setIconButtonContent(adminBtn, user.is_platform_admin ? 'fa-solid fa-user-minus' : 'fa-solid fa-user-shield', user.is_platform_admin ? 'Remove Admin' : 'Make Admin');
     adminBtn.disabled = user.id === state.user?.id;
     adminBtn.addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -1067,7 +1584,7 @@ function renderAdminUsers() {
 
     const banBtn = document.createElement('button');
     banBtn.type = 'button';
-    banBtn.textContent = user.platform_banned_at ? 'Unban' : 'Ban';
+    setIconButtonContent(banBtn, user.platform_banned_at ? 'fa-solid fa-unlock' : 'fa-solid fa-ban', user.platform_banned_at ? 'Unban' : 'Ban');
     banBtn.disabled = user.id === state.user?.id;
     banBtn.addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -1091,7 +1608,7 @@ function renderAdminUsers() {
 
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
-    deleteBtn.textContent = 'Delete';
+    setIconButtonContent(deleteBtn, 'fa-solid fa-trash', 'Delete');
     deleteBtn.disabled = user.id === state.user?.id;
     deleteBtn.addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -1173,14 +1690,17 @@ function renderFriendRequests(requests) {
 
     const meta = document.createElement('div');
     meta.className = 'friend-request-meta';
-    meta.innerHTML = `<div class="friend-request-name">${request.username}</div>`;
+    const name = document.createElement('div');
+    name.className = 'friend-request-name';
+    name.textContent = request.username || 'Unknown';
+    meta.appendChild(name);
     const avatar = createAvatarElement(request);
 
     const acceptBtn = document.createElement('button');
     acceptBtn.className = 'friend-request-action friend-request-accept';
     acceptBtn.type = 'button';
     acceptBtn.title = 'Accept';
-    acceptBtn.textContent = '+';
+    setIconOnlyButtonContent(acceptBtn, 'fa-solid fa-check', 'Accept');
     acceptBtn.addEventListener('click', async () => {
       const result = await window.api.friends.respondRequest({ requestId: request.id, action: 'accept' });
       if (!result.ok) {
@@ -1199,7 +1719,7 @@ function renderFriendRequests(requests) {
     rejectBtn.className = 'friend-request-action friend-request-reject';
     rejectBtn.type = 'button';
     rejectBtn.title = 'Reject';
-    rejectBtn.textContent = 'x';
+    setIconOnlyButtonContent(rejectBtn, 'fa-solid fa-xmark', 'Reject');
     rejectBtn.addEventListener('click', async () => {
       const result = await window.api.friends.respondRequest({ requestId: request.id, action: 'reject' });
       if (!result.ok) {
@@ -1416,6 +1936,11 @@ async function openVoiceView(roomLabel, channelId, tokenData, options = {}) {
   }
 
   ui.channelTitle.textContent = `Connecting to ${roomLabel}...`;
+  state.activeVoiceLabel = roomLabel;
+  ui.vcRoomTitle.textContent = roomLabel;
+  ui.vcPanel?.classList.add('voice-call-active');
+  renderPendingVoiceParticipants(state.user?.username || 'You');
+  syncVoicePanelVisibility();
   updateVoiceButtons();
 
   try {
@@ -1434,6 +1959,7 @@ async function openVoiceView(roomLabel, channelId, tokenData, options = {}) {
     state.activeVoiceChannelId = channelId || null;
     state.activeDmCallUserId = Number(options.dmUserId) || null;
     state.activeVoiceLabel = roomLabel;
+    state.isScreenSharing = false;
 
     ui.vcRoomTitle.textContent = roomLabel;
     syncVoicePanelVisibility();
@@ -1446,14 +1972,17 @@ async function openVoiceView(roomLabel, channelId, tokenData, options = {}) {
 
     if (canUseMicrophoneApi()) {
       try {
-        const audioTrack = await LivekitClient.createLocalAudioTrack({
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
+        const audioTrack = await createGainControlledMicTrack();
+        if (!audioTrack) {
+          throw new Error('No microphone track was captured.');
+        }
+        state.localMicPublication = await room.localParticipant.publishTrack(audioTrack, {
+          name: 'microphone',
+          source: LivekitClient.Track?.Source?.Microphone || 'microphone'
         });
-        await room.localParticipant.publishTrack(audioTrack);
         state.isVoiceMuted = false;
       } catch (micError) {
+        cleanupLocalMic();
         state.isVoiceMuted = true;
         vcStatus = `Connected to ${roomLabel} (listen-only: ${micError.message})`;
       }
@@ -1470,6 +1999,7 @@ async function openVoiceView(roomLabel, channelId, tokenData, options = {}) {
     state.activeVoiceChannelId = null;
     state.activeDmCallUserId = null;
     state.activeVoiceLabel = '';
+    state.isScreenSharing = false;
     syncVoicePanelVisibility();
 
     const iss = tokenData?.debug?.iss ? ` iss=${tokenData.debug.iss}` : '';
@@ -1502,7 +2032,7 @@ function openAppDialog({ title, message, mode = 'alert', defaultValue = '', okLa
 
   ui.appDialogTitle.textContent = title || 'Dialog';
   if (html) {
-    ui.appDialogMessage.innerHTML = message || '';
+    ui.appDialogMessage.innerHTML = sanitizeDialogHtml(message);
   } else {
     ui.appDialogMessage.textContent = message || '';
   }
@@ -1565,6 +2095,11 @@ function setupPasswordToggles() {
       const isVisible = nextType !== 'password';
       button.classList.toggle('is-visible', isVisible);
       button.setAttribute('aria-label', nextType === 'password' ? 'Show password' : 'Hide password');
+      const icon = button.querySelector('i');
+      if (icon) {
+        icon.className = isVisible ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
+        icon.dataset.fallback = getIconFallback(icon.className, isVisible ? 'Hide password' : 'Show password');
+      }
     });
   }
 }
@@ -1924,6 +2459,84 @@ function toggleMobileUsersDrawer() {
   updateMobileDrawers();
 }
 
+function installMobileSwipeDrawers() {
+  if (!ui.chatPanel) {
+    return;
+  }
+
+  const edgeSize = 42;
+  const minSwipeDistance = 72;
+  const maxVerticalDrift = 80;
+  let swipeStart = null;
+
+  ui.chatPanel.addEventListener('touchstart', (event) => {
+    if (window.innerWidth > 700 || event.touches.length !== 1) {
+      swipeStart = null;
+      return;
+    }
+
+    const touch = event.touches[0];
+    const fromLeftEdge = touch.clientX <= edgeSize;
+    const fromRightEdge = touch.clientX >= window.innerWidth - edgeSize;
+    const canCloseOpenDrawer = state.mobileServersOpen || state.mobileUsersOpen;
+
+    if (!fromLeftEdge && !fromRightEdge && !canCloseOpenDrawer) {
+      swipeStart = null;
+      return;
+    }
+
+    swipeStart = {
+      x: touch.clientX,
+      y: touch.clientY,
+      fromLeftEdge,
+      fromRightEdge,
+      serversOpen: state.mobileServersOpen,
+      usersOpen: state.mobileUsersOpen
+    };
+  }, { passive: true });
+
+  ui.chatPanel.addEventListener('touchend', (event) => {
+    if (!swipeStart || window.innerWidth > 700) {
+      swipeStart = null;
+      return;
+    }
+
+    const start = swipeStart;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    swipeStart = null;
+
+    if (Math.abs(dx) < minSwipeDistance || Math.abs(dy) > maxVerticalDrift) {
+      return;
+    }
+
+    if (dx > 0 && start.fromLeftEdge) {
+      state.mobileServersOpen = true;
+      state.mobileUsersOpen = false;
+      updateMobileDrawers();
+      return;
+    }
+
+    if (dx < 0 && start.fromRightEdge) {
+      state.mobileUsersOpen = true;
+      state.mobileServersOpen = false;
+      updateMobileDrawers();
+      return;
+    }
+
+    if (dx < 0 && start.serversOpen) {
+      closeMobileDrawers();
+      return;
+    }
+
+    if (dx > 0 && start.usersOpen) {
+      closeMobileDrawers();
+      return;
+    }
+  }, { passive: true });
+}
+
 function closeServerOptions() {
   state.serverOptionsServerId = null;
   state.serverOptionsTab = 'general';
@@ -2074,12 +2687,14 @@ function renderBannedUsers() {
     item.className = 'banned-user-item';
 
     const meta = document.createElement('div');
-    meta.innerHTML = `<div>${user.username}</div>`;
+    const name = document.createElement('div');
+    name.textContent = user.username || 'Unknown';
+    meta.appendChild(name);
 
     const unbanBtn = document.createElement('button');
     unbanBtn.className = 'unban-btn';
     unbanBtn.type = 'button';
-    unbanBtn.textContent = 'Unban';
+    setIconButtonContent(unbanBtn, 'fa-solid fa-unlock', 'Unban');
     unbanBtn.addEventListener('click', async () => {
       const result = await window.api.chat.unbanMember({
         serverId: state.serverOptionsServerId,
@@ -2130,11 +2745,11 @@ function openServerOptions(serverId, buttonElement) {
   ui.serverNameInput.disabled = !state.serverPermissions.manage_server;
   ui.saveServerNameBtn.disabled = !state.serverPermissions.manage_server;
   loadRolesState();
-  const serverColumnRect = ui.serversList.closest('.servers-column').getBoundingClientRect();
   const buttonRect = buttonElement.getBoundingClientRect();
-
-  const top = buttonRect.top - serverColumnRect.top;
-  const left = buttonRect.right - serverColumnRect.left + 8;
+  const menuWidth = Math.min(420, Math.max(260, window.innerWidth - 24));
+  const menuHeight = Math.min(520, Math.max(240, window.innerHeight - 24));
+  const top = Math.min(Math.max(12, buttonRect.top), Math.max(12, window.innerHeight - menuHeight - 12));
+  const left = Math.min(Math.max(12, buttonRect.right + 8), Math.max(12, window.innerWidth - menuWidth - 12));
 
   ui.serverOptionsMenu.style.top = `${top}px`;
   ui.serverOptionsMenu.style.left = `${left}px`;
@@ -2263,7 +2878,16 @@ async function toggleVoiceMute() {
   }
   state.isVoiceMuted = !state.isVoiceMuted;
   const micEnabled = !state.isVoiceMuted && !state.isVoiceDeafened;
-  await state.voiceRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+  if (state.localMicMediaTrack) {
+    state.localMicMediaTrack.enabled = micEnabled;
+    if (micEnabled) {
+      await state.localMicPublication?.track?.unmute?.();
+    } else {
+      await state.localMicPublication?.track?.mute?.();
+    }
+  } else {
+    await state.voiceRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+  }
   updateVoiceButtons();
   renderVoiceParticipants();
 }
@@ -2278,12 +2902,160 @@ async function toggleVoiceDeafen() {
     state.isVoiceMuted = true;
   }
   const micEnabled = micApiAvailable && !state.isVoiceMuted && !state.isVoiceDeafened;
-  await state.voiceRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+  if (state.localMicMediaTrack) {
+    state.localMicMediaTrack.enabled = micEnabled;
+    if (micEnabled) {
+      await state.localMicPublication?.track?.unmute?.();
+    } else {
+      await state.localMicPublication?.track?.mute?.();
+    }
+  } else {
+    await state.voiceRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+  }
   if (!micApiAvailable) {
     state.isVoiceMuted = true;
     setVcStatus('Microphone unavailable here. Use HTTPS or localhost.');
   }
   setAudioSinkMuted(state.isVoiceDeafened);
+  updateVoiceButtons();
+  renderVoiceParticipants();
+}
+
+async function createElectronScreenStream() {
+  if (!window.api?.screen?.getSources || !navigator.mediaDevices?.getUserMedia) {
+    return null;
+  }
+
+  const result = await window.api.screen.getSources();
+  if (!result?.ok) {
+    throw new Error(result?.message || 'Screen sources are unavailable.');
+  }
+
+  const source = await chooseScreenSource(result.sources || []);
+  if (!source?.id) {
+    const cancelError = new Error('Screen share was cancelled.');
+    cancelError.name = 'AbortError';
+    throw cancelError;
+  }
+
+  const screenWidth = Number(source.width) || Number(window.screen?.width) || 1920;
+  const screenHeight = Number(source.height) || Number(window.screen?.height) || 1080;
+  const captureWidth = Math.max(1280, Math.min(7680, Math.round(screenWidth)));
+  const captureHeight = Math.max(720, Math.min(4320, Math.round(screenHeight)));
+
+  return navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: source.id,
+        maxWidth: captureWidth,
+        maxHeight: captureHeight,
+        maxFrameRate: 30
+      }
+    }
+  });
+}
+
+async function createScreenShareStream() {
+  if (!navigator.mediaDevices) {
+    throw new Error('Screen capture is unavailable in this app runtime.');
+  }
+
+  if (window.api?.screen?.getSources) {
+    const stream = await createElectronScreenStream();
+    if (!stream) {
+      throw new Error('Screen capture is unavailable in this app runtime.');
+    }
+    return stream;
+  }
+
+  if (navigator.mediaDevices.getDisplayMedia) {
+    return navigator.mediaDevices.getDisplayMedia({
+      audio: false,
+      video: {
+        width: { ideal: window.screen?.width || 1920 },
+        height: { ideal: window.screen?.height || 1080 },
+        frameRate: { ideal: 30, max: 30 }
+      }
+    });
+  }
+
+  throw new Error('Screen capture is unavailable in this app runtime.');
+}
+
+async function startScreenShare() {
+  const localParticipant = state.voiceRoom?.localParticipant;
+  if (!localParticipant) {
+    return;
+  }
+
+  const stream = await createScreenShareStream();
+  const [videoTrack] = stream.getVideoTracks();
+  if (!videoTrack) {
+    throw new Error('No video track was captured.');
+  }
+
+  try {
+    const source = window.LivekitClient?.Track?.Source?.ScreenShare || 'screen_share';
+    await localParticipant.publishTrack(videoTrack, {
+      name: 'screen-share',
+      source
+    });
+  } catch (error) {
+    videoTrack.stop();
+    throw error;
+  }
+
+  state.screenShareMediaTrack = videoTrack;
+  state.isScreenSharing = true;
+  attachLocalScreenPreview(videoTrack);
+  updateScreenShareLayout();
+
+  videoTrack.addEventListener('ended', () => {
+    if (!state.isScreenSharing) {
+      return;
+    }
+    stopScreenShare().catch((error) => {
+      setVcStatus(`Failed to stop sharing: ${error.message}`);
+    });
+  }, { once: true });
+}
+
+async function stopScreenShare() {
+  const mediaTrack = state.screenShareMediaTrack;
+  state.screenShareMediaTrack = null;
+  state.isScreenSharing = false;
+
+  if (mediaTrack && state.voiceRoom?.localParticipant) {
+    try {
+      await state.voiceRoom.localParticipant.unpublishTrack(mediaTrack, true);
+    } catch (_error) {
+      mediaTrack.stop();
+    }
+  } else if (mediaTrack) {
+    mediaTrack.stop();
+  }
+  detachLocalScreenPreview();
+  state.isScreenFocused = false;
+  if (!state.voiceVideoEls.size && ui.vcVideoSink) {
+    ui.vcVideoSink.textContent = 'No one is sharing right now.';
+  }
+  updateScreenShareLayout();
+}
+
+async function toggleScreenShare() {
+  if (!state.voiceRoom) {
+    return;
+  }
+  const nextState = !state.isScreenSharing;
+  if (nextState) {
+    await startScreenShare();
+    setVcStatus('Sharing your screen.');
+  } else {
+    await stopScreenShare();
+    setVcStatus(`Connected to ${state.activeVoiceLabel || 'voice room'}`);
+  }
   updateVoiceButtons();
   renderVoiceParticipants();
 }
@@ -2408,7 +3180,7 @@ function renderMessages(messages) {
       const editButton = document.createElement('button');
       editButton.className = 'msg-action-btn';
       editButton.type = 'button';
-      editButton.textContent = 'Edit';
+      setIconButtonContent(editButton, 'fa-solid fa-pen', 'Edit');
       editButton.addEventListener('click', async () => {
         const updated = await showPromptDialog('Edit Message', 'Update your message:', msg.content);
         if (updated === null) {
@@ -2433,7 +3205,7 @@ function renderMessages(messages) {
       const deleteButton = document.createElement('button');
       deleteButton.className = 'msg-action-btn';
       deleteButton.type = 'button';
-      deleteButton.textContent = 'Delete';
+      setIconButtonContent(deleteButton, 'fa-solid fa-trash', 'Delete');
       deleteButton.addEventListener('click', async () => {
         const confirmed = await showConfirmDialog('Delete Message', 'Delete this message?', 'Delete', 'Cancel');
         if (!confirmed) {
@@ -2481,6 +3253,7 @@ async function loadMessages(channelId) {
 }
 
 async function loadDmMessages(partnerUserId, partnerUsername) {
+  closeFriendsHome();
   const response = await window.api.dm.getMessages({ partnerUserId });
   if (!response.ok) {
     ui.channelTitle.textContent = response.message;
@@ -2513,6 +3286,7 @@ function renderChannels() {
     }
 
     button.addEventListener('click', async () => {
+      closeFriendsHome();
       state.selectedChannelId = channel.id;
       state.selectedDmUser = null;
       syncDmCallButton();
@@ -2594,6 +3368,7 @@ function attachServerButtonInteractions(button, serverId) {
   let suppressClickOnce = false;
 
   const selectServer = async () => {
+    closeFriendsHome();
     state.selectedServerId = serverId;
     state.selectedDmUser = null;
     syncDmCallButton();
@@ -2791,6 +3566,214 @@ function renderFriends() {
     item.appendChild(button);
     ui.friendsList.appendChild(item);
   }
+  renderFriendsHome();
+}
+
+function getFriendsHomeFilteredItems() {
+  const query = String(ui.friendsSearchInput?.value || '').trim().toLowerCase();
+  let items = [];
+  if (state.friendsHomeTab === 'pending') {
+    items = state.friendRequests.map((request) => ({
+      ...request,
+      id: request.sender_user_id,
+      pendingRequestId: request.id,
+      pending: true,
+      online: false
+    }));
+  } else {
+    items = state.friends.filter((friend) => state.friendsHomeTab === 'all' || friend.online);
+  }
+  if (!query) {
+    return items;
+  }
+  return items.filter((item) => String(item.username || '').toLowerCase().includes(query));
+}
+
+function renderActiveNow() {
+  if (!ui.activeNowList) {
+    return;
+  }
+  ui.activeNowList.innerHTML = '';
+  const activeFriends = state.friends.filter((friend) => friend.online);
+  if (!activeFriends.length) {
+    const empty = document.createElement('div');
+    empty.className = 'active-now-empty';
+    empty.textContent = 'No one is active right now.';
+    ui.activeNowList.appendChild(empty);
+    return;
+  }
+  for (const friend of activeFriends.slice(0, 8)) {
+    const card = document.createElement('button');
+    card.className = 'active-now-card';
+    card.type = 'button';
+    const avatar = createAvatarElement(friend, 'avatar avatar-lg');
+    const meta = document.createElement('div');
+    meta.className = 'active-now-meta';
+    const name = document.createElement('div');
+    name.className = 'active-now-name';
+    name.textContent = friend.username || 'Unknown';
+    const status = document.createElement('div');
+    status.className = 'active-now-status';
+    status.textContent = 'Online';
+    meta.append(name, status);
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-message';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.dataset.fallback = getIconFallback(icon.className, 'Message');
+    card.append(avatar, meta, icon);
+    card.addEventListener('click', async () => {
+      await loadDmMessages(friend.id, friend.username);
+    });
+    ui.activeNowList.appendChild(card);
+  }
+}
+
+function renderFriendsHome() {
+  if (!ui.friendsHomeView) {
+    return;
+  }
+  const tabs = {
+    online: ui.friendsTabOnline,
+    all: ui.friendsTabAll,
+    pending: ui.friendsTabPending,
+    add: ui.friendsTabAdd
+  };
+  for (const [tabName, button] of Object.entries(tabs)) {
+    button?.classList.toggle('active', state.friendsHomeTab === tabName);
+  }
+  const items = getFriendsHomeFilteredItems();
+  const tabLabel = state.friendsHomeTab === 'pending' ? 'Pending' : state.friendsHomeTab === 'all' ? 'All Friends' : 'Online';
+  if (ui.friendsHomeCount) {
+    ui.friendsHomeCount.textContent = `${tabLabel} - ${items.length}`;
+  }
+  if (!ui.friendsHomeList) {
+    return;
+  }
+  ui.friendsHomeList.innerHTML = '';
+
+  if (state.friendsHomeTab === 'add') {
+    const addCard = document.createElement('div');
+    addCard.className = 'friends-add-card';
+    const title = document.createElement('h3');
+    title.textContent = 'Add Friend';
+    const copy = document.createElement('p');
+    copy.textContent = 'Send a friend request with their username or email.';
+    const button = document.createElement('button');
+    button.type = 'button';
+    setIconButtonContent(button, 'fa-solid fa-user-plus', 'Add Friend');
+    button.addEventListener('click', promptAddFriend);
+    addCard.append(title, copy, button);
+    ui.friendsHomeList.appendChild(addCard);
+    renderActiveNow();
+    return;
+  }
+
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'friends-empty';
+    empty.textContent = state.friendsHomeTab === 'pending' ? 'No pending friend requests.' : 'No friends found.';
+    ui.friendsHomeList.appendChild(empty);
+    renderActiveNow();
+    return;
+  }
+
+  for (const friend of items) {
+    const row = document.createElement('div');
+    row.className = 'friends-home-row';
+    const avatarWrap = document.createElement('div');
+    avatarWrap.className = 'friends-row-avatar-wrap';
+    const avatar = createAvatarElement(friend, 'avatar avatar-lg');
+    const status = document.createElement('span');
+    status.className = `status-dot ${friend.online ? 'online' : 'offline'}`;
+    avatarWrap.append(avatar, status);
+
+    const meta = document.createElement('div');
+    meta.className = 'friends-row-meta';
+    const name = document.createElement('div');
+    name.className = 'friends-row-name';
+    name.textContent = friend.username || 'Unknown';
+    const sub = document.createElement('div');
+    sub.className = 'friends-row-subtitle';
+    sub.textContent = friend.pending ? 'Incoming friend request' : friend.online ? 'Online' : 'Offline';
+    meta.append(name, sub);
+
+    const actions = document.createElement('div');
+    actions.className = 'friends-row-actions';
+    if (friend.pending) {
+      const accept = document.createElement('button');
+      accept.type = 'button';
+      accept.title = 'Accept';
+      accept.className = 'friends-round-action accept';
+      setIconOnlyButtonContent(accept, 'fa-solid fa-check', 'Accept');
+      accept.addEventListener('click', async () => {
+        const result = await window.api.friends.respondRequest({ requestId: friend.pendingRequestId, action: 'accept' });
+        if (!result.ok) {
+          ui.channelTitle.textContent = result.message;
+          return;
+        }
+        await loadFriendRequestsForHome();
+        await loadFriends();
+      });
+      const reject = document.createElement('button');
+      reject.type = 'button';
+      reject.title = 'Reject';
+      reject.className = 'friends-round-action reject';
+      setIconOnlyButtonContent(reject, 'fa-solid fa-xmark', 'Reject');
+      reject.addEventListener('click', async () => {
+        const result = await window.api.friends.respondRequest({ requestId: friend.pendingRequestId, action: 'reject' });
+        if (!result.ok) {
+          ui.channelTitle.textContent = result.message;
+          return;
+        }
+        await loadFriendRequestsForHome();
+        renderFriendsHome();
+      });
+      actions.append(accept, reject);
+    } else {
+      const message = document.createElement('button');
+      message.type = 'button';
+      message.title = 'Message';
+      message.className = 'friends-round-action';
+      setIconOnlyButtonContent(message, 'fa-solid fa-message', 'Message');
+      message.addEventListener('click', async () => {
+        await loadDmMessages(friend.id, friend.username);
+      });
+      const call = document.createElement('button');
+      call.type = 'button';
+      call.title = 'Call';
+      call.className = 'friends-round-action';
+      setIconOnlyButtonContent(call, 'fa-solid fa-phone', 'Call');
+      call.addEventListener('click', async () => {
+        await loadDmMessages(friend.id, friend.username);
+        await startPersonalCall(friend.id, friend.username);
+      });
+      actions.append(message, call);
+    }
+    row.append(avatarWrap, meta, actions);
+    ui.friendsHomeList.appendChild(row);
+  }
+  renderActiveNow();
+}
+
+async function loadFriendRequestsForHome() {
+  const response = await window.api.friends.getRequests();
+  state.friendRequests = response.ok ? response.requests || [] : [];
+  renderFriendsHome();
+}
+
+async function openFriendsHome(tab = 'online') {
+  state.selectedDmUser = null;
+  state.selectedChannelId = null;
+  state.friendsHomeTab = tab;
+  ui.channelTitle.textContent = 'Friends';
+  syncDmCallButton();
+  renderChannels();
+  setFriendsHomeOpen(true);
+  if (tab === 'pending') {
+    await loadFriendRequestsForHome();
+  }
+  await loadFriends();
+  renderFriendsHome();
 }
 
 async function loadServerPresence(serverId) {
@@ -2900,6 +3883,33 @@ ui.notificationsClearBtn?.addEventListener('click', () => {
   state.notifications = [];
   renderNotifications();
 });
+ui.friendsHomeBtn?.addEventListener('click', async () => {
+  await openFriendsHome('online');
+  if (window.innerWidth <= 700) {
+    closeMobileDrawers();
+  }
+});
+ui.friendsTabOnline?.addEventListener('click', async () => {
+  state.friendsHomeTab = 'online';
+  await loadFriends();
+});
+ui.friendsTabAll?.addEventListener('click', async () => {
+  state.friendsHomeTab = 'all';
+  await loadFriends();
+});
+ui.friendsTabPending?.addEventListener('click', async () => {
+  state.friendsHomeTab = 'pending';
+  await loadFriendRequestsForHome();
+});
+ui.friendsTabAdd?.addEventListener('click', () => {
+  state.friendsHomeTab = 'add';
+  renderFriendsHome();
+});
+ui.friendsCloseBtn?.addEventListener('click', () => {
+  closeFriendsHome();
+});
+ui.friendsMenuBtn?.addEventListener('click', toggleMobileServersDrawer);
+ui.friendsSearchInput?.addEventListener('input', renderFriendsHome);
 ui.mobileServersToggle.addEventListener('click', toggleMobileServersDrawer);
 ui.mobileUsersToggle.addEventListener('click', toggleMobileUsersDrawer);
 ui.mobileDrawerBackdrop.addEventListener('click', () => {
@@ -2909,6 +3919,15 @@ ui.mobileDrawerBackdrop.addEventListener('click', () => {
 });
 
 document.addEventListener('click', (event) => {
+  if (ui.vcPanel?.classList.contains('mic-settings-open')) {
+    const clickedInsideMicSettings = ui.vcPanel.contains(event.target)
+      && (event.target.closest?.('.vc-mic-panel') || event.target.closest?.('.vc-mute-split'));
+    if (!clickedInsideMicSettings) {
+      ui.vcPanel.classList.remove('mic-settings-open');
+      ui.vcMicSettingsBtn?.setAttribute('aria-expanded', 'false');
+    }
+  }
+
   if (!ui.serverOptionsMenu.classList.contains('hidden')) {
     const isInside = ui.serverOptionsMenu.contains(event.target);
     const clickedServerButton = ui.serversList.contains(event.target);
@@ -2975,6 +3994,22 @@ ui.appDialogInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
     ui.appDialogOkBtn.click();
+  }
+});
+
+ui.screenSourceCancelBtn?.addEventListener('click', () => {
+  closeScreenSourceModal(null);
+});
+
+ui.screenSourceModal?.addEventListener('click', (event) => {
+  if (event.target === ui.screenSourceModal) {
+    closeScreenSourceModal(null);
+  }
+});
+
+ui.screenSourceModal?.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeScreenSourceModal(null);
   }
 });
 
@@ -3315,12 +4350,45 @@ ui.vcMuteBtn.addEventListener('click', async () => {
   }
 });
 
+ui.vcMicSettingsBtn?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  ui.vcPanel?.classList.toggle('mic-settings-open');
+  ui.vcMicSettingsBtn?.setAttribute('aria-expanded', ui.vcPanel?.classList.contains('mic-settings-open') ? 'true' : 'false');
+});
+
 ui.vcDeafenBtn.addEventListener('click', async () => {
   try {
     await toggleVoiceDeafen();
   } catch (error) {
     ui.channelTitle.textContent = `Failed to toggle deafen: ${error.message}`;
   }
+});
+
+ui.vcScreenBtn?.addEventListener('click', async () => {
+  try {
+    await toggleScreenShare();
+  } catch (error) {
+    if (String(error?.name || '') === 'AbortError') {
+      setVcStatus(`Connected to ${state.activeVoiceLabel || 'voice room'}`);
+      return;
+    }
+    ui.channelTitle.textContent = `Failed to share screen: ${error.message}`;
+  }
+});
+
+ui.vcVideoSink?.addEventListener('click', () => {
+  toggleFocusedScreenShare();
+});
+
+ui.vcVideoFullscreenBtn?.addEventListener('click', async (event) => {
+  event.stopPropagation();
+  await requestScreenShareFullscreen();
+});
+
+ui.vcMicSensitivity?.addEventListener('input', () => {
+  const value = Number(ui.vcMicSensitivity.value);
+  state.micSensitivity = Number.isFinite(value) ? Math.max(0, Math.min(200, value)) : 100;
+  updateMicSensitivityUi();
 });
 
 ui.vcCloseBtn.addEventListener('click', () => {
@@ -3358,7 +4426,7 @@ ui.createServerBtn.addEventListener('click', async () => {
   await loadServers(false);
 });
 
-ui.addFriendBtn.addEventListener('click', async () => {
+async function promptAddFriend() {
   const target = await showPromptDialog('Add Friend', 'Enter username or email to add as friend:');
   if (!target) {
     return;
@@ -3371,9 +4439,9 @@ ui.addFriendBtn.addEventListener('click', async () => {
   }
 
   ui.channelTitle.textContent = 'Friend request sent.';
-});
+}
 
-ui.friendRequestsBtn.addEventListener('click', async () => {
+async function showFriendRequestsModal() {
   const response = await window.api.friends.getRequests();
   if (!response.ok) {
     ui.channelTitle.textContent = response.message;
@@ -3382,7 +4450,10 @@ ui.friendRequestsBtn.addEventListener('click', async () => {
 
   renderFriendRequests(response.requests || []);
   openFriendRequestsModal();
-});
+}
+
+ui.addFriendBtn?.addEventListener('click', promptAddFriend);
+ui.friendRequestsBtn?.addEventListener('click', showFriendRequestsModal);
 
 ui.joinInviteBtn.addEventListener('click', async () => {
   const codeInput = await showPromptDialog('Join by Invite', 'Enter invite code or paste an invite link:');
@@ -3645,15 +4716,21 @@ window.addEventListener('resize', () => {
 
 updateChannelCreateButton();
 updateMobileDrawers();
+installMobileSwipeDrawers();
 closeServerOptions();
 closeUserOptions();
 closeAccountSettingsMenu();
 syncDmCallButton();
 renderAccountPanel();
 updateVoiceButtons();
+updateMicSensitivityUi();
 setVcStatus('Not connected');
+if (ui.vcVideoSink) {
+  ui.vcVideoSink.textContent = 'No one is sharing right now.';
+}
 renderVoiceParticipants();
 setupPasswordToggles();
+installFontAwesomeFallback();
 closeDobModal();
 showLogin();
 

@@ -3,8 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>JelloChat</title>
+    <script src="https://kit.fontawesome.com/8f09e2b497.js" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -29,15 +30,15 @@
           <div class="password-input-wrap">
             <input id="login-password" type="password" required />
             <button class="password-toggle-btn" type="button" data-target="login-password" aria-label="Show password">
-              <span class="eye-icon" aria-hidden="true"></span>
+              <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
             </button>
           </div>
           <label class="remember-row">
             <input id="remember-me" type="checkbox" checked />
             <span>Remember me</span>
           </label>
-          <button type="submit">Login</button>
-          <button id="login-passkey-btn" class="hidden" type="button">Sign In With Passkey</button>
+          <button type="submit"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>Login</span></button>
+          <button id="login-passkey-btn" class="hidden" type="button"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Sign In With Passkey</span></button>
         </form>
 
         <form id="register-form" class="auth-form auth-hidden">
@@ -53,7 +54,7 @@
           <div class="password-input-wrap">
             <input id="register-password" type="password" minlength="6" required />
             <button class="password-toggle-btn" type="button" data-target="register-password" aria-label="Show password">
-              <span class="eye-icon" aria-hidden="true"></span>
+              <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
             </button>
           </div>
           <label>Date of Birth (13+ only)</label>
@@ -70,13 +71,13 @@
               <button id="view-privacy-btn" type="button" class="auth-legal-link-btn">Privacy Policy</button>.
             </div>
           </div>
-          <button type="submit">Create account</button>
+          <button type="submit"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Create account</span></button>
         </form>
 
         <div class="auth-actions">
-          <button id="resend-verification-btn" type="button">Resend Verification</button>
-          <button id="forgot-password-btn" type="button">Forgot Password</button>
-          <button id="verify-token-btn" type="button">Verify Token</button>
+          <button id="resend-verification-btn" type="button"><i class="fa-solid fa-envelope-circle-check" aria-hidden="true"></i><span>Resend Verification</span></button>
+          <button id="forgot-password-btn" type="button"><i class="fa-solid fa-unlock-keyhole" aria-hidden="true"></i><span>Forgot Password</span></button>
+          <button id="verify-token-btn" type="button"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Verify Token</span></button>
         </div>
 
         <p id="auth-message" class="message"></p>
@@ -126,39 +127,65 @@
               </section>
             </div>
           </div>
-          <button id="join-invite-btn" class="create-server-btn secondary-btn" type="button">Join by Invite</button>
-          <button id="create-server-btn" class="create-server-btn" type="button">+ Create Server</button>
+          <button id="join-invite-btn" class="create-server-btn secondary-btn" type="button"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>Join by Invite</span></button>
+          <button id="create-server-btn" class="create-server-btn" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Create Server</span></button>
         </aside>
 
         <aside class="channels-column">
           <div class="channels-header">
             <h2 id="server-title">Channels</h2>
             <div class="channel-actions">
-              <button id="create-invite-btn" class="icon-btn" type="button" title="Create invite">Invite</button>
-              <button id="create-channel-btn" class="icon-btn" type="button" title="Create channel">+</button>
+              <button id="create-invite-btn" class="icon-btn" type="button" title="Create invite" aria-label="Create invite"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></button>
+              <button id="create-channel-btn" class="icon-btn" type="button" title="Create channel" aria-label="Create channel"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
             </div>
+          </div>
+          <div class="dm-nav">
+            <button id="friends-home-btn" class="dm-nav-btn" type="button">
+              <i class="fa-solid fa-user-group" aria-hidden="true"></i><span>Friends</span>
+            </button>
           </div>
           <ul id="channels-list" class="list"></ul>
         </aside>
 
         <section class="messages-column">
           <header class="messages-header">
-            <button id="mobile-servers-toggle" class="mobile-drawer-toggle" type="button" title="Open servers">☰</button>
+            <button id="mobile-servers-toggle" class="mobile-drawer-toggle" type="button" title="Open servers" aria-label="Open servers"><i class="fa-solid fa-bars" aria-hidden="true"></i></button>
             <h2 id="channel-title">Select a channel</h2>
-            <button id="dm-call-btn" class="icon-btn hidden" type="button" title="Start personal call">Call</button>
-            <button id="mobile-users-toggle" class="mobile-drawer-toggle" type="button" title="Open users">👥</button>
+            <button id="dm-call-btn" class="icon-btn hidden" type="button" title="Start personal call" aria-label="Start personal call"><i class="fa-solid fa-phone" aria-hidden="true"></i></button>
+            <button id="mobile-users-toggle" class="mobile-drawer-toggle" type="button" title="Open users" aria-label="Open users"><i class="fa-solid fa-users" aria-hidden="true"></i></button>
           </header>
           <section id="vc-panel" class="vc-panel hidden">
             <div class="vc-panel-header">
               <h3 id="vc-room-title">Voice Channel</h3>
               <div class="vc-controls">
-                <button id="vc-mute-btn" type="button">Mute</button>
-                <button id="vc-deafen-btn" type="button">Deafen</button>
-                <button id="vc-close-btn" type="button">Leave VC</button>
+                <div class="vc-split-control vc-mute-split">
+                  <button id="vc-mute-btn" class="vc-split-main" type="button"><i class="fa-solid fa-microphone" aria-hidden="true"></i><span>Mute</span></button>
+                  <button id="vc-mic-settings-btn" class="vc-split-arrow" type="button" title="Mic settings" aria-label="Mic settings" aria-expanded="false"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <button id="vc-deafen-btn" type="button"><i class="fa-solid fa-headphones" aria-hidden="true"></i><span>Deafen</span></button>
+                <button id="vc-screen-btn" type="button"><i class="fa-solid fa-display" aria-hidden="true"></i><span>Share Screen</span></button>
+                <button id="vc-close-btn" type="button"><i class="fa-solid fa-phone-slash" aria-hidden="true"></i><span>Leave VC</span></button>
               </div>
             </div>
             <div class="vc-stage">
               <p id="vc-status" class="vc-status">Not connected</p>
+              <div class="vc-mic-panel">
+                <div class="vc-mic-row">
+                  <label for="vc-mic-sensitivity">Mic Sensitivity</label>
+                  <span id="vc-mic-sensitivity-value">100%</span>
+                </div>
+                <input id="vc-mic-sensitivity" type="range" min="0" max="200" value="100" />
+                <div class="vc-mic-meter" aria-hidden="true">
+                  <div id="vc-mic-meter-fill" class="vc-mic-meter-fill"></div>
+                </div>
+              </div>
+              <div class="vc-video-pane">
+                <div class="vc-video-toolbar">
+                  <h4>Screen Share</h4>
+                  <button id="vc-video-fullscreen-btn" class="vc-video-fullscreen-btn" type="button" title="Fullscreen screen share"><i class="fa-solid fa-expand" aria-hidden="true"></i><span>Full Screen</span></button>
+                </div>
+                <div id="vc-video-sink" class="vc-video-sink"></div>
+              </div>
               <div class="vc-participants">
                 <h4>In Voice</h4>
                 <ul id="vc-participants-list" class="list compact-list"></ul>
@@ -166,18 +193,48 @@
             </div>
             <div id="vc-audio-sink" class="vc-audio-sink" aria-hidden="true"></div>
           </section>
+          <section id="friends-home-view" class="friends-home-view hidden">
+            <div class="friends-main">
+              <header class="friends-home-header">
+                <button id="friends-menu-btn" class="mobile-drawer-toggle friends-menu-btn" type="button" title="Open servers" aria-label="Open servers"><i class="fa-solid fa-bars" aria-hidden="true"></i></button>
+                <div class="friends-home-title">
+                  <i class="fa-solid fa-user-group" aria-hidden="true"></i>
+                  <span>Friends</span>
+                </div>
+                <div class="friends-tabs" role="tablist" aria-label="Friends filters">
+                  <button id="friends-tab-online" class="friends-tab active" type="button">Online</button>
+                  <button id="friends-tab-all" class="friends-tab" type="button">All</button>
+                  <button id="friends-tab-pending" class="friends-tab" type="button">Pending</button>
+                  <button id="friends-tab-add" class="friends-tab friends-tab-add" type="button">Add Friend</button>
+                </div>
+                <button id="friends-close-btn" class="friends-close-btn" type="button" title="Close friends" aria-label="Close friends"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+              </header>
+              <div class="friends-notice">
+                <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                <span>Looking for people to chat with? Add friends by username or email.</span>
+              </div>
+              <label class="friends-search">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input id="friends-search-input" type="search" placeholder="Search" autocomplete="off" />
+              </label>
+              <div id="friends-home-count" class="friends-home-count">Online - 0</div>
+              <div id="friends-home-list" class="friends-home-list"></div>
+            </div>
+            <aside class="active-now-panel">
+              <h3>Active Now</h3>
+              <div id="active-now-list" class="active-now-list"></div>
+            </aside>
+          </section>
           <div id="messages-list" class="messages-list"></div>
           <form id="message-form" class="message-form">
             <input id="message-input" type="text" placeholder="Message #channel" autocomplete="off" />
-            <button type="submit">Send</button>
+            <button type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Send</span></button>
           </form>
         </section>
 
         <aside class="presence-column">
           <div class="presence-actions">
-            <button id="add-friend-btn" class="create-server-btn secondary-btn" type="button">Add Friend</button>
-            <button id="friend-requests-btn" class="create-server-btn secondary-btn" type="button">Requests</button>
-            <button id="notifications-btn" class="create-server-btn secondary-btn" type="button">Notifications</button>
+            <button id="notifications-btn" class="create-server-btn secondary-btn" type="button"><i class="fa-solid fa-bell" aria-hidden="true"></i><span>Notifications</span></button>
           </div>
           <div id="user-options-menu" class="user-options-menu hidden">
             <button id="report-user-btn" type="button">Report User</button>
@@ -208,7 +265,7 @@
               <div id="account-username" class="account-username">User</div>
               <div id="account-email" class="account-email">email@example.com</div>
             </div>
-            <button id="account-settings-btn" class="account-settings-btn" type="button" title="Settings">⚙</button>
+            <button id="account-settings-btn" class="account-settings-btn" type="button" title="Settings" aria-label="Settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
             <div id="account-settings-menu" class="account-settings-menu hidden">
               <button id="account-my-account-btn" type="button">My Account</button>
               <button id="account-admin-btn" class="hidden" type="button">Admin Console</button>
@@ -238,14 +295,14 @@
               <div class="password-input-wrap">
                 <input id="account-current-password-input" type="password" autocomplete="current-password" />
                 <button class="password-toggle-btn" type="button" data-target="account-current-password-input" aria-label="Show password">
-                  <span class="eye-icon" aria-hidden="true"></span>
+                  <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
                 </button>
               </div>
               <label for="account-new-password-input">New Password</label>
               <div class="password-input-wrap">
                 <input id="account-new-password-input" type="password" minlength="6" autocomplete="new-password" />
                 <button class="password-toggle-btn" type="button" data-target="account-new-password-input" aria-label="Show password">
-                  <span class="eye-icon" aria-hidden="true"></span>
+                  <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
                 </button>
               </div>
               <label for="account-dob-input">Date of Birth</label>
@@ -324,6 +381,15 @@
             <button id="app-dialog-cancel-btn" type="button">Cancel</button>
             <button id="app-dialog-ok-btn" type="button">OK</button>
           </div>
+        </div>
+      </section>
+      <section id="screen-source-modal" class="screen-source-modal hidden">
+        <div class="screen-source-card">
+          <div class="screen-source-header">
+            <h3>Choose What To Share</h3>
+            <button id="screen-source-cancel-btn" type="button">Cancel</button>
+          </div>
+          <div id="screen-source-grid" class="screen-source-grid"></div>
         </div>
       </section>
     </main>

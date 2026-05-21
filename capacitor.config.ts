@@ -5,8 +5,8 @@ const config: CapacitorConfig = {
   appName: 'JelloChat',
   bundledWebRuntime: false,
   server: {
-    url: 'https://chat.jellodog.com',
-    cleartext: false
+    url: 'http://192.168.1.162:3000',
+    cleartext: true
   }
 };
 

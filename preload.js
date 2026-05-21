@@ -53,6 +53,9 @@ if (!isCloudClientMode) {
       getToken: (payload) => ipcRenderer.invoke('vc:getToken', payload),
       getParticipants: (payload) => ipcRenderer.invoke('vc:getParticipants', payload)
     },
+    screen: {
+      getSources: () => ipcRenderer.invoke('screen:getSources')
+    },
     roles: {
       getState: (payload) => ipcRenderer.invoke('roles:getState', payload),
       create: (payload) => ipcRenderer.invoke('roles:create', payload),

@@ -38,5 +38,6 @@
             "username": "Jellochat",
             "password": "Mineshark120"
         }
-    ]
+    ],
+    "snyk.advanced.organization": "b41eb502-29b3-45bd-8d82-8eda34cef9b7"
 }

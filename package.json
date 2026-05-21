@@ -20,14 +20,14 @@
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "livekit-server-sdk": "^2.13.2",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^8.0.7",
     "pg": "^8.16.3",
     "ws": "^8.18.3"
   },
   "devDependencies": {
     "@capacitor/android": "^7.4.2",
     "@capacitor/cli": "^7.6.0",
-    "electron": "^37.2.0",
+    "electron": "^42.2.0",
     "electron-builder": "^26.7.0",
     "typescript": "^5.9.3"
   },

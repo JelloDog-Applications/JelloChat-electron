@@ -19,7 +19,7 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private static final int AUDIO_PERMISSION_REQUEST_CODE = 1001;
-    private static final String APP_WEB_BASE_URL = "https://chat.jellodog.com";
+    private static final String APP_WEB_BASE_URL = "http://192.168.1.162:3000";
     private static final String APP_USER_AGENT_MARKER = "JelloChatAndroidApp";
     private String pendingAuthUrl;
     private boolean authNavigationHandled;
@@ -125,7 +125,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         if (("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
-                && "chat.jellodog.com".equalsIgnoreCase(host)
+                && "192.168.1.162".equalsIgnoreCase(host)
                 && ("/reset-password".equals(path) || "/verify-email".equals(path))) {
             return data.toString();
         }

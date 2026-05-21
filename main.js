@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, desktopCapturer, ipcMain, screen: electronScreen, session } = require('electron');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -10,6 +10,16 @@ const { sendMail } = require('./mailer');
 
 const WS_PORT = Number(process.env.WS_PORT || 3131);
 const DEFAULT_PUBLIC_URL = 'https://chat.jellodog.com';
+
+app.commandLine.appendSwitch(
+  'disable-features',
+  [
+    'AllowWgcScreenCapturer',
+    'AllowWgcWindowCapturer',
+    'AllowWgcScreenZeroHz',
+    'AllowWgcZeroHz'
+  ].join(',')
+);
 
 let mainWindow;
 let currentUserId = null;
@@ -122,6 +132,7 @@ function createWindow() {
     height: 850,
     minWidth: 1000,
     minHeight: 650,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -129,9 +140,64 @@ function createWindow() {
       additionalArguments: packagedCloudClientMode ? ['--jellochat-cloud-client=1'] : []
     }
   });
+  mainWindow.setMenu(null);
+  mainWindow.setMenuBarVisibility(false);
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 }
+
+function configureDisplayCapture() {
+  const defaultSession = session.defaultSession;
+  if (!defaultSession || typeof defaultSession.setDisplayMediaRequestHandler !== 'function') {
+    return;
+  }
+  defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 0, height: 0 }
+      });
+      callback({
+        video: sources[0] || null,
+        audio: false
+      });
+    } catch (_error) {
+      callback({
+        video: null,
+        audio: false
+      });
+    }
+  }, { useSystemPicker: true });
+}
+
+ipcMain.handle('screen:getSources', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 320, height: 180 }
+    });
+    const displaysById = new Map(
+      electronScreen.getAllDisplays().map((display) => [String(display.id), display])
+    );
+    return {
+      ok: true,
+      sources: sources.map((source) => {
+        const display = displaysById.get(String(source.display_id || ''));
+        return {
+          id: source.id,
+          name: source.name,
+          displayId: source.display_id || '',
+          width: display?.size?.width || display?.bounds?.width || 0,
+          height: display?.size?.height || display?.bounds?.height || 0,
+          scaleFactor: display?.scaleFactor || 1,
+          thumbnail: source.thumbnail?.toDataURL?.() || ''
+        };
+      })
+    };
+  } catch (error) {
+    return { ok: false, message: `Failed to get screen sources: ${error.message}` };
+  }
+});
 
 function issueAuthToken(userId) {
   const token = crypto.randomBytes(24).toString('hex');
@@ -2944,6 +3010,7 @@ app.whenReady().then(async () => {
     await db.connect();
     await ensurePlatformAdminExists();
     setupRealtimeServer();
+    configureDisplayCapture();
     createWindow();
   } catch (error) {
     console.error('Startup failed:', error);
