@@ -10,6 +10,7 @@ const db = require('./db');
 const { sendMail } = require('./mailer');
 
 const WEB_PORT = Number(process.env.WEB_PORT || 3000);
+const AUTH_SESSION_DAYS = Math.max(1, Number(process.env.AUTH_SESSION_DAYS || 30));
 const IP_REPUTATION_BLOCK_THRESHOLD = Number(process.env.IP_REPUTATION_BLOCK_THRESHOLD || 8);
 const IP_REPUTATION_BLOCK_MINUTES = Number(process.env.IP_REPUTATION_BLOCK_MINUTES || 30);
 const IP_REPUTATION_DECAY_HOURS = Number(process.env.IP_REPUTATION_DECAY_HOURS || 6);
@@ -812,18 +813,62 @@ async function issuePasswordReset(userId, email, username) {
   return sendPasswordResetEmail(email, username, rawToken);
 }
 
-function issueAuthToken(userId) {
+async function issueAuthToken(userId) {
   const token = crypto.randomBytes(24).toString('hex');
+  const tokenHash = hashToken(token);
+  await db.query(
+    `INSERT INTO auth_sessions (token_hash, user_id, expires_at)
+     VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 day'))`,
+    [tokenHash, userId, AUTH_SESSION_DAYS]
+  );
   authTokens.set(token, userId);
   return token;
 }
 
-function clearAuthTokensForUser(userId) {
+async function resolveAuthToken(token) {
+  if (!token) {
+    return null;
+  }
+
+  const cachedUserId = authTokens.get(token);
+  const tokenHash = hashToken(token);
+  const result = await db.query(
+    `UPDATE auth_sessions
+     SET last_used_at = NOW()
+     WHERE token_hash = $1
+       AND expires_at > NOW()
+     RETURNING user_id`,
+    [tokenHash]
+  );
+
+  if (result.rows.length === 0) {
+    authTokens.delete(token);
+    await db.query('DELETE FROM auth_sessions WHERE token_hash = $1', [tokenHash]);
+    return null;
+  }
+
+  const userId = result.rows[0].user_id;
+  if (cachedUserId !== userId) {
+    authTokens.set(token, userId);
+  }
+  return userId;
+}
+
+async function deleteAuthToken(token) {
+  if (!token) {
+    return;
+  }
+  authTokens.delete(token);
+  await db.query('DELETE FROM auth_sessions WHERE token_hash = $1', [hashToken(token)]);
+}
+
+async function clearAuthTokensForUser(userId) {
   for (const [token, tokenUserId] of authTokens) {
     if (tokenUserId === userId) {
       authTokens.delete(token);
     }
   }
+  await db.query('DELETE FROM auth_sessions WHERE user_id = $1', [userId]);
 }
 
 function disconnectRealtimeUser(userId, reason = 'Account access changed.') {
@@ -1056,7 +1101,7 @@ async function applyAutomaticStandingUpdate(userId, options = {}) {
     return null;
   }
   if (!current.platform_banned_at && updated.platform_banned_at) {
-    clearAuthTokensForUser(userId);
+    await clearAuthTokensForUser(userId);
     disconnectRealtimeUser(userId, 'Account banned from JelloChat.');
     sendTerminationEmail(updated.email, updated.username, updated.platform_ban_reason || updated.standing_reason || 'Your account was terminated for Terms of Service violations.').catch(() => {});
   }
@@ -1342,7 +1387,14 @@ function getOnlineUserIds() {
 async function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  const userId = token ? authTokens.get(token) : null;
+  let userId = null;
+
+  try {
+    userId = await resolveAuthToken(token);
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to validate session: ${error.message}` });
+    return;
+  }
 
   if (!userId) {
     res.status(401).json({ ok: false, message: 'Not authenticated.' });
@@ -1352,12 +1404,12 @@ async function authMiddleware(req, res, next) {
   try {
     const user = await getUserAdminState(userId);
     if (!user) {
-      authTokens.delete(token);
+      await deleteAuthToken(token);
       res.status(401).json({ ok: false, message: 'Session not found.' });
       return;
     }
     if (user.platform_banned_at) {
-      clearAuthTokensForUser(userId);
+      await clearAuthTokensForUser(userId);
       disconnectRealtimeUser(userId, 'Account banned from JelloChat.');
       res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
       return;
@@ -1812,7 +1864,7 @@ app.post('/api/auth/login', async (req, res) => {
       return;
     }
 
-    const realtimeToken = issueAuthToken(user.id);
+    const realtimeToken = await issueAuthToken(user.id);
     const tosNotice = await maybeNotifyTermsUpdate(user);
     const privacyNotice = await maybeNotifyPrivacyUpdate(user);
     rewardIp(requestIp, 2);
@@ -1829,8 +1881,12 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/auth/logout', authMiddleware, async (req, res) => {
-  authTokens.delete(req.authToken);
-  res.json({ ok: true });
+  try {
+    await deleteAuthToken(req.authToken);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Logout failed: ${error.message}` });
+  }
 });
 
 app.get('/api/auth/session', authMiddleware, async (req, res) => {
@@ -1842,12 +1898,12 @@ app.get('/api/auth/session', authMiddleware, async (req, res) => {
     }
     const user = userResult.rows[0];
     if (user.platform_banned_at) {
-      clearAuthTokensForUser(user.id);
+      await clearAuthTokensForUser(user.id);
       disconnectRealtimeUser(user.id, 'Account banned from JelloChat.');
       res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
       return;
     }
-    const realtimeToken = issueAuthToken(user.id);
+    const realtimeToken = await issueAuthToken(user.id);
     const tosNotice = await maybeNotifyTermsUpdate(user);
     const privacyNotice = await maybeNotifyPrivacyUpdate(user);
     delete user.tos_notified_version;
@@ -2091,7 +2147,7 @@ app.post('/api/auth/passkeys/login/verify', async (req, res) => {
       [credential.id, parsedAuthData.signCount]
     );
 
-    const realtimeToken = issueAuthToken(credential.user_id);
+    const realtimeToken = await issueAuthToken(credential.user_id);
     const tosNotice = await maybeNotifyTermsUpdate({
       id: credential.user_id,
       username: credential.username,
@@ -2269,7 +2325,7 @@ app.post('/api/auth/password-reset/confirm', async (req, res) => {
        WHERE id = $2`,
       [passwordHash, userId]
     );
-    clearAuthTokensForUser(userId);
+    await clearAuthTokensForUser(userId);
     res.json({ ok: true, message: 'Password has been reset.' });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to reset password: ${error.message}` });
@@ -2378,9 +2434,9 @@ app.post('/api/auth/account/delete', authMiddleware, async (req, res) => {
     }
 
     await db.query('DELETE FROM users WHERE id = $1', [req.userId]);
-    clearAuthTokensForUser(req.userId);
+    await clearAuthTokensForUser(req.userId);
     disconnectRealtimeUser(req.userId, 'Account deleted.');
-    authTokens.delete(req.authToken);
+    await deleteAuthToken(req.authToken);
     await ensurePlatformAdminExists();
     res.json({ ok: true });
   } catch (error) {
@@ -3407,7 +3463,7 @@ app.post('/api/admin/users/:userId', authMiddleware, async (req, res) => {
     );
 
     if (nextBanned) {
-      clearAuthTokensForUser(targetUserId);
+      await clearAuthTokensForUser(targetUserId);
       disconnectRealtimeUser(targetUserId, 'Account banned from JelloChat.');
     }
     if (!target.platform_banned_at && nextBanned) {
@@ -3479,7 +3535,7 @@ app.delete('/api/admin/users/:userId', authMiddleware, async (req, res) => {
     }
 
     await db.query('DELETE FROM users WHERE id = $1', [targetUserId]);
-    clearAuthTokensForUser(targetUserId);
+    await clearAuthTokensForUser(targetUserId);
     disconnectRealtimeUser(targetUserId, 'Account deleted.');
     await ensurePlatformAdminExists();
     res.json({ ok: true });
@@ -4004,7 +4060,7 @@ async function start() {
   wss.on('connection', async (ws, request) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`);
     const token = url.searchParams.get('token');
-    const userId = token ? authTokens.get(token) : null;
+    const userId = await resolveAuthToken(token).catch(() => null);
 
     if (!userId) {
       ws.close(4001, 'Unauthorized');
@@ -4013,7 +4069,7 @@ async function start() {
 
     const user = await getUserAdminState(userId).catch(() => null);
     if (!user || user.platform_banned_at) {
-      clearAuthTokensForUser(userId);
+      await clearAuthTokensForUser(userId);
       ws.close(4003, 'Account banned from JelloChat.');
       return;
     }
