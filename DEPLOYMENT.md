@@ -68,3 +68,5 @@ In GitHub, open the repo settings and add these Actions secrets:
 - `DEPLOY_PORT`: SSH port, usually `22`
 
 The workflow is already configured to SSH as `ubuntu`, deploy from `/home/ubuntu/JelloChat-electron`, and restart `jellochat`.
+
+If the deploy job says `missing server host`, `DEPLOY_HOST` is empty or not created in this repository's Actions secrets.
