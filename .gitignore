@@ -2,5 +2,6 @@ node_modules/
 dist/
 out/
 build/
+uploads/
 .env
 *.db

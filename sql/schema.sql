@@ -105,11 +105,21 @@ CREATE TABLE IF NOT EXISTS servers (
   id SERIAL PRIMARY KEY,
   name VARCHAR(80) NOT NULL,
   owner_user_id INT REFERENCES users(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  empty_since TIMESTAMPTZ
 );
 
 ALTER TABLE servers
 ADD COLUMN IF NOT EXISTS owner_user_id INT REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE servers
+ADD COLUMN IF NOT EXISTS empty_since TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS server_members (
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -142,8 +152,58 @@ CREATE TABLE IF NOT EXISTS user_reports (
   target_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   server_id INT REFERENCES servers(id) ON DELETE SET NULL,
   reason TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'open',
+  reviewed_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  review_note TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE user_reports
+ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'open';
+
+ALTER TABLE user_reports
+ADD COLUMN IF NOT EXISTS reviewed_by_user_id INT REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE user_reports
+ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+
+ALTER TABLE user_reports
+ADD COLUMN IF NOT EXISTS review_note TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'user_reports_status_check'
+  ) THEN
+    ALTER TABLE user_reports
+    ADD CONSTRAINT user_reports_status_check
+    CHECK (status IN ('open', 'reviewed', 'dismissed', 'actioned'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_user_reports_status_created_at
+ON user_reports (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ban_appeals (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'open',
+  reviewed_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  review_note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (status IN ('open', 'reviewed', 'dismissed', 'approved'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ban_appeals_status_created_at
+ON ban_appeals (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ban_appeals_user_created_at
+ON ban_appeals (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_passkeys (
   id BIGSERIAL PRIMARY KEY,
@@ -269,6 +329,47 @@ ON dm_messages (
   GREATEST(sender_user_id, receiver_user_id),
   created_at
 );
+
+CREATE TABLE IF NOT EXISTS message_attachments (
+  id BIGSERIAL PRIMARY KEY,
+  message_id BIGINT REFERENCES messages(id) ON DELETE CASCADE,
+  dm_message_id BIGINT REFERENCES dm_messages(id) ON DELETE CASCADE,
+  uploader_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  original_filename TEXT NOT NULL,
+  stored_filename TEXT NOT NULL UNIQUE,
+  mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+  file_size BIGINT NOT NULL,
+  encryption_iv TEXT,
+  encryption_auth_tag TEXT,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (
+    (message_id IS NOT NULL AND dm_message_id IS NULL)
+    OR (message_id IS NULL AND dm_message_id IS NOT NULL)
+  ),
+  CHECK (file_size > 0)
+);
+
+ALTER TABLE message_attachments
+ADD COLUMN IF NOT EXISTS encryption_iv TEXT;
+
+ALTER TABLE message_attachments
+ADD COLUMN IF NOT EXISTS encryption_auth_tag TEXT;
+
+ALTER TABLE message_attachments
+ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_message_attachments_message_id
+ON message_attachments (message_id);
+
+CREATE INDEX IF NOT EXISTS idx_message_attachments_dm_message_id
+ON message_attachments (dm_message_id);
+
+CREATE INDEX IF NOT EXISTS idx_message_attachments_uploader_created_at
+ON message_attachments (uploader_user_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_message_attachments_expires_at
+ON message_attachments (expires_at);
 
 CREATE TABLE IF NOT EXISTS server_bans (
   server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,

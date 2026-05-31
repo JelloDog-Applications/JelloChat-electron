@@ -48,7 +48,8 @@
 
   async function request(method, path, body) {
     const token = getToken();
-    const headers = { 'Content-Type': 'application/json' };
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+    const headers = isFormData ? {} : { 'Content-Type': 'application/json' };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -56,7 +57,7 @@
     const response = await fetch(`${apiBase()}${path}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined
+      body: body ? (isFormData ? body : JSON.stringify(body)) : undefined
     });
 
     const payload = await response.json();
@@ -74,7 +75,25 @@
       clearToken();
     }
 
-    return payload;
+      return payload;
+  }
+
+  function attachmentUrl(path) {
+    return `${apiBase()}${path}`;
+  }
+
+  async function getAttachmentObjectUrl(path) {
+    const token = getToken();
+    const headers = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(attachmentUrl(path), { headers });
+    if (!response.ok) {
+      throw new Error('Failed to load attachment.');
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
   }
 
   function wsBaseUrl() {
@@ -149,6 +168,13 @@
     },
     admin: {
       listUsers: (payload) => request('POST', '/api/admin/users/search', payload),
+      listReports: (payload = {}) => request('GET', `/api/admin/reports?status=${encodeURIComponent(payload.status || 'open')}`),
+      updateReport: (payload) => request('POST', `/api/admin/reports/${payload.reportId}`, payload),
+      getStorageConfig: () => request('GET', '/api/admin/storage'),
+      updateCleanupSettings: (payload) => request('POST', '/api/admin/storage/cleanup', payload),
+      listBanAppeals: (payload = {}) => request('GET', `/api/admin/ban-appeals?status=${encodeURIComponent(payload.status || 'open')}`),
+      updateBanAppeal: (payload) => request('POST', `/api/admin/ban-appeals/${payload.appealId}`, payload),
+      listServers: (payload = {}) => request('GET', `/api/admin/servers?query=${encodeURIComponent(payload.query || '')}`),
       getUserDetails: (payload) => request('GET', `/api/admin/users/${payload.userId}`),
       getServerView: (payload) => request('GET', `/api/admin/servers/${payload.serverId}`),
       updateUser: (payload) => request('POST', `/api/admin/users/${payload.userId}`, payload),
@@ -157,6 +183,9 @@
     },
     reports: {
       createUserReport: (payload) => request('POST', '/api/reports/users', payload)
+    },
+    appeals: {
+      submitBanAppeal: (payload) => request('POST', '/api/appeals/ban', payload)
     },
     friends: {
       list: () => request('GET', '/api/friends'),
@@ -167,6 +196,11 @@
     legal: {
       getPrivacyPolicy: () => request('GET', '/api/legal/privacy-policy'),
       getTermsOfService: () => request('GET', '/api/legal/terms-of-service')
+    },
+    attachments: {
+      uploadMode: 'form',
+      url: attachmentUrl,
+      objectUrl: getAttachmentObjectUrl
     }
   };
 })();

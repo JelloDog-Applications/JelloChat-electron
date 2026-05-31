@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const multer = require('multer');
 const { WebSocketServer } = require('ws');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const fs = require('fs');
@@ -11,6 +12,19 @@ const { sendMail } = require('./mailer');
 
 const WEB_PORT = Number(process.env.WEB_PORT || 3000);
 const AUTH_SESSION_DAYS = Math.max(1, Number(process.env.AUTH_SESSION_DAYS || 30));
+const ATTACHMENTS_DIR = path.resolve(__dirname, process.env.ATTACHMENTS_DIR || 'uploads/attachments');
+const ATTACHMENT_MAX_MB = Math.max(1, Number(process.env.ATTACHMENT_MAX_MB || 10));
+const ATTACHMENT_HARD_MAX_BYTES = Math.max(1024, Number(process.env.ATTACHMENT_HARD_MAX_MB || 1024)) * 1024 * 1024;
+const ATTACHMENT_EXPIRE_DAYS = Math.max(1, Number(process.env.ATTACHMENT_EXPIRE_DAYS || 30));
+const ATTACHMENT_MAX_UPLOADS_PER_DAY = Math.max(1, Number(process.env.ATTACHMENT_MAX_UPLOADS_PER_DAY || 50));
+const ATTACHMENT_STORAGE_QUOTA_MB = Math.max(0, Number(process.env.ATTACHMENT_STORAGE_QUOTA_MB || 0));
+const DEFAULT_CLEANUP_EMPTY_SERVER_DAYS = Math.max(0, Number(process.env.CLEANUP_EMPTY_SERVER_DAYS || 7));
+const DEFAULT_CLEANUP_BANNED_USER_DAYS = Math.max(0, Number(process.env.CLEANUP_BANNED_USER_DAYS || 30));
+const DEFAULT_CLEANUP_INTERVAL_MINUTES = Math.max(5, Number(process.env.CLEANUP_INTERVAL_MINUTES || 60));
+const ATTACHMENT_ENCRYPTION_KEY = crypto
+  .createHash('sha256')
+  .update(String(process.env.ATTACHMENT_ENCRYPTION_KEY || process.env.AUTH_SECRET || 'jellochat-dev-attachment-key'))
+  .digest();
 const IP_REPUTATION_BLOCK_THRESHOLD = Number(process.env.IP_REPUTATION_BLOCK_THRESHOLD || 8);
 const IP_REPUTATION_BLOCK_MINUTES = Number(process.env.IP_REPUTATION_BLOCK_MINUTES || 30);
 const IP_REPUTATION_DECAY_HOURS = Number(process.env.IP_REPUTATION_DECAY_HOURS || 6);
@@ -27,13 +41,136 @@ app.use((_req, res, next) => {
   next();
 });
 
-function readPolicyMarkdown(filename) {
-  const filePath = path.join(__dirname, filename);
-  try {
-    return fs.readFileSync(filePath, 'utf8');
-  } catch (_error) {
-    return null;
+fs.mkdirSync(ATTACHMENTS_DIR, { recursive: true });
+
+const BLOCKED_ATTACHMENT_EXTENSIONS = new Set([
+  '.apk',
+  '.app',
+  '.bat',
+  '.bin',
+  '.cmd',
+  '.com',
+  '.cpl',
+  '.dll',
+  '.dmg',
+  '.exe',
+  '.gadget',
+  '.hta',
+  '.htm',
+  '.html',
+  '.jar',
+  '.js',
+  '.jse',
+  '.lnk',
+  '.msi',
+  '.msp',
+  '.pif',
+  '.ps1',
+  '.py',
+  '.rb',
+  '.scr',
+  '.sh',
+  '.svg',
+  '.sys',
+  '.vb',
+  '.vbe',
+  '.vbs',
+  '.wsf'
+]);
+
+function isBlockedAttachmentName(filename) {
+  const ext = path.extname(String(filename || '')).toLowerCase();
+  return BLOCKED_ATTACHMENT_EXTENSIONS.has(ext);
+}
+
+const attachmentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, ATTACHMENTS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase().replace(/[^a-z0-9.]/g, '');
+    cb(null, `${crypto.randomUUID()}${ext}`);
   }
+});
+
+const attachmentUpload = multer({
+  storage: attachmentStorage,
+  limits: { fileSize: ATTACHMENT_HARD_MAX_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (isBlockedAttachmentName(file.originalname)) {
+      cb(new Error('That file type is not allowed.'));
+      return;
+    }
+    cb(null, true);
+  }
+});
+
+function uploadMessageAttachment(req, res, next) {
+  attachmentUpload.single('attachment')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ ok: false, message: 'Attachment is larger than the configured server hard limit.' });
+      return;
+    }
+    res.status(400).json({ ok: false, message: error.message || 'Failed to upload attachment.' });
+  });
+}
+
+function removeUploadedFile(file) {
+  if (!file?.path) {
+    return;
+  }
+  fs.promises.unlink(file.path).catch(() => {});
+}
+
+async function encryptAttachmentFile(filePath) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ATTACHMENT_ENCRYPTION_KEY, iv);
+  const plaintext = await fs.promises.readFile(filePath);
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  await fs.promises.writeFile(filePath, encrypted);
+  return {
+    iv: iv.toString('base64'),
+    authTag: authTag.toString('base64')
+  };
+}
+
+async function readAttachmentFile(attachment) {
+  const filePath = path.join(ATTACHMENTS_DIR, attachment.stored_filename);
+  const data = await fs.promises.readFile(filePath);
+  if (!attachment.encryption_iv || !attachment.encryption_auth_tag) {
+    return data;
+  }
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    ATTACHMENT_ENCRYPTION_KEY,
+    Buffer.from(attachment.encryption_iv, 'base64')
+  );
+  decipher.setAuthTag(Buffer.from(attachment.encryption_auth_tag, 'base64'));
+  return Buffer.concat([decipher.update(data), decipher.final()]);
+}
+
+function getAttachmentExpiresAt(expireDays = ATTACHMENT_EXPIRE_DAYS) {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + expireDays);
+  return expiresAt;
+}
+
+function readPolicyMarkdown(filename) {
+  const candidates = [
+    path.join(__dirname, 'docs', filename),
+    path.join(__dirname, filename)
+  ];
+  for (const filePath of candidates) {
+    try {
+      return fs.readFileSync(filePath, 'utf8');
+    } catch (_error) {
+      // Try the next known location.
+    }
+  }
+  return null;
 }
 
 function escapeHtml(value) {
@@ -141,6 +278,20 @@ app.get('/api/legal/terms-of-service', (_req, res) => {
     return;
   }
   res.json({ ok: true, text });
+});
+
+app.get('/api/public/stats', async (_req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT COUNT(*)::int AS registered_users
+       FROM users
+       WHERE platform_banned_at IS NULL`
+    );
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.json({ ok: true, registeredUsers: result.rows[0]?.registered_users || 0 });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load public stats: ${error.message}` });
+  }
 });
 
 const authTokens = new Map();
@@ -394,6 +545,7 @@ function shouldRedirectAndroidToDownload(req) {
     pathname.startsWith('/api/') ||
     pathname.startsWith('/auth-link') ||
     pathname.startsWith('/download/android') ||
+    pathname.startsWith('/ban-appeal') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email')
   ) {
@@ -418,8 +570,11 @@ app.use((req, res, next) => {
   if (req.method === 'GET' && (
     pathname === '/'
     || pathname === '/index.html'
+    || pathname === '/app'
+    || pathname === '/ban-appeal'
     || pathname === '/manifest.webmanifest'
     || pathname === '/service-worker.js'
+    || pathname === '/home.js'
     || /\.(?:css|js)$/i.test(pathname)
   )) {
     res.setHeader('Cache-Control', 'no-store, max-age=0');
@@ -429,7 +584,8 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'src'), {
   etag: false,
-  lastModified: false
+  lastModified: false,
+  index: false
 }));
 
 function buildAuthWebUrl(mode, rawToken) {
@@ -445,6 +601,15 @@ function buildAuthAppUrl(mode, rawToken) {
 
 function buildAuthEmailUrl(mode, rawToken) {
   return buildPublicUrl(`/auth-link?mode=${encodeURIComponent(mode)}&token=${encodeURIComponent(rawToken)}`);
+}
+
+function buildBanAppealUrl(email) {
+  const query = new URLSearchParams();
+  if (email) {
+    query.set('email', email);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return buildPublicUrl(`/ban-appeal${suffix}`);
 }
 
 async function sendVerificationEmail(email, username, rawToken) {
@@ -467,14 +632,44 @@ async function sendPasswordResetEmail(email, username, rawToken) {
   });
 }
 
-async function sendTerminationEmail(email, username, reason) {
+async function sendTerminationEmail(email, username, reason, options = {}) {
   const supportUrl = buildPublicUrl('/terms-of-service');
+  const appealUrl = options.appealUrl || buildBanAppealUrl(email);
   const detail = String(reason || 'Your account was terminated for Terms of Service violations.').trim();
+  const cleanupDays = Number(options.bannedUserCleanupDays || 0);
+  const deletionText = cleanupDays > 0
+    ? `\n\nYou have ${cleanupDays} day(s) from the ban date to submit an appeal before this account is deleted.`
+    : '';
+  const deletionHtml = cleanupDays > 0
+    ? `<p>You have ${cleanupDays} day(s) from the ban date to submit an appeal before this account is deleted.</p>`
+    : '';
   return sendMail({
     to: email,
     subject: 'Your JelloChat account has been terminated',
-    text: `Hi ${username},\n\nYour JelloChat account has been terminated.\n\nReason: ${detail}\n\nFor more information, review our Terms of Service: ${supportUrl}`,
-    html: `<p>Hi ${username},</p><p>Your JelloChat account has been terminated.</p><p><strong>Reason:</strong> ${detail}</p><p>For more information, review our <a href="${supportUrl}">Terms of Service</a>.</p>`
+    text: `Hi ${username},\n\nYour JelloChat account has been terminated.\n\nReason: ${detail}${deletionText}\n\nSubmit a ban appeal: ${appealUrl}\n\nFor more information, review our Terms of Service: ${supportUrl}`,
+    html: `<p>Hi ${escapeHtml(username)},</p><p>Your JelloChat account has been terminated.</p><p><strong>Reason:</strong> ${escapeHtml(detail)}</p>${deletionHtml}<p>Submit a ban appeal: <a href="${escapeHtml(appealUrl)}">${escapeHtml(appealUrl)}</a></p><p>For more information, review our <a href="${escapeHtml(supportUrl)}">Terms of Service</a>.</p>`
+  });
+}
+
+async function sendBanAppealStatusEmail(email, username, status, reviewNote) {
+  const normalizedStatus = String(status || '').toLowerCase();
+  const label = normalizedStatus === 'dismissed' ? 'declined' : normalizedStatus;
+  const note = String(reviewNote || '').trim();
+  const signinUrl = buildPublicUrl('/');
+  const approved = normalizedStatus === 'approved';
+  const statusText = approved
+    ? 'Your ban appeal was approved. Your account has been unbanned and you can sign in again.'
+    : normalizedStatus === 'dismissed'
+      ? 'Your ban appeal was declined. Your account remains banned.'
+      : 'Your ban appeal was reviewed by the admin team.';
+  const noteText = note ? `\n\nAdmin note: ${note}` : '';
+  const noteHtml = note ? `<p><strong>Admin note:</strong> ${escapeHtml(note)}</p>` : '';
+
+  return sendMail({
+    to: email,
+    subject: `Your JelloChat ban appeal was ${label}`,
+    text: `Hi ${username},\n\n${statusText}${noteText}${approved ? `\n\nSign in here: ${signinUrl}` : ''}`,
+    html: `<p>Hi ${escapeHtml(username)},</p><p>${escapeHtml(statusText)}</p>${noteHtml}${approved ? `<p>Sign in here: <a href="${escapeHtml(signinUrl)}">${escapeHtml(signinUrl)}</a></p>` : ''}`
   });
 }
 
@@ -657,10 +852,22 @@ app.get('/verify-email', (_req, res) => {
   res.sendFile(path.join(__dirname, 'src', 'index.html'));
 });
 
+app.get('/ban-appeal', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'src', 'index.html'));
+});
+
+app.get(['/', '/index.html'], (_req, res) => {
+  res.sendFile(path.join(__dirname, 'src', 'home.html'));
+});
+
+app.get('/app', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'src', 'index.html'));
+});
+
 app.get('/invite/:code', async (req, res) => {
   const code = normalizeInviteCode(req.params.code);
   const canonicalUrl = buildInviteUrl(code);
-  const redirectUrl = buildPublicUrl(`/?invite=${encodeURIComponent(code)}`);
+  const redirectUrl = buildPublicUrl(`/app?invite=${encodeURIComponent(code)}`);
 
   try {
     const invite = await db.query(
@@ -1103,7 +1310,10 @@ async function applyAutomaticStandingUpdate(userId, options = {}) {
   if (!current.platform_banned_at && updated.platform_banned_at) {
     await clearAuthTokensForUser(userId);
     disconnectRealtimeUser(userId, 'Account banned from JelloChat.');
-    sendTerminationEmail(updated.email, updated.username, updated.platform_ban_reason || updated.standing_reason || 'Your account was terminated for Terms of Service violations.').catch(() => {});
+    const settings = await getCleanupSettings();
+    sendTerminationEmail(updated.email, updated.username, updated.platform_ban_reason || updated.standing_reason || 'Your account was terminated for Terms of Service violations.', {
+      bannedUserCleanupDays: settings.bannedUserCleanupDays
+    }).catch(() => {});
   }
   return updated;
 }
@@ -1716,6 +1926,358 @@ function sanitizeUserFacingMessage(row) {
   };
 }
 
+function sanitizeAttachment(row) {
+  if (!row?.id) {
+    return null;
+  }
+  return {
+    id: row.id,
+    original_filename: row.original_filename,
+    mime_type: row.mime_type || 'application/octet-stream',
+    file_size: Number(row.file_size || 0),
+    expires_at: row.expires_at || null,
+    url: `/api/attachments/${row.id}`
+  };
+}
+
+async function saveMessageAttachment({ file, uploaderUserId, messageId = null, dmMessageId = null }) {
+  if (!file) {
+    return null;
+  }
+  const storageSettings = await getStoragePolicySettings();
+  const maxBytes = storageSettings.maxUploadMb * 1024 * 1024;
+  if (file.size > maxBytes) {
+    removeUploadedFile(file);
+    throw new Error(`Attachments must be ${storageSettings.maxUploadMb} MB or smaller.`);
+  }
+  const uploadCount = await db.query(
+    `SELECT COUNT(*)::int AS count
+     FROM message_attachments
+     WHERE uploader_user_id = $1
+       AND created_at >= NOW() - INTERVAL '1 day'`,
+    [uploaderUserId]
+  );
+  if ((uploadCount.rows[0]?.count || 0) >= storageSettings.maxUploadsPerDay) {
+    removeUploadedFile(file);
+    throw new Error(`You can upload up to ${storageSettings.maxUploadsPerDay} attachments per day.`);
+  }
+
+  if (storageSettings.storageQuotaMb > 0) {
+    const usage = await db.query(
+      `SELECT COALESCE(SUM(file_size), 0)::bigint AS active_bytes
+       FROM message_attachments
+       WHERE expires_at IS NULL OR expires_at > NOW()`
+    );
+    const quotaBytes = storageSettings.storageQuotaMb * 1024 * 1024;
+    if (Number(usage.rows[0]?.active_bytes || 0) + file.size > quotaBytes) {
+      removeUploadedFile(file);
+      throw new Error('Attachment storage quota is full.');
+    }
+  }
+
+  const encrypted = await encryptAttachmentFile(file.path);
+  const result = await db.query(
+    `INSERT INTO message_attachments (
+       message_id,
+       dm_message_id,
+       uploader_user_id,
+       original_filename,
+       stored_filename,
+       mime_type,
+       file_size,
+       encryption_iv,
+       encryption_auth_tag,
+       expires_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING id, original_filename, mime_type, file_size, expires_at`,
+    [
+      messageId,
+      dmMessageId,
+      uploaderUserId,
+      file.originalname || 'attachment',
+      file.filename,
+      file.mimetype || 'application/octet-stream',
+      file.size,
+      encrypted.iv,
+      encrypted.authTag,
+      getAttachmentExpiresAt(storageSettings.expireDays)
+    ]
+  );
+  return sanitizeAttachment(result.rows[0]);
+}
+
+async function deleteAttachmentsForMessage(messageId) {
+  const attachments = await db.query('SELECT stored_filename FROM message_attachments WHERE message_id = $1', [messageId]);
+  await db.query('DELETE FROM message_attachments WHERE message_id = $1', [messageId]);
+  for (const attachment of attachments.rows) {
+    const filePath = path.join(ATTACHMENTS_DIR, attachment.stored_filename);
+    await fs.promises.unlink(filePath).catch(() => {});
+  }
+}
+
+async function deleteAttachmentFilesForServer(serverId) {
+  const attachments = await db.query(
+    `SELECT a.stored_filename
+     FROM message_attachments a
+     JOIN messages m ON m.id = a.message_id
+     JOIN channels c ON c.id = m.channel_id
+     WHERE c.server_id = $1`,
+    [serverId]
+  );
+  for (const attachment of attachments.rows) {
+    await fs.promises.unlink(path.join(ATTACHMENTS_DIR, attachment.stored_filename)).catch(() => {});
+  }
+}
+
+async function deleteAttachmentFilesForUser(userId) {
+  const attachments = await db.query(
+    `SELECT DISTINCT a.stored_filename
+     FROM message_attachments a
+     LEFT JOIN messages m ON m.id = a.message_id
+     LEFT JOIN dm_messages dm ON dm.id = a.dm_message_id
+     WHERE a.uploader_user_id = $1
+        OR m.user_id = $1
+        OR dm.sender_user_id = $1
+        OR dm.receiver_user_id = $1`,
+    [userId]
+  );
+  for (const attachment of attachments.rows) {
+    await fs.promises.unlink(path.join(ATTACHMENTS_DIR, attachment.stored_filename)).catch(() => {});
+  }
+}
+
+async function cleanupExpiredAttachments() {
+  const expired = await db.query(
+    `DELETE FROM message_attachments
+     WHERE expires_at IS NOT NULL
+       AND expires_at <= NOW()
+     RETURNING stored_filename`
+  );
+  for (const attachment of expired.rows) {
+    fs.promises.unlink(path.join(ATTACHMENTS_DIR, attachment.stored_filename)).catch(() => {});
+  }
+  if (expired.rows.length > 0) {
+    console.log(`Removed ${expired.rows.length} expired attachment(s).`);
+  }
+}
+
+function parseSettingNumber(value, fallback, min) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.max(min, Math.floor(number));
+}
+
+async function getCleanupSettings() {
+  const result = await db.query(
+    `SELECT key, value
+     FROM app_settings
+     WHERE key IN ('cleanup_empty_server_days', 'cleanup_banned_user_days', 'cleanup_interval_minutes')`
+  );
+  const values = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
+  return {
+    emptyServerCleanupDays: parseSettingNumber(values.cleanup_empty_server_days, DEFAULT_CLEANUP_EMPTY_SERVER_DAYS, 0),
+    bannedUserCleanupDays: parseSettingNumber(values.cleanup_banned_user_days, DEFAULT_CLEANUP_BANNED_USER_DAYS, 0),
+    cleanupIntervalMinutes: parseSettingNumber(values.cleanup_interval_minutes, DEFAULT_CLEANUP_INTERVAL_MINUTES, 5)
+  };
+}
+
+async function updateCleanupSettings(settings) {
+  const next = {
+    attachment_max_mb: parseSettingNumber(settings.maxUploadMb, ATTACHMENT_MAX_MB, 1),
+    attachment_expire_days: parseSettingNumber(settings.expireDays, ATTACHMENT_EXPIRE_DAYS, 1),
+    attachment_max_uploads_per_day: parseSettingNumber(settings.maxUploadsPerDay, ATTACHMENT_MAX_UPLOADS_PER_DAY, 1),
+    attachment_storage_quota_mb: parseSettingNumber(settings.storageQuotaMb, ATTACHMENT_STORAGE_QUOTA_MB, 0),
+    cleanup_empty_server_days: parseSettingNumber(settings.emptyServerCleanupDays, DEFAULT_CLEANUP_EMPTY_SERVER_DAYS, 0),
+    cleanup_banned_user_days: parseSettingNumber(settings.bannedUserCleanupDays, DEFAULT_CLEANUP_BANNED_USER_DAYS, 0),
+    cleanup_interval_minutes: parseSettingNumber(settings.cleanupIntervalMinutes, DEFAULT_CLEANUP_INTERVAL_MINUTES, 5)
+  };
+  for (const [key, value] of Object.entries(next)) {
+    await db.query(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (key)
+       DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [key, String(value)]
+    );
+  }
+  return getCleanupSettings();
+}
+
+async function getStoragePolicySettings() {
+  const result = await db.query(
+    `SELECT key, value
+     FROM app_settings
+     WHERE key IN (
+       'attachment_max_mb',
+       'attachment_expire_days',
+       'attachment_max_uploads_per_day',
+       'attachment_storage_quota_mb',
+       'cleanup_empty_server_days',
+       'cleanup_banned_user_days',
+       'cleanup_interval_minutes'
+     )`
+  );
+  const values = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
+  return {
+    maxUploadMb: parseSettingNumber(values.attachment_max_mb, ATTACHMENT_MAX_MB, 1),
+    expireDays: parseSettingNumber(values.attachment_expire_days, ATTACHMENT_EXPIRE_DAYS, 1),
+    maxUploadsPerDay: parseSettingNumber(values.attachment_max_uploads_per_day, ATTACHMENT_MAX_UPLOADS_PER_DAY, 1),
+    storageQuotaMb: parseSettingNumber(values.attachment_storage_quota_mb, ATTACHMENT_STORAGE_QUOTA_MB, 0),
+    emptyServerCleanupDays: parseSettingNumber(values.cleanup_empty_server_days, DEFAULT_CLEANUP_EMPTY_SERVER_DAYS, 0),
+    bannedUserCleanupDays: parseSettingNumber(values.cleanup_banned_user_days, DEFAULT_CLEANUP_BANNED_USER_DAYS, 0),
+    cleanupIntervalMinutes: parseSettingNumber(values.cleanup_interval_minutes, DEFAULT_CLEANUP_INTERVAL_MINUTES, 5)
+  };
+}
+
+function getBanDeletionMessage(settings) {
+  if (!settings?.bannedUserCleanupDays || settings.bannedUserCleanupDays <= 0) {
+    return 'This account has been banned from JelloChat.';
+  }
+  return `This account has been banned from JelloChat. You have ${settings.bannedUserCleanupDays} day(s) to submit an appeal before the account is deleted.`;
+}
+
+async function refreshEmptyServerMarkers() {
+  await db.query(
+    `UPDATE servers s
+     SET empty_since = NOW()
+     WHERE empty_since IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM server_members sm WHERE sm.server_id = s.id
+       )`
+  );
+  await db.query(
+    `UPDATE servers s
+     SET empty_since = NULL
+     WHERE empty_since IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM server_members sm WHERE sm.server_id = s.id
+       )`
+  );
+}
+
+async function cleanupEmptyServers() {
+  const settings = await getCleanupSettings();
+  await refreshEmptyServerMarkers();
+  if (settings.emptyServerCleanupDays <= 0) {
+    return;
+  }
+  const expired = await db.query(
+    `SELECT id, name
+     FROM servers
+     WHERE empty_since IS NOT NULL
+       AND empty_since <= NOW() - ($1::int * INTERVAL '1 day')`,
+    [settings.emptyServerCleanupDays]
+  );
+  for (const server of expired.rows) {
+    await deleteAttachmentFilesForServer(server.id);
+    await db.query('DELETE FROM servers WHERE id = $1', [server.id]);
+    console.log(`Deleted empty server "${server.name}" after ${settings.emptyServerCleanupDays} day(s).`);
+  }
+}
+
+async function cleanupBannedUsers() {
+  const settings = await getCleanupSettings();
+  if (settings.bannedUserCleanupDays <= 0) {
+    return;
+  }
+  const expired = await db.query(
+    `SELECT id, username
+     FROM users
+     WHERE platform_banned_at IS NOT NULL
+       AND is_platform_admin = FALSE
+       AND platform_banned_at <= NOW() - ($1::int * INTERVAL '1 day')`,
+    [settings.bannedUserCleanupDays]
+  );
+  for (const user of expired.rows) {
+    await deleteAttachmentFilesForUser(user.id);
+    await db.query('DELETE FROM users WHERE id = $1', [user.id]);
+    await clearAuthTokensForUser(user.id);
+    disconnectRealtimeUser(user.id, 'Account deleted after ban retention period.');
+    console.log(`Deleted banned user "${user.username}" after ${settings.bannedUserCleanupDays} day(s).`);
+  }
+  if (expired.rows.length > 0) {
+    await ensurePlatformAdminExists();
+  }
+}
+
+async function runCleanupJobs() {
+  await cleanupExpiredAttachments();
+  await cleanupEmptyServers();
+  await cleanupBannedUsers();
+}
+
+async function scheduleCleanupJobs() {
+  const settings = await getCleanupSettings().catch(() => ({
+    cleanupIntervalMinutes: DEFAULT_CLEANUP_INTERVAL_MINUTES
+  }));
+  setTimeout(async () => {
+    try {
+      await runCleanupJobs();
+    } catch (error) {
+      console.warn(`Cleanup job failed: ${error.message}`);
+    }
+    scheduleCleanupJobs().catch((error) => {
+      console.warn(`Cleanup scheduler failed: ${error.message}`);
+    });
+  }, settings.cleanupIntervalMinutes * 60 * 1000).unref();
+}
+
+async function getAttachmentStorageOverview() {
+  const storageSettings = await getStoragePolicySettings();
+  const stats = await db.query(
+    `SELECT
+       COUNT(*)::int AS total_attachments,
+       COALESCE(SUM(file_size), 0)::bigint AS total_bytes,
+       COUNT(*) FILTER (WHERE expires_at IS NULL OR expires_at > NOW())::int AS active_attachments,
+       COALESCE(SUM(file_size) FILTER (WHERE expires_at IS NULL OR expires_at > NOW()), 0)::bigint AS active_bytes,
+       COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= NOW())::int AS expired_attachments,
+       COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at > NOW() AND expires_at <= NOW() + INTERVAL '7 days')::int AS expiring_soon,
+       COUNT(*) FILTER (WHERE encryption_iv IS NULL OR encryption_auth_tag IS NULL)::int AS legacy_unencrypted,
+       MIN(created_at) AS oldest_attachment_at,
+       MAX(created_at) AS newest_attachment_at
+     FROM message_attachments`
+  );
+  return {
+    config: {
+      attachmentsDir: ATTACHMENTS_DIR,
+      maxUploadMb: storageSettings.maxUploadMb,
+      expireDays: storageSettings.expireDays,
+      maxUploadsPerDay: storageSettings.maxUploadsPerDay,
+      storageQuotaMb: storageSettings.storageQuotaMb,
+      encryptionEnabled: true,
+      encryptionKeyConfigured: Boolean(process.env.ATTACHMENT_ENCRYPTION_KEY),
+      cleanupIntervalMinutes: storageSettings.cleanupIntervalMinutes,
+      emptyServerCleanupDays: storageSettings.emptyServerCleanupDays,
+      bannedUserCleanupDays: storageSettings.bannedUserCleanupDays,
+      blockedExtensions: Array.from(BLOCKED_ATTACHMENT_EXTENSIONS).sort()
+    },
+    stats: stats.rows[0] || {}
+  };
+}
+
+function normalizeAttachmentRow(row) {
+  const {
+    attachment_id,
+    attachment_original_filename,
+    attachment_mime_type,
+    attachment_file_size,
+    attachment_expires_at,
+    ...messageRow
+  } = row;
+  const message = sanitizeUserFacingMessage(messageRow);
+  message.attachment = sanitizeAttachment({
+    id: attachment_id,
+    original_filename: attachment_original_filename,
+    mime_type: attachment_mime_type,
+    file_size: attachment_file_size,
+    expires_at: attachment_expires_at
+  });
+  return message;
+}
+
 app.post('/api/auth/register', async (req, res) => {
   const requestIp = normalizeIpAddress(req.ip);
   const requestedUsername = String(req.body?.username || '').trim();
@@ -1860,7 +2422,14 @@ app.post('/api/auth/login', async (req, res) => {
       return;
     }
     if (user.platform_banned_at) {
-      res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
+      const settings = await getCleanupSettings();
+      res.status(403).json({
+        ok: false,
+        banned: true,
+        email,
+        message: getBanDeletionMessage(settings),
+        bannedUserCleanupDays: settings.bannedUserCleanupDays
+      });
       return;
     }
 
@@ -1877,6 +2446,44 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Login failed: ${error.message}` });
+  }
+});
+
+app.post('/api/appeals/ban', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+  const reason = String(req.body?.reason || '').trim();
+  if (!email || !password || reason.length < 20 || reason.length > 2000) {
+    res.status(400).json({ ok: false, message: 'Appeal must include your email, password, and 20-2000 characters of explanation.' });
+    return;
+  }
+
+  try {
+    const result = await db.query('SELECT id, password_hash, platform_banned_at FROM users WHERE email = $1', [email]);
+    if (result.rows.length === 0 || !(await bcrypt.compare(password, result.rows[0].password_hash))) {
+      res.status(401).json({ ok: false, message: 'Email or password is incorrect.' });
+      return;
+    }
+    const user = result.rows[0];
+    if (!user.platform_banned_at) {
+      res.status(400).json({ ok: false, message: 'This account is not currently banned.' });
+      return;
+    }
+    const existing = await db.query(
+      `SELECT id FROM ban_appeals
+       WHERE user_id = $1 AND status = 'open'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [user.id]
+    );
+    if (existing.rows.length > 0) {
+      res.status(400).json({ ok: false, message: 'You already have an open ban appeal.' });
+      return;
+    }
+    await db.query('INSERT INTO ban_appeals (user_id, reason) VALUES ($1, $2)', [user.id, reason]);
+    res.json({ ok: true, message: 'Your ban appeal was submitted.' });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to submit ban appeal: ${error.message}` });
   }
 });
 
@@ -1900,7 +2507,13 @@ app.get('/api/auth/session', authMiddleware, async (req, res) => {
     if (user.platform_banned_at) {
       await clearAuthTokensForUser(user.id);
       disconnectRealtimeUser(user.id, 'Account banned from JelloChat.');
-      res.status(403).json({ ok: false, message: 'This account has been banned from JelloChat.' });
+      const settings = await getCleanupSettings();
+      res.status(403).json({
+        ok: false,
+        banned: true,
+        message: getBanDeletionMessage(settings),
+        bannedUserCleanupDays: settings.bannedUserCleanupDays
+      });
       return;
     }
     const realtimeToken = await issueAuthToken(user.id);
@@ -3269,10 +3882,14 @@ app.get('/api/admin/users/:userId', authMiddleware, async (req, res) => {
       [targetUserId]
     );
     const reports = await db.query(
-      `SELECT ur.id, ur.reason, ur.created_at, ur.server_id, ur.reporter_user_id,
-              reporter.username AS reporter_username, s.name AS server_name
+      `SELECT ur.id, ur.reason, ur.status, ur.review_note, ur.reviewed_at, ur.created_at,
+              ur.server_id, ur.reporter_user_id, ur.reviewed_by_user_id,
+              reporter.username AS reporter_username,
+              reviewer.username AS reviewed_by_username,
+              s.name AS server_name
        FROM user_reports ur
        JOIN users reporter ON reporter.id = ur.reporter_user_id
+       LEFT JOIN users reviewer ON reviewer.id = ur.reviewed_by_user_id
        LEFT JOIN servers s ON s.id = ur.server_id
        WHERE ur.target_user_id = $1
        ORDER BY ur.created_at DESC
@@ -3283,6 +3900,239 @@ app.get('/api/admin/users/:userId', authMiddleware, async (req, res) => {
     res.json({ ok: true, user, servers: memberships.rows, reports: reports.rows });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load user details: ${error.message}` });
+  }
+});
+
+app.get('/api/admin/reports', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+
+    const allowedStatuses = new Set(['open', 'reviewed', 'dismissed', 'actioned', 'all']);
+    const requestedStatus = String(req.query?.status || 'open').trim().toLowerCase();
+    const status = allowedStatuses.has(requestedStatus) ? requestedStatus : 'open';
+    const params = [];
+    let whereSql = '';
+    if (status !== 'all') {
+      params.push(status);
+      whereSql = 'WHERE ur.status = $1';
+    }
+
+    const reports = await db.query(
+      `SELECT ur.id, ur.reason, ur.status, ur.review_note, ur.reviewed_at, ur.created_at,
+              ur.server_id, ur.reporter_user_id, ur.target_user_id, ur.reviewed_by_user_id,
+              reporter.username AS reporter_username,
+              target.username AS target_username,
+              target.email AS target_email,
+              target.avatar_url AS target_avatar_url,
+              target.platform_banned_at AS target_platform_banned_at,
+              reviewer.username AS reviewed_by_username,
+              s.name AS server_name
+       FROM user_reports ur
+       JOIN users reporter ON reporter.id = ur.reporter_user_id
+       JOIN users target ON target.id = ur.target_user_id
+       LEFT JOIN users reviewer ON reviewer.id = ur.reviewed_by_user_id
+       LEFT JOIN servers s ON s.id = ur.server_id
+       ${whereSql}
+       ORDER BY (ur.status = 'open') DESC, ur.created_at DESC
+       LIMIT 100`,
+      params
+    );
+
+    res.json({ ok: true, reports: reports.rows });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load reports: ${error.message}` });
+  }
+});
+
+app.post('/api/admin/reports/:reportId', authMiddleware, async (req, res) => {
+  const reportId = Number(req.params.reportId);
+  if (!reportId) {
+    res.status(400).json({ ok: false, message: 'Report id is required.' });
+    return;
+  }
+
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+
+    const status = String(req.body?.status || '').trim().toLowerCase();
+    if (!['open', 'reviewed', 'dismissed', 'actioned'].includes(status)) {
+      res.status(400).json({ ok: false, message: 'Report status is invalid.' });
+      return;
+    }
+    const note = String(req.body?.reviewNote || '').trim().slice(0, 500);
+    const reviewedBy = status === 'open' ? null : req.userId;
+    const reviewedAtSql = status === 'open' ? 'NULL' : 'NOW()';
+
+    const updated = await db.query(
+      `UPDATE user_reports
+       SET status = $1,
+           reviewed_by_user_id = $2,
+           reviewed_at = ${reviewedAtSql},
+           review_note = $3
+       WHERE id = $4
+       RETURNING id`,
+      [status, reviewedBy, note || null, reportId]
+    );
+    if (updated.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Report not found.' });
+      return;
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update report: ${error.message}` });
+  }
+});
+
+app.get('/api/admin/storage', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    const overview = await getAttachmentStorageOverview();
+    res.json({ ok: true, ...overview });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load storage config: ${error.message}` });
+  }
+});
+
+app.post('/api/admin/storage/cleanup', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    const settings = await updateCleanupSettings({
+      maxUploadMb: req.body?.maxUploadMb,
+      expireDays: req.body?.expireDays,
+      maxUploadsPerDay: req.body?.maxUploadsPerDay,
+      storageQuotaMb: req.body?.storageQuotaMb,
+      emptyServerCleanupDays: req.body?.emptyServerCleanupDays,
+      bannedUserCleanupDays: req.body?.bannedUserCleanupDays,
+      cleanupIntervalMinutes: req.body?.cleanupIntervalMinutes
+    });
+    res.json({ ok: true, config: settings });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update cleanup settings: ${error.message}` });
+  }
+});
+
+app.get('/api/admin/ban-appeals', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    const status = String(req.query.status || 'open').toLowerCase();
+    const allowed = new Set(['open', 'reviewed', 'dismissed', 'approved', 'all']);
+    const selected = allowed.has(status) ? status : 'open';
+    const appeals = await db.query(
+      `SELECT ba.id, ba.user_id, ba.reason, ba.status, ba.review_note, ba.reviewed_at, ba.created_at,
+              u.username, u.email, u.platform_banned_at, reviewer.username AS reviewed_by_username
+       FROM ban_appeals ba
+       JOIN users u ON u.id = ba.user_id
+       LEFT JOIN users reviewer ON reviewer.id = ba.reviewed_by_user_id
+       WHERE $1 = 'all' OR ba.status = $1
+       ORDER BY (ba.status = 'open') DESC, ba.created_at DESC
+       LIMIT 200`,
+      [selected]
+    );
+    res.json({ ok: true, appeals: appeals.rows });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load ban appeals: ${error.message}` });
+  }
+});
+
+app.post('/api/admin/ban-appeals/:appealId', authMiddleware, async (req, res) => {
+  const appealId = Number(req.params.appealId);
+  const status = String(req.body?.status || '').toLowerCase();
+  const allowed = new Set(['reviewed', 'dismissed', 'approved']);
+  if (!appealId || !allowed.has(status)) {
+    res.status(400).json({ ok: false, message: 'Valid appeal and status are required.' });
+    return;
+  }
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    const note = String(req.body?.reviewNote || '').trim().slice(0, 1000) || null;
+    const updated = await db.query(
+      `UPDATE ban_appeals
+       SET status = $1,
+           reviewed_by_user_id = $2,
+           reviewed_at = NOW(),
+           review_note = $3
+       WHERE id = $4
+       RETURNING user_id`,
+      [status, req.userId, note, appealId]
+    );
+    if (updated.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Appeal not found.' });
+      return;
+    }
+    if (status === 'approved') {
+      await db.query(
+        `UPDATE users
+         SET platform_banned_at = NULL,
+             platform_ban_reason = NULL,
+             account_standing = 'good',
+             standing_reason = NULL
+         WHERE id = $1`,
+        [updated.rows[0].user_id]
+      );
+    }
+    const appealUser = await db.query('SELECT username, email FROM users WHERE id = $1', [updated.rows[0].user_id]);
+    if (appealUser.rows[0]?.email) {
+      sendBanAppealStatusEmail(appealUser.rows[0].email, appealUser.rows[0].username, status, note).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update ban appeal: ${error.message}` });
+  }
+});
+
+app.get('/api/admin/servers', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+
+    const query = String(req.query?.query || '').trim();
+    const like = `%${query}%`;
+    const servers = await db.query(
+      `SELECT s.id,
+              s.name,
+              s.owner_user_id,
+              s.created_at,
+              owner.username AS owner_username,
+              COUNT(DISTINCT sm.user_id)::int AS member_count,
+              COUNT(DISTINCT c.id)::int AS channel_count
+       FROM servers s
+       LEFT JOIN users owner ON owner.id = s.owner_user_id
+       LEFT JOIN server_members sm ON sm.server_id = s.id
+       LEFT JOIN channels c ON c.server_id = s.id
+       WHERE $1 = '%%'
+          OR s.name ILIKE $1
+          OR owner.username ILIKE $1
+          OR CAST(s.id AS TEXT) = $2
+       GROUP BY s.id, s.name, s.owner_user_id, s.created_at, owner.username
+       ORDER BY LOWER(s.name), s.id
+       LIMIT 100`,
+      [like, query]
+    );
+
+    res.json({ ok: true, servers: servers.rows });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load servers: ${error.message}` });
   }
 });
 
@@ -3379,8 +4229,31 @@ app.get('/api/admin/servers/:serverId', authMiddleware, async (req, res) => {
        ORDER BY LOWER(u.username), u.id`,
       [serverId]
     );
+    const messages = await db.query(
+      `SELECT m.id, m.channel_id, c.name AS channel_name, m.user_id, m.content, m.created_at,
+              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at,
+              a.id AS attachment_id,
+              a.original_filename AS attachment_original_filename,
+              a.mime_type AS attachment_mime_type,
+              a.file_size AS attachment_file_size,
+              a.expires_at AS attachment_expires_at
+       FROM messages m
+       JOIN channels c ON c.id = m.channel_id
+       JOIN users u ON u.id = m.user_id
+       LEFT JOIN message_attachments a ON a.message_id = m.id AND (a.expires_at IS NULL OR a.expires_at > NOW())
+       WHERE c.server_id = $1
+       ORDER BY m.created_at DESC
+       LIMIT 100`,
+      [serverId]
+    );
 
-    res.json({ ok: true, server: server.rows[0], channels: channels.rows, members: members.rows });
+    res.json({
+      ok: true,
+      server: server.rows[0],
+      channels: channels.rows,
+      members: members.rows,
+      messages: messages.rows.map(normalizeAttachmentRow).reverse()
+    });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load server view: ${error.message}` });
   }
@@ -3467,7 +4340,10 @@ app.post('/api/admin/users/:userId', authMiddleware, async (req, res) => {
       disconnectRealtimeUser(targetUserId, 'Account banned from JelloChat.');
     }
     if (!target.platform_banned_at && nextBanned) {
-      sendTerminationEmail(updated.rows[0].email, updated.rows[0].username, nextBanReason || nextStandingReason || 'Your account was terminated for Terms of Service violations.').catch(() => {});
+      const settings = await getCleanupSettings();
+      sendTerminationEmail(updated.rows[0].email, updated.rows[0].username, nextBanReason || nextStandingReason || 'Your account was terminated for Terms of Service violations.', {
+        bannedUserCleanupDays: settings.bannedUserCleanupDays
+      }).catch(() => {});
     }
 
     res.json({ ok: true, user: updated.rows[0] });
@@ -3496,6 +4372,7 @@ app.delete('/api/admin/servers/:serverId', authMiddleware, async (req, res) => {
     }
 
     const memberIds = await db.query('SELECT user_id FROM server_members WHERE server_id = $1', [serverId]);
+    await deleteAttachmentFilesForServer(serverId);
     await db.query('DELETE FROM servers WHERE id = $1', [serverId]);
     broadcastToUsers(memberIds.rows.map((row) => row.user_id), { type: 'server-membership-changed', serverId });
     res.json({ ok: true, serverName: server.rows[0].name });
@@ -3534,6 +4411,7 @@ app.delete('/api/admin/users/:userId', authMiddleware, async (req, res) => {
       }
     }
 
+    await deleteAttachmentFilesForUser(targetUserId);
     await db.query('DELETE FROM users WHERE id = $1', [targetUserId]);
     await clearAuthTokensForUser(targetUserId);
     disconnectRealtimeUser(targetUserId, 'Account deleted.');
@@ -3591,9 +4469,15 @@ app.get('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => {
 
     const messages = await db.query(
       `SELECT m.id, m.sender_user_id AS user_id, m.receiver_user_id, m.content, m.created_at,
-              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at
+              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at,
+              a.id AS attachment_id,
+              a.original_filename AS attachment_original_filename,
+              a.mime_type AS attachment_mime_type,
+              a.file_size AS attachment_file_size,
+              a.expires_at AS attachment_expires_at
        FROM dm_messages m
        JOIN users u ON u.id = m.sender_user_id
+       LEFT JOIN message_attachments a ON a.dm_message_id = m.id AND (a.expires_at IS NULL OR a.expires_at > NOW())
        WHERE (m.sender_user_id = $1 AND m.receiver_user_id = $2)
           OR (m.sender_user_id = $2 AND m.receiver_user_id = $1)
        ORDER BY m.created_at ASC
@@ -3601,39 +4485,43 @@ app.get('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => {
       [req.userId, partnerUserId]
     );
 
-    res.json({ ok: true, messages: messages.rows.map(sanitizeUserFacingMessage), currentUserId: req.userId, partner: partner.rows[0] });
+    res.json({ ok: true, messages: messages.rows.map(normalizeAttachmentRow), currentUserId: req.userId, partner: partner.rows[0] });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load DM messages: ${error.message}` });
   }
 });
 
-app.post('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => {
+app.post('/api/dm/:partnerUserId/messages', authMiddleware, uploadMessageAttachment, async (req, res) => {
   const partnerUserId = Number(req.params.partnerUserId);
   const content = String(req.body?.content || '').trim();
-  if (!partnerUserId || !content) {
-    res.status(400).json({ ok: false, message: 'Partner and content are required.' });
+  if (!partnerUserId || (!content && !req.file)) {
+    removeUploadedFile(req.file);
+    res.status(400).json({ ok: false, message: 'Partner and message content or an attachment are required.' });
     return;
   }
 
   try {
     const allowed = await canUsersDm(req.userId, partnerUserId);
     if (!allowed) {
+      removeUploadedFile(req.file);
       res.status(403).json({ ok: false, message: 'You can only DM friends or users in a shared server.' });
       return;
     }
 
-    const moderationMessage = await runMinimumAutoModeration({
+    const moderationMessage = content ? await runMinimumAutoModeration({
       userId: req.userId,
       partnerUserId,
       content
-    });
+    }) : null;
     if (moderationMessage) {
       const severeViolation = classifyServerAutoModerationViolation(content);
       if (severeViolation) {
+        removeUploadedFile(req.file);
         await autoTerminateBotAccount(req.userId, `Account terminated for automated bot spam in DMs: ${severeViolation.rule}.`);
         res.status(403).json({ ok: false, message: 'This account has been terminated for automated bot activity.' });
         return;
       }
+      removeUploadedFile(req.file);
       res.status(400).json({ ok: false, message: moderationMessage });
       return;
     }
@@ -3645,6 +4533,7 @@ app.post('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => 
       [req.userId, partnerUserId, content]
     );
     const me = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [req.userId]);
+    const attachment = await saveMessageAttachment({ file: req.file, uploaderUserId: req.userId, dmMessageId: inserted.rows[0].id });
     const message = {
       id: inserted.rows[0].id,
       user_id: inserted.rows[0].sender_user_id,
@@ -3652,7 +4541,8 @@ app.post('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => 
       content: inserted.rows[0].content,
       created_at: inserted.rows[0].created_at,
       username: me.rows[0]?.username || 'Unknown',
-      avatar_url: me.rows[0]?.avatar_url || ''
+      avatar_url: me.rows[0]?.avatar_url || '',
+      attachment
     };
 
     broadcastToUsers([req.userId, partnerUserId], {
@@ -3661,6 +4551,7 @@ app.post('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => 
     });
     res.json({ ok: true, message });
   } catch (error) {
+    removeUploadedFile(req.file);
     res.status(500).json({ ok: false, message: `Failed to send DM: ${error.message}` });
   }
 });
@@ -3921,25 +4812,32 @@ app.get('/api/chat/channels/:channelId/messages', authMiddleware, async (req, re
 
     const messages = await db.query(
       `SELECT m.id, m.channel_id, m.user_id, m.content, m.created_at,
-              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at
+              u.username, u.avatar_url, u.platform_banned_at AS author_platform_banned_at,
+              a.id AS attachment_id,
+              a.original_filename AS attachment_original_filename,
+              a.mime_type AS attachment_mime_type,
+              a.file_size AS attachment_file_size,
+              a.expires_at AS attachment_expires_at
        FROM messages m
        JOIN users u ON u.id = m.user_id
+       LEFT JOIN message_attachments a ON a.message_id = m.id AND (a.expires_at IS NULL OR a.expires_at > NOW())
        WHERE m.channel_id = $1
        ORDER BY m.created_at ASC
        LIMIT 200`,
       [channelId]
     );
-    res.json({ ok: true, messages: messages.rows.map(sanitizeUserFacingMessage), currentUserId: req.userId });
+    res.json({ ok: true, messages: messages.rows.map(normalizeAttachmentRow), currentUserId: req.userId });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load messages: ${error.message}` });
   }
 });
 
-app.post('/api/chat/messages', authMiddleware, async (req, res) => {
+app.post('/api/chat/messages', authMiddleware, uploadMessageAttachment, async (req, res) => {
   const channelId = Number(req.body?.channelId);
   const content = String(req.body?.content || '').trim();
-  if (!channelId || !content) {
-    res.status(400).json({ ok: false, message: 'Channel and message content are required.' });
+  if (!channelId || (!content && !req.file)) {
+    removeUploadedFile(req.file);
+    res.status(400).json({ ok: false, message: 'Channel and message content or an attachment are required.' });
     return;
   }
 
@@ -3952,12 +4850,14 @@ app.post('/api/chat/messages', authMiddleware, async (req, res) => {
       [channelId, req.userId]
     );
     if (access.rows.length === 0) {
+      removeUploadedFile(req.file);
       res.status(403).json({ ok: false, message: 'Access denied.' });
       return;
     }
 
-    const moderationResult = await handleServerAutoModeration(access.rows[0].server_id, channelId, req.userId, content);
+    const moderationResult = content ? await handleServerAutoModeration(access.rows[0].server_id, channelId, req.userId, content) : null;
     if (moderationResult?.blocked) {
+      removeUploadedFile(req.file);
       res.status(400).json({ ok: false, message: moderationResult.message });
       return;
     }
@@ -3969,10 +4869,12 @@ app.post('/api/chat/messages', authMiddleware, async (req, res) => {
       [channelId, req.userId, content]
     );
     const user = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [req.userId]);
-    const message = { ...inserted.rows[0], username: user.rows[0]?.username || 'Unknown', avatar_url: user.rows[0]?.avatar_url || '' };
+    const attachment = await saveMessageAttachment({ file: req.file, uploaderUserId: req.userId, messageId: inserted.rows[0].id });
+    const message = { ...inserted.rows[0], username: user.rows[0]?.username || 'Unknown', avatar_url: user.rows[0]?.avatar_url || '', attachment };
     broadcastToChannel(channelId, { type: 'message-created', channelId, message });
     res.json({ ok: true, message });
   } catch (error) {
+    removeUploadedFile(req.file);
     res.status(500).json({ ok: false, message: `Failed to send message: ${error.message}` });
   }
 });
@@ -4028,11 +4930,61 @@ app.delete('/api/chat/messages/:messageId', authMiddleware, async (req, res) => 
       return;
     }
 
+    await deleteAttachmentsForMessage(messageId);
     await db.query('DELETE FROM messages WHERE id = $1', [messageId]);
     broadcastToChannel(access.channel_id, { type: 'message-deleted', channelId: access.channel_id, messageId });
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to delete message: ${error.message}` });
+  }
+});
+
+app.get('/api/attachments/:attachmentId', authMiddleware, async (req, res) => {
+  const attachmentId = Number(req.params.attachmentId);
+  if (!attachmentId) {
+    res.status(400).json({ ok: false, message: 'Attachment id is required.' });
+    return;
+  }
+
+  try {
+    const result = await db.query(
+      `SELECT a.id,
+              a.original_filename,
+              a.stored_filename,
+              a.mime_type,
+              a.encryption_iv,
+              a.encryption_auth_tag,
+              m.channel_id,
+              dm.sender_user_id,
+              dm.receiver_user_id
+       FROM message_attachments a
+       LEFT JOIN messages m ON m.id = a.message_id
+       LEFT JOIN channels c ON c.id = m.channel_id
+       LEFT JOIN server_members sm ON sm.server_id = c.server_id AND sm.user_id = $2
+       LEFT JOIN dm_messages dm ON dm.id = a.dm_message_id
+       WHERE a.id = $1
+         AND (a.expires_at IS NULL OR a.expires_at > NOW())
+         AND (
+           sm.user_id IS NOT NULL
+           OR dm.sender_user_id = $2
+           OR dm.receiver_user_id = $2
+         )
+       LIMIT 1`,
+      [attachmentId, req.userId]
+    );
+    const attachment = result.rows[0];
+    if (!attachment) {
+      res.status(404).json({ ok: false, message: 'Attachment not found.' });
+      return;
+    }
+
+    const safeFilename = String(attachment.original_filename || 'attachment').replace(/[\r\n"]/g, '');
+    res.setHeader('Content-Type', attachment.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+    const data = await readAttachmentFile(attachment);
+    res.send(data);
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to download attachment: ${error.message}` });
   }
 });
 
@@ -4047,6 +4999,8 @@ app.get('*', (_req, res) => {
 
 async function start() {
   await db.connect();
+  await runCleanupJobs();
+  await scheduleCleanupJobs();
   await ensurePlatformAdminExists();
   sendTermsUpdateEmailsOnStartup().catch((error) => {
     console.warn(`Terms update email job failed: ${error.message}`);

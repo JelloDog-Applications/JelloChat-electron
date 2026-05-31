@@ -102,6 +102,31 @@
         <p id="auth-message" class="message"></p>
       </section>
 
+      <section id="ban-appeal-page" class="ban-appeal-page hidden">
+        <div class="ban-appeal-card">
+          <button id="ban-appeal-back-btn" class="icon-btn ban-appeal-back-btn" type="button" aria-label="Back to login">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+          </button>
+          <h1>Ban Appeal</h1>
+          <p id="ban-appeal-help" class="message">Enter the banned account email, password, and why admins should review the ban.</p>
+          <form id="ban-appeal-form" class="auth-form ban-appeal-form">
+            <label>Email</label>
+            <input id="ban-appeal-email" type="email" required />
+            <label>Password</label>
+            <div class="password-input-wrap">
+              <input id="ban-appeal-password" type="password" required />
+              <button class="password-toggle-btn" type="button" data-target="ban-appeal-password" aria-label="Show password">
+                <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+              </button>
+            </div>
+            <label>Appeal</label>
+            <textarea id="ban-appeal-reason" rows="6" maxlength="2000" placeholder="Tell the admins what happened..." required></textarea>
+            <button type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Submit Appeal</span></button>
+          </form>
+          <p id="ban-appeal-message" class="message"></p>
+        </div>
+      </section>
+
       <section id="chat-panel" class="chat-panel hidden">
         <aside class="servers-column">
           <div class="panel-header">
@@ -246,7 +271,10 @@
           </section>
           <div id="messages-list" class="messages-list"></div>
           <form id="message-form" class="message-form">
+            <input id="attachment-input" class="attachment-input" type="file" />
+            <button id="attachment-btn" class="attachment-btn" type="button" title="Attach file" aria-label="Attach file"><i class="fa-solid fa-paperclip" aria-hidden="true"></i></button>
             <input id="message-input" type="text" placeholder="Message #channel" autocomplete="off" />
+            <div id="attachment-chip" class="attachment-chip hidden"></div>
             <button type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Send</span></button>
           </form>
         </section>
@@ -294,65 +322,102 @@
         </aside>
 
         <section id="account-modal" class="account-modal hidden">
-          <div class="account-modal-card">
-            <div class="account-modal-header">
-              <h3>My Account</h3>
-              <button id="account-modal-close-btn" type="button">Close</button>
-            </div>
-            <div id="account-standing-card" class="account-standing-card">
-              <div class="account-standing-topline">
-                <div>
-                  <div class="account-standing-kicker">Account Standing</div>
-                  <div id="account-standing-label" class="account-standing-label">All Good</div>
+          <div class="account-modal-card account-modal-card-wide">
+            <aside class="account-modal-sidebar">
+              <div class="account-modal-profile">
+                <div id="account-modal-avatar" class="avatar avatar-lg">U</div>
+                <div class="account-modal-profile-copy">
+                  <div id="account-modal-username" class="account-modal-profile-name">User</div>
+                  <div class="account-modal-profile-meta">Account settings</div>
                 </div>
-                <div id="account-standing-badge" class="account-standing-badge">0/5</div>
               </div>
-              <div id="account-standing-meter" class="account-standing-meter" aria-label="Account standing progress">
-                <span class="standing-dot standing-dot-good" title="All Good"></span>
-                <span class="standing-dot standing-dot-limited" title="Limited"></span>
-                <span class="standing-dot standing-dot-very-limited" title="Very Limited"></span>
-                <span class="standing-dot standing-dot-at-risk" title="At Risk"></span>
-                <span class="standing-dot standing-dot-suspended" title="Suspended"></span>
+              <nav class="account-modal-nav" aria-label="Account sections">
+                <a href="#account-info-section" class="active"><i class="fa-solid fa-user" aria-hidden="true"></i><span>Account Info</span></a>
+                <a href="#account-security-section"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Password & Security</span></a>
+                <a href="#account-standing-section"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i><span>Account Standing</span></a>
+                <a href="#account-passkeys-section"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Passkeys</span></a>
+              </nav>
+            </aside>
+            <div class="account-modal-main">
+              <div class="account-modal-header">
+                <h3>My Account</h3>
+                <button id="account-modal-close-btn" type="button" aria-label="Close My Account"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
               </div>
-              <div id="account-standing-meta" class="account-standing-meta">No recent Terms of Service violations.</div>
+              <div class="account-modal-scroll">
+                <form id="account-form" class="account-form">
+                  <section id="account-info-section" class="account-modal-section">
+                    <h4>Account Info</h4>
+                    <label for="account-username-input">Username</label>
+                    <input id="account-username-input" type="text" maxlength="50" />
+                    <label for="account-email-input">Email</label>
+                    <input id="account-email-input" type="email" />
+                    <label for="account-avatar-input">Profile Picture URL</label>
+                    <input id="account-avatar-input" type="url" placeholder="https://example.com/avatar.png or data:image/..." />
+                    <label for="account-dob-input">Date of Birth</label>
+                    <input id="account-dob-input" type="date" />
+                  </section>
+
+                  <section id="account-security-section" class="account-modal-section">
+                    <h4>Password & Security</h4>
+                    <label for="account-current-password-input">Current Password</label>
+                    <div class="password-input-wrap">
+                      <input id="account-current-password-input" type="password" autocomplete="current-password" />
+                      <button class="password-toggle-btn" type="button" data-target="account-current-password-input" aria-label="Show password">
+                        <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                    <label for="account-new-password-input">New Password</label>
+                    <div class="password-input-wrap">
+                      <input id="account-new-password-input" type="password" minlength="6" autocomplete="new-password" />
+                      <button class="password-toggle-btn" type="button" data-target="account-new-password-input" aria-label="Show password">
+                        <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                    <button id="account-save-btn" type="submit">Save Changes</button>
+                    <p id="account-form-message" class="account-form-message"></p>
+                  </section>
+                </form>
+
+                <section id="account-standing-section" class="account-modal-section">
+                  <h4>Account Standing</h4>
+                  <div id="account-standing-card" class="account-standing-card">
+                    <div class="account-standing-topline">
+                      <div>
+                        <div class="account-standing-kicker">Account Standing</div>
+                        <div id="account-standing-label" class="account-standing-label">All Good</div>
+                      </div>
+                      <div id="account-standing-badge" class="account-standing-badge">0/5</div>
+                    </div>
+                    <div id="account-standing-meter" class="account-standing-meter" aria-label="Account standing progress">
+                      <span class="standing-dot standing-dot-good" title="All Good"></span>
+                      <span class="standing-dot standing-dot-limited" title="Limited"></span>
+                      <span class="standing-dot standing-dot-very-limited" title="Very Limited"></span>
+                      <span class="standing-dot standing-dot-at-risk" title="At Risk"></span>
+                      <span class="standing-dot standing-dot-suspended" title="Suspended"></span>
+                    </div>
+                    <div id="account-standing-meta" class="account-standing-meta">No recent Terms of Service violations.</div>
+                  </div>
+                </section>
+
+                <section id="account-passkeys-section" class="account-modal-section">
+                  <div id="passkeys-panel" class="passkeys-panel hidden">
+                    <div class="passkeys-header">
+                      <div>
+                        <h4>Passkeys</h4>
+                        <p id="passkeys-help" class="account-form-message">Use a device passkey for faster sign-in on supported browsers.</p>
+                      </div>
+                      <button id="add-passkey-btn" type="button">Add Passkey</button>
+                    </div>
+                    <div id="passkeys-list" class="passkeys-list"></div>
+                  </div>
+                </section>
+
+                <section class="account-modal-section account-danger-section">
+                  <h4>Account Removal</h4>
+                  <button id="account-delete-btn" class="account-delete-btn" type="button">Delete Account</button>
+                </section>
+              </div>
             </div>
-            <form id="account-form" class="account-form">
-              <label for="account-username-input">Username</label>
-              <input id="account-username-input" type="text" maxlength="50" />
-              <label for="account-email-input">Email</label>
-              <input id="account-email-input" type="email" />
-              <label for="account-avatar-input">Profile Picture URL</label>
-              <input id="account-avatar-input" type="url" placeholder="https://example.com/avatar.png or data:image/..." />
-              <label for="account-current-password-input">Current Password</label>
-              <div class="password-input-wrap">
-                <input id="account-current-password-input" type="password" autocomplete="current-password" />
-                <button class="password-toggle-btn" type="button" data-target="account-current-password-input" aria-label="Show password">
-                  <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
-                </button>
-              </div>
-              <label for="account-new-password-input">New Password</label>
-              <div class="password-input-wrap">
-                <input id="account-new-password-input" type="password" minlength="6" autocomplete="new-password" />
-                <button class="password-toggle-btn" type="button" data-target="account-new-password-input" aria-label="Show password">
-                  <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
-                </button>
-              </div>
-              <label for="account-dob-input">Date of Birth</label>
-              <input id="account-dob-input" type="date" />
-              <button id="account-save-btn" type="submit">Save Changes</button>
-            </form>
-            <section id="passkeys-panel" class="passkeys-panel hidden">
-              <div class="passkeys-header">
-                <div>
-                  <h4>Passkeys</h4>
-                  <p id="passkeys-help" class="account-form-message">Use a device passkey for faster sign-in on supported browsers.</p>
-                </div>
-                <button id="add-passkey-btn" type="button">Add Passkey</button>
-              </div>
-              <div id="passkeys-list" class="passkeys-list"></div>
-            </section>
-            <button id="account-delete-btn" class="account-delete-btn" type="button">Delete Account</button>
-            <p id="account-form-message" class="account-form-message"></p>
           </div>
         </section>
 
@@ -367,21 +432,86 @@
         </section>
 
         <section id="admin-modal" class="account-modal hidden">
-          <div class="account-modal-card">
-            <div class="account-modal-header">
-              <h3>Admin Console</h3>
-              <button id="admin-modal-close-btn" type="button">Close</button>
-            </div>
-            <div class="admin-toolbar">
-              <input id="admin-search-input" type="text" placeholder="Search username or email" />
-              <button id="admin-search-btn" type="button">Search</button>
-            </div>
-            <div id="admin-users-list" class="admin-users-list"></div>
-            <div id="admin-user-details" class="admin-user-details">
-              <h4 id="admin-user-details-title">Select a user</h4>
-              <p id="admin-user-details-meta" class="admin-user-details-meta">Click a user to see which servers they are in.</p>
-              <div id="admin-user-servers-list" class="admin-user-servers-list"></div>
-              <div id="admin-user-reports-list" class="admin-user-reports-list"></div>
+          <div class="account-modal-card account-modal-card-wide admin-console-card">
+            <aside class="account-modal-sidebar admin-console-sidebar">
+              <nav class="account-modal-nav admin-modal-nav" aria-label="Admin sections">
+                <a class="active" href="#admin-reports-view" data-admin-view="reports"><i class="fa-solid fa-flag" aria-hidden="true"></i><span>Reports</span></a>
+                <a href="#admin-appeals-view" data-admin-view="appeals"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><span>Appeals</span></a>
+                <a href="#admin-users-view" data-admin-view="users"><i class="fa-solid fa-users-gear" aria-hidden="true"></i><span>Users</span></a>
+                <a href="#admin-servers-view" data-admin-view="servers"><i class="fa-solid fa-server" aria-hidden="true"></i><span>Servers</span></a>
+                <a href="#admin-storage-view" data-admin-view="storage"><i class="fa-solid fa-hard-drive" aria-hidden="true"></i><span>Storage</span></a>
+              </nav>
+            </aside>
+            <div class="account-modal-main">
+              <div class="account-modal-header">
+                <h3>Admin Console</h3>
+                <button id="admin-modal-close-btn" type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Close</span></button>
+              </div>
+              <div class="account-modal-scroll admin-modal-scroll">
+                <section id="admin-reports-view" class="admin-view-section">
+                  <div class="admin-reports-panel">
+                    <div class="admin-reports-header">
+                      <h4>Reports Queue</h4>
+                      <select id="admin-report-filter" aria-label="Report filter">
+                        <option value="open">Open</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="dismissed">Dismissed</option>
+                        <option value="actioned">Actioned</option>
+                        <option value="all">All</option>
+                      </select>
+                    </div>
+                    <div id="admin-reports-list" class="admin-reports-list"></div>
+                  </div>
+                </section>
+                <section id="admin-appeals-view" class="admin-view-section hidden">
+                  <div class="admin-reports-panel">
+                    <div class="admin-reports-header">
+                      <h4>Ban Appeals</h4>
+                      <select id="admin-appeal-filter" aria-label="Appeal filter">
+                        <option value="open">Open</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="dismissed">Dismissed</option>
+                        <option value="approved">Approved</option>
+                        <option value="all">All</option>
+                      </select>
+                    </div>
+                    <div id="admin-appeals-list" class="admin-reports-list"></div>
+                  </div>
+                </section>
+                <section id="admin-users-view" class="admin-view-section hidden">
+                  <div class="admin-toolbar">
+                    <input id="admin-search-input" type="text" placeholder="Search username or email" />
+                    <button id="admin-search-btn" type="button">Search</button>
+                  </div>
+                  <div id="admin-users-list" class="admin-users-list"></div>
+                  <div id="admin-user-details" class="admin-user-details">
+                    <h4 id="admin-user-details-title">Select a user</h4>
+                    <p id="admin-user-details-meta" class="admin-user-details-meta">Click a user to see which servers they are in.</p>
+                    <div id="admin-user-servers-list" class="admin-user-servers-list"></div>
+                    <div id="admin-user-reports-list" class="admin-user-reports-list"></div>
+                  </div>
+                </section>
+                <section id="admin-servers-view" class="admin-view-section hidden">
+                  <div class="admin-toolbar">
+                    <input id="admin-server-search-input" type="text" placeholder="Search server, owner, or ID" />
+                    <button id="admin-server-search-btn" type="button">Search</button>
+                  </div>
+                  <div id="admin-servers-list" class="admin-users-list"></div>
+                </section>
+                <section id="admin-storage-view" class="admin-view-section hidden">
+                  <div class="admin-storage-panel">
+                    <div class="admin-reports-header">
+                      <h4>Attachment Storage</h4>
+                      <button id="admin-storage-refresh-btn" type="button">Refresh</button>
+                    </div>
+                    <div id="admin-storage-config" class="admin-storage-grid"></div>
+                    <form id="admin-cleanup-form" class="admin-cleanup-form">
+                      <button id="admin-cleanup-save-btn" type="submit">Save Storage Settings</button>
+                    </form>
+                    <div id="admin-storage-stats" class="admin-storage-grid"></div>
+                  </div>
+                </section>
+              </div>
             </div>
           </div>
         </section>
@@ -406,7 +536,12 @@
 
       <section id="app-dialog" class="app-dialog hidden">
         <div class="app-dialog-card">
-          <h3 id="app-dialog-title">Dialog</h3>
+          <div class="app-dialog-title-row">
+            <h3 id="app-dialog-title">Dialog</h3>
+            <button id="app-dialog-close-btn" type="button" aria-label="Close dialog">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+          </div>
           <div id="app-dialog-message" class="app-dialog-body"></div>
           <input id="app-dialog-input" type="text" class="hidden" />
           <div class="app-dialog-actions">

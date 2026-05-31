@@ -135,6 +135,30 @@ button svg + span {
   opacity: 1;
 }
 
+.ban-appeal-page {
+  width: min(520px, 92vw);
+  margin: auto;
+}
+
+.ban-appeal-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid #3d4658;
+  border-radius: 14px;
+  padding: clamp(20px, 3vw, 28px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.ban-appeal-card h1 {
+  margin: 0 0 8px;
+}
+
+.ban-appeal-back-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
 .auth-panel.auth-swipe-out {
   transform: translateX(-64px);
   opacity: 0;
@@ -192,6 +216,27 @@ button svg + span {
   gap: 8px;
   min-width: 0;
   width: 100%;
+}
+
+.ban-appeal-form {
+  margin-top: 16px;
+}
+
+.ban-appeal-form h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.ban-appeal-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 110px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
 }
 
 .bot-trap {
@@ -748,6 +793,11 @@ button svg + span {
 .servers-column .list button.active {
   background: var(--accent-dark);
   color: #eafff8;
+}
+
+.servers-column .list button.admin-ghost-server {
+  border: 1px solid #83d8ff;
+  box-shadow: inset 0 0 0 1px rgba(131, 216, 255, 0.18);
 }
 
 .servers-column .list button:hover {
@@ -1904,6 +1954,87 @@ button svg + span {
   overflow-wrap: anywhere;
 }
 
+.msg-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg-attachment-image-link {
+  display: grid;
+  gap: 5px;
+  width: fit-content;
+  margin-top: 8px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.msg-attachment-image {
+  display: block;
+  max-width: min(360px, 70vw);
+  max-height: 260px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.msg-attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(360px, 70vw);
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.msg-attachment-file i {
+  color: var(--accent);
+}
+
+.msg-attachment-file-details {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.msg-attachment-file-details strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-attachment-file-details small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.msg-attachment-expiry {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: rgba(131, 216, 255, 0.12);
+  color: #a9e7ff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.msg-body a {
+  color: #83d8ff;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.msg.me .msg-body a {
+  color: #063b31;
+}
+
 .msg-meta span:first-child {
   min-width: 0;
   overflow: hidden;
@@ -1935,9 +2066,13 @@ button svg + span {
 
 .message-form {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   margin-top: 16px;
+}
+
+.attachment-input {
+  display: none;
 }
 
 .chat-panel.screen-share-active .message-form,
@@ -1967,6 +2102,57 @@ button svg + span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.message-form .attachment-btn {
+  order: 1;
+  min-width: 44px;
+  padding: 0;
+  background: var(--button-bg);
+  color: var(--text);
+}
+
+.message-form #message-input {
+  order: 2;
+}
+
+.message-form button[type="submit"] {
+  order: 3;
+}
+
+.message-form .attachment-btn:hover {
+  background: var(--button-hover);
+}
+
+.attachment-chip {
+  order: 4;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.attachment-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip button {
+  min-width: 28px;
+  min-height: 28px;
+  margin-left: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
 }
 
 .create-server-btn {
@@ -2347,10 +2533,186 @@ button svg + span {
 
 .account-modal-card {
   width: min(500px, 96vw);
+  max-height: min(760px, 92vh);
+  overflow-y: auto;
   background: #2b323f;
   border: 1px solid #4a5368;
   border-radius: 12px;
   padding: 14px;
+}
+
+#account-modal .account-modal-card-wide {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  width: min(1180px, 96vw);
+  height: min(760px, calc(100dvh - 32px));
+  max-height: min(760px, calc(100dvh - 32px));
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: var(--panel);
+}
+
+#admin-modal .account-modal-card-wide {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  width: min(1120px, 96vw);
+  height: min(760px, calc(100dvh - 32px));
+  max-height: min(760px, calc(100dvh - 32px));
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: var(--panel);
+}
+
+.account-modal-sidebar {
+  min-width: 0;
+  min-height: 0;
+  padding: 22px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel-2);
+  border-right: 1px solid var(--line-soft);
+}
+
+.account-modal-profile {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.account-modal-profile .avatar {
+  width: 52px;
+  height: 52px;
+}
+
+.account-modal-profile-copy {
+  min-width: 0;
+}
+
+.account-modal-profile-name {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-modal-profile-meta {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account-modal-nav {
+  display: grid;
+  gap: 6px;
+}
+
+.account-modal-nav a {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.account-modal-nav a:hover,
+.account-modal-nav a.active {
+  background: var(--button-bg);
+  color: var(--text);
+}
+
+.account-modal-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+}
+
+#account-modal .account-modal-header {
+  margin: 0;
+  min-height: 58px;
+  padding: 0 18px 0 22px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+#account-modal .account-modal-header button {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+#account-modal .account-modal-header button span {
+  display: none;
+}
+
+.account-modal-scroll {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 22px;
+}
+
+.account-modal-section {
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.account-modal-section:last-child {
+  margin-bottom: 0;
+}
+
+.account-modal-section h4 {
+  margin: 0 0 14px;
+  color: var(--text);
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+#account-modal .account-form {
+  display: block;
+}
+
+#account-modal .account-form label {
+  display: block;
+  margin: 12px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+#account-modal .account-form input {
+  width: 100%;
+}
+
+#account-modal #account-save-btn {
+  margin-top: 14px;
+}
+
+#account-modal .passkeys-panel {
+  margin-top: 0;
+}
+
+.account-danger-section {
+  border-bottom: 0;
 }
 
 .account-modal.is-opening {
@@ -2647,6 +3009,179 @@ button svg + span {
   margin-bottom: 10px;
 }
 
+.admin-console-card .account-modal-header {
+  margin: 0;
+  min-height: 58px;
+  padding: 0 18px 0 22px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.admin-console-card .account-modal-header button {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.admin-console-card .account-modal-header button span {
+  display: none;
+}
+
+.admin-console-sidebar {
+  padding-top: 24px;
+}
+
+.admin-modal-scroll {
+  min-height: 0;
+}
+
+.admin-view-section.hidden {
+  display: none;
+}
+
+.admin-reports-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #46516a;
+  border-radius: 10px;
+  background: #2a3142;
+}
+
+.admin-storage-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #46516a;
+  border-radius: 10px;
+  background: #2a3142;
+}
+
+.admin-reports-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-reports-header h4 {
+  margin: 0;
+}
+
+.admin-reports-header select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 0 8px;
+}
+
+.admin-reports-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.admin-storage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-cleanup-form {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-cleanup-form button {
+  min-height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #0c1a16;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.admin-storage-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #31394b;
+}
+
+.admin-storage-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-storage-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.admin-storage-editable-item {
+  gap: 7px;
+}
+
+.admin-storage-value-input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 7px 9px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-storage-quota-item {
+  grid-column: 1 / -1;
+}
+
+.admin-storage-quota-summary {
+  font-weight: 800;
+}
+
+.admin-storage-quota-track {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--input-bg);
+  border: 1px solid var(--line-soft);
+}
+
+.admin-storage-quota-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease, background-color 180ms ease;
+}
+
+.admin-storage-quota-fill.is-warn {
+  background: #d8ad5e;
+}
+
+.admin-storage-quota-fill.is-danger {
+  background: var(--danger);
+}
+
 .admin-users-list {
   display: grid;
   gap: 8px;
@@ -2765,6 +3300,61 @@ button svg + span {
   flex-wrap: wrap;
 }
 
+.admin-server-message-list {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-left: 0 !important;
+  list-style: none;
+}
+
+.admin-server-message-item {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #31394b;
+}
+
+.admin-server-message-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.admin-server-message-topline span,
+.admin-server-message-attachment {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-server-message-content {
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.admin-server-message-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-server-message-attachment span {
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: rgba(131, 216, 255, 0.12);
+  color: #a9e7ff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .admin-report-item {
   display: flex;
   flex-direction: column;
@@ -2772,6 +3362,68 @@ button svg + span {
   background: #31394b;
   border-radius: 10px;
   padding: 10px;
+}
+
+.admin-queue-report {
+  border: 1px solid transparent;
+}
+
+.admin-report-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-report-target-btn {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0;
+  text-align: left;
+}
+
+.admin-report-target-btn:hover {
+  color: var(--accent);
+}
+
+.admin-report-status {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #3c465c;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.admin-report-status.status-open {
+  background: #6f5130;
+}
+
+.admin-report-status.status-reviewed {
+  background: #31536f;
+}
+
+.admin-report-status.status-dismissed {
+  background: #424a59;
+}
+
+.admin-report-status.status-actioned {
+  background: #315f4b;
+}
+
+.admin-report-status.status-approved {
+  background: #315f4b;
+}
+
+.admin-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .admin-report-meta {
@@ -2834,7 +3486,8 @@ button svg + span {
   position: fixed;
   inset: 0;
   z-index: 85;
-  background: rgba(0, 0, 0, 0.58);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(1px);
   display: grid;
   place-items: center;
   padding: 16px;
@@ -2845,15 +3498,16 @@ button svg + span {
 }
 
 .app-dialog-card {
-  width: min(420px, 96vw);
-  background: #2b323f;
-  border: 1px solid #4a5368;
+  width: min(500px, 94vw);
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
   border-radius: 12px;
-  padding: 14px;
+  padding: 28px 30px 30px;
   display: grid;
-  gap: 10px;
+  gap: 14px;
   max-height: 82vh;
   overflow: auto;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
 }
 
 .app-dialog.is-opening {
@@ -2872,8 +3526,38 @@ button svg + span {
   animation: popupCardOut 140ms ease forwards;
 }
 
+.app-dialog-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .app-dialog-card h3 {
   margin: 0;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.12;
+  text-transform: uppercase;
+}
+
+#app-dialog-close-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+}
+
+#app-dialog-close-btn:hover {
+  color: var(--text);
 }
 
 #app-dialog-message,
@@ -2883,7 +3567,7 @@ button svg + span {
   white-space: normal;
   max-height: 60vh;
   overflow-y: auto;
-  font-size: 14px;
+  font-size: 19px;
   line-height: 1.5;
 }
 
@@ -2922,8 +3606,8 @@ button svg + span {
 }
 
 #app-dialog-input {
-  border: 1px solid #4a546c;
-  background: #1f2430;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
   color: var(--text);
   border-radius: 8px;
   padding: 10px 12px;
@@ -2931,27 +3615,29 @@ button svg + span {
 }
 
 .app-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
   gap: 8px;
+  margin-top: 16px;
 }
 
 .app-dialog-actions button {
   border: none;
   border-radius: 8px;
-  padding: 8px 12px;
+  min-height: 50px;
+  padding: 10px 14px;
   cursor: pointer;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 #app-dialog-cancel-btn {
-  background: #3b4458;
+  background: var(--button-bg);
   color: var(--text);
 }
 
 #app-dialog-ok-btn {
   background: var(--accent);
   color: #0c1a16;
-  font-weight: 700;
 }
 
 .android-app-prompt {
@@ -3207,6 +3893,59 @@ button svg + span {
 }
 
 @media (max-width: 980px) {
+  #account-modal .account-modal-card-wide,
+  #admin-modal .account-modal-card-wide {
+    grid-template-columns: 1fr;
+    width: min(560px, 96vw);
+  }
+
+  .account-modal-sidebar {
+    display: none;
+  }
+
+  #admin-modal .admin-console-sidebar {
+    display: block;
+    padding: 10px;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  #admin-modal .admin-modal-nav {
+    display: flex;
+    gap: 8px;
+  }
+
+  #admin-modal .admin-modal-nav a {
+    grid-template-columns: auto minmax(max-content, 1fr);
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 620px) {
+  #account-modal,
+  #admin-modal {
+    padding: 0;
+  }
+
+  #account-modal .account-modal-card-wide,
+  #admin-modal .account-modal-card-wide {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .admin-storage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-modal-scroll {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 980px) {
   .chat-panel {
     grid-template-columns: 72px minmax(168px, 210px) minmax(0, 1fr) minmax(176px, 210px);
   }
@@ -3370,7 +4109,7 @@ button svg + span {
   }
 
   .message-form {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .message-form button {
@@ -3632,11 +4371,19 @@ button svg + span {
   }
 
   .message-form {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .message-form button {
     width: 100%;
+  }
+
+  .message-form .attachment-btn {
+    width: 44px;
+  }
+
+  .message-form button[type="submit"] {
+    grid-column: 1 / -1;
   }
 }
 

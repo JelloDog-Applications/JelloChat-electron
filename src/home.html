@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JelloChat</title>
+    <meta name="description" content="JelloChat is a chat, community, direct message, and voice app." />
+    <meta property="og:site_name" content="JelloChat" />
+    <meta property="og:title" content="JelloChat" />
+    <meta property="og:description" content="Chat with friends, join servers, send direct messages, and use voice with screen sharing." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/assets/app-icon-1024.png" />
+    <meta name="theme-color" content="#57d7a4" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/assets/app-icon-256.png" sizes="256x256" type="image/png" />
+    <link rel="apple-touch-icon" href="/assets/app-icon-256.png" />
+    <link rel="stylesheet" href="/home.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="JelloChat home">
+        <img src="/assets/app-icon-256.png" alt="" />
+        <span>JelloChat</span>
+      </a>
+      <nav aria-label="Primary">
+        <a href="/privacy-policy">Privacy</a>
+        <a href="/terms-of-service">Terms</a>
+        <a class="nav-action" href="/app">Open App</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="hero-kicker">
+            <span></span>
+            <strong>Live chat for your people</strong>
+          </div>
+          <h1>JelloChat</h1>
+          <p>Servers, friends, direct messages, voice channels, and screen sharing in one simple chat space.</p>
+          <div class="hero-actions">
+            <a class="primary-action" href="/app">Open JelloChat</a>
+            <a class="secondary-action" href="/download/android">Android App</a>
+          </div>
+          <div class="signal-row" aria-label="JelloChat highlights">
+            <div><span class="signal-dot"></span>Realtime messages</div>
+            <div><span class="signal-dot blue"></span>Voice rooms</div>
+            <div><span class="signal-dot warm"></span>Private DMs</div>
+          </div>
+          <div class="live-stats" aria-live="polite">
+            <span class="live-stats-label">Registered users</span>
+            <strong id="registered-users-count">Loading</strong>
+          </div>
+        </div>
+        <div class="app-preview" aria-hidden="true">
+          <div class="preview-sidebar">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="preview-main">
+            <div class="preview-top">
+              <div></div>
+              <span></span>
+            </div>
+            <div class="preview-message wide">
+              <span></span>
+              <i></i>
+            </div>
+            <div class="preview-message">
+              <span></span>
+              <i></i>
+            </div>
+            <div class="preview-voice">
+              <span></span>
+              <div>
+                <i></i>
+                <i></i>
+                <i></i>
+                <i></i>
+              </div>
+            </div>
+            <div class="preview-message short">
+              <span></span>
+              <i></i>
+            </div>
+            <div class="preview-composer">
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature-band" aria-label="Features">
+        <article>
+          <h2>Communities</h2>
+          <p>Create servers, channels, invites, roles, and moderation tools for your group.</p>
+        </article>
+        <article>
+          <h2>Friends</h2>
+          <p>Send friend requests, direct message people, and start personal voice calls.</p>
+        </article>
+        <article>
+          <h2>Voice</h2>
+          <p>Join voice channels with LiveKit-powered audio and screen sharing.</p>
+        </article>
+      </section>
+    </main>
+    <script src="/home.js"></script>
+  </body>
+</html>

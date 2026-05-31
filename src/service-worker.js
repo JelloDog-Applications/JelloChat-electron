@@ -1,7 +1,7 @@
-const CACHE_NAME = 'jellochat-shell-v1';
+const CACHE_NAME = 'jellochat-shell-v2';
 const SHELL_ASSETS = [
-  '/',
-  '/index.html',
+  '/app',
+  '/ban-appeal',
   '/styles.css',
   '/renderer.js',
   '/manifest.webmanifest',
@@ -48,10 +48,10 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+          caches.open(CACHE_NAME).then((cache) => cache.put('/app', copy));
           return response;
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match('/app'))
     );
     return;
   }

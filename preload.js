@@ -65,6 +65,13 @@ if (!isCloudClientMode) {
     },
     admin: {
       listUsers: (payload) => ipcRenderer.invoke('admin:listUsers', payload),
+      listReports: (payload) => ipcRenderer.invoke('admin:listReports', payload),
+      updateReport: (payload) => ipcRenderer.invoke('admin:updateReport', payload),
+      getStorageConfig: () => ipcRenderer.invoke('admin:getStorageConfig'),
+      updateCleanupSettings: (payload) => ipcRenderer.invoke('admin:updateCleanupSettings', payload),
+      listBanAppeals: (payload) => ipcRenderer.invoke('admin:listBanAppeals', payload),
+      updateBanAppeal: (payload) => ipcRenderer.invoke('admin:updateBanAppeal', payload),
+      listServers: (payload) => ipcRenderer.invoke('admin:listServers', payload),
       getUserDetails: (payload) => ipcRenderer.invoke('admin:getUserDetails', payload),
       getServerView: (payload) => ipcRenderer.invoke('admin:getServerView', payload),
       updateUser: (payload) => ipcRenderer.invoke('admin:updateUser', payload),
@@ -73,6 +80,9 @@ if (!isCloudClientMode) {
     },
     reports: {
       createUserReport: (payload) => ipcRenderer.invoke('reports:createUserReport', payload)
+    },
+    appeals: {
+      submitBanAppeal: (payload) => ipcRenderer.invoke('appeals:submitBanAppeal', payload)
     },
     friends: {
       list: () => ipcRenderer.invoke('friends:list'),
@@ -83,6 +93,17 @@ if (!isCloudClientMode) {
     legal: {
       getPrivacyPolicy: () => ipcRenderer.invoke('legal:getPrivacyPolicy'),
       getTermsOfService: () => ipcRenderer.invoke('legal:getTermsOfService')
+    },
+    attachments: {
+      uploadMode: 'ipc',
+      objectUrl: async (url) => {
+        const result = await ipcRenderer.invoke('attachments:getObjectUrl', { url });
+        if (!result?.ok) {
+          throw new Error(result?.message || 'Failed to load attachment.');
+        }
+        return result.objectUrl;
+      },
+      url: (url) => url
     }
   });
 }

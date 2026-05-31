@@ -3,6 +3,7 @@
 const ui = {
   appShell: document.querySelector('.app-shell'),
   authPanel: document.getElementById('auth-panel'),
+  banAppealPage: document.getElementById('ban-appeal-page'),
   chatPanel: document.getElementById('chat-panel'),
   authMessage: document.getElementById('auth-message'),
   showLoginBtn: document.getElementById('show-login'),
@@ -13,6 +14,13 @@ const ui = {
   loginPassword: document.getElementById('login-password'),
   loginPasskeyBtn: document.getElementById('login-passkey-btn'),
   loginCompany: document.getElementById('login-company'),
+  banAppealForm: document.getElementById('ban-appeal-form'),
+  banAppealEmail: document.getElementById('ban-appeal-email'),
+  banAppealPassword: document.getElementById('ban-appeal-password'),
+  banAppealHelp: document.getElementById('ban-appeal-help'),
+  banAppealReason: document.getElementById('ban-appeal-reason'),
+  banAppealMessage: document.getElementById('ban-appeal-message'),
+  banAppealBackBtn: document.getElementById('ban-appeal-back-btn'),
   rememberMe: document.getElementById('remember-me'),
   registerUsername: document.getElementById('register-username'),
   registerEmail: document.getElementById('register-email'),
@@ -93,6 +101,9 @@ const ui = {
   banUserBtn: document.getElementById('ban-user-btn'),
   messageForm: document.getElementById('message-form'),
   messageInput: document.getElementById('message-input'),
+  attachmentInput: document.getElementById('attachment-input'),
+  attachmentBtn: document.getElementById('attachment-btn'),
+  attachmentChip: document.getElementById('attachment-chip'),
   logoutBtn: document.getElementById('logout-btn'),
   createServerBtn: document.getElementById('create-server-btn'),
   addFriendBtn: document.getElementById('add-friend-btn'),
@@ -110,6 +121,24 @@ const ui = {
   adminModalCloseBtn: document.getElementById('admin-modal-close-btn'),
   adminSearchInput: document.getElementById('admin-search-input'),
   adminSearchBtn: document.getElementById('admin-search-btn'),
+  adminReportFilter: document.getElementById('admin-report-filter'),
+  adminReportsList: document.getElementById('admin-reports-list'),
+  adminAppealFilter: document.getElementById('admin-appeal-filter'),
+  adminAppealsList: document.getElementById('admin-appeals-list'),
+  adminStorageRefreshBtn: document.getElementById('admin-storage-refresh-btn'),
+  adminStorageConfig: document.getElementById('admin-storage-config'),
+  adminStorageStats: document.getElementById('admin-storage-stats'),
+  adminCleanupForm: document.getElementById('admin-cleanup-form'),
+  storageMaxUploadMbInput: document.getElementById('storage-max-upload-mb-input'),
+  storageExpireDaysInput: document.getElementById('storage-expire-days-input'),
+  storageMaxUploadsDayInput: document.getElementById('storage-max-uploads-day-input'),
+  storageQuotaMbInput: document.getElementById('storage-quota-mb-input'),
+  cleanupEmptyServerDaysInput: document.getElementById('cleanup-empty-server-days-input'),
+  cleanupBannedUserDaysInput: document.getElementById('cleanup-banned-user-days-input'),
+  cleanupIntervalMinutesInput: document.getElementById('cleanup-interval-minutes-input'),
+  adminServerSearchInput: document.getElementById('admin-server-search-input'),
+  adminServerSearchBtn: document.getElementById('admin-server-search-btn'),
+  adminServersList: document.getElementById('admin-servers-list'),
   adminUsersList: document.getElementById('admin-users-list'),
   adminUserDetails: document.getElementById('admin-user-details'),
   adminUserDetailsTitle: document.getElementById('admin-user-details-title'),
@@ -127,6 +156,8 @@ const ui = {
   accountAdminBtn: document.getElementById('account-admin-btn'),
   accountModal: document.getElementById('account-modal'),
   accountModalCloseBtn: document.getElementById('account-modal-close-btn'),
+  accountModalAvatar: document.getElementById('account-modal-avatar'),
+  accountModalUsername: document.getElementById('account-modal-username'),
   accountStandingCard: document.getElementById('account-standing-card'),
   accountStandingLabel: document.getElementById('account-standing-label'),
   accountStandingMeta: document.getElementById('account-standing-meta'),
@@ -155,6 +186,7 @@ const ui = {
   appDialogInput: document.getElementById('app-dialog-input'),
   appDialogCancelBtn: document.getElementById('app-dialog-cancel-btn'),
   appDialogOkBtn: document.getElementById('app-dialog-ok-btn'),
+  appDialogCloseBtn: document.getElementById('app-dialog-close-btn'),
   screenSourceModal: document.getElementById('screen-source-modal'),
   screenSourceGrid: document.getElementById('screen-source-grid'),
   screenSourceCancelBtn: document.getElementById('screen-source-cancel-btn')
@@ -168,6 +200,7 @@ const state = {
   selectedChannelId: null,
   selectedDmUser: null,
   currentUserId: null,
+  selectedAttachment: null,
   ws: null,
   wsConfig: null,
   subscribedChannelId: null,
@@ -218,8 +251,12 @@ const state = {
   activeVoiceLabel: '',
   avatarPromptShown: false,
   adminUsers: [],
+  adminServers: [],
+  adminReports: [],
+  adminAppeals: [],
   selectedAdminUserId: null,
   adminUserDetails: null,
+  adminViewedServer: null,
   notifications: [],
   passkeys: [],
   passkeysSupported: false
@@ -941,6 +978,12 @@ function renderAccountPanel() {
   ui.accountUsername.textContent = state.user?.username || 'User';
   ui.accountEmail.textContent = state.user?.email || '';
   setAvatarContent(ui.accountAvatar, state.user, state.user?.username || 'User');
+  if (ui.accountModalUsername) {
+    ui.accountModalUsername.textContent = state.user?.username || 'User';
+  }
+  if (ui.accountModalAvatar) {
+    setAvatarContent(ui.accountModalAvatar, state.user, state.user?.username || 'User');
+  }
   ui.accountAdminBtn?.classList.toggle('hidden', !state.user?.is_platform_admin);
   ensureAccountStandingMeter();
   const standingDetails = getAccountStandingDetails(state.user);
@@ -1232,6 +1275,59 @@ function closeAccountModal() {
   ui.accountNewPasswordInput.value = '';
 }
 
+function getAccountModalScrollState() {
+  const scroller = ui.accountModal?.querySelector('.account-modal-scroll');
+  const navLinks = Array.from(ui.accountModal?.querySelectorAll('.account-modal-nav a[href^="#"]') || []);
+  const sections = navLinks
+    .map((link) => ({
+      link,
+      section: document.querySelector(link.getAttribute('href'))
+    }))
+    .filter((item) => item.section);
+  return { scroller, sections };
+}
+
+function setActiveAccountModalSection(sectionId) {
+  const links = ui.accountModal?.querySelectorAll('.account-modal-nav a[href^="#"]') || [];
+  links.forEach((link) => {
+    link.classList.toggle('active', link.getAttribute('href') === `#${sectionId}`);
+  });
+}
+
+function syncActiveAccountModalSection() {
+  const { scroller, sections } = getAccountModalScrollState();
+  if (!scroller || !sections.length) {
+    return;
+  }
+
+  const scrollerTop = scroller.getBoundingClientRect().top;
+  let active = sections[0];
+  for (const item of sections) {
+    const top = item.section.getBoundingClientRect().top - scrollerTop;
+    if (top <= 96) {
+      active = item;
+    }
+  }
+
+  if (active?.section?.id) {
+    setActiveAccountModalSection(active.section.id);
+  }
+}
+
+function scrollAccountModalToSection(sectionId) {
+  const { scroller } = getAccountModalScrollState();
+  const section = document.getElementById(sectionId);
+  if (!scroller || !section) {
+    return;
+  }
+
+  const scrollerRect = scroller.getBoundingClientRect();
+  const sectionRect = section.getBoundingClientRect();
+  const targetTop = sectionRect.top - scrollerRect.top + scroller.scrollTop - 8;
+  setActiveAccountModalSection(sectionId);
+  scroller.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+}
+
 function closeFriendRequestsModal() {
   animateHideOverlay(ui.friendRequestsModal);
   ui.friendRequestsList.innerHTML = '';
@@ -1442,6 +1538,274 @@ function escapeHtmlText(value) {
     .replace(/'/g, '&#39;');
 }
 
+function normalizeChatUrl(rawUrl) {
+  const value = String(rawUrl || '').trim();
+  if (!value) {
+    return null;
+  }
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return null;
+    }
+    return parsed.href;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function appendLinkedMessageText(container, value) {
+  const text = String(value || '');
+  const urlPattern = /((?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<]*)?)/gi;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = urlPattern.exec(text)) !== null) {
+    const rawMatch = match[0];
+    const start = match.index;
+    const leadingText = text.slice(lastIndex, start);
+    if (leadingText) {
+      container.appendChild(document.createTextNode(leadingText));
+    }
+
+    const trailingPunctuation = rawMatch.match(/[.,!?;:)\]}]+$/)?.[0] || '';
+    const linkText = trailingPunctuation ? rawMatch.slice(0, -trailingPunctuation.length) : rawMatch;
+    const href = normalizeChatUrl(linkText);
+    if (href) {
+      const link = document.createElement('a');
+      link.href = href;
+      link.textContent = linkText;
+      link.dataset.href = href;
+      link.rel = 'noopener noreferrer';
+      container.appendChild(link);
+    } else {
+      container.appendChild(document.createTextNode(linkText));
+    }
+    if (trailingPunctuation) {
+      container.appendChild(document.createTextNode(trailingPunctuation));
+    }
+
+    lastIndex = start + rawMatch.length;
+  }
+
+  const tail = text.slice(lastIndex);
+  if (tail) {
+    container.appendChild(document.createTextNode(tail));
+  }
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes || 0);
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(size >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  }
+  if (size >= 1024) {
+    return `${Math.ceil(size / 1024)} KB`;
+  }
+  return `${size} B`;
+}
+
+function formatAttachmentExpiry(expiresAt) {
+  if (!expiresAt) {
+    return 'No expiry';
+  }
+  const expires = new Date(expiresAt);
+  if (Number.isNaN(expires.getTime())) {
+    return 'Expiry unknown';
+  }
+  const msLeft = expires.getTime() - Date.now();
+  if (msLeft <= 0) {
+    return 'Expired';
+  }
+  const minutes = Math.ceil(msLeft / 60000);
+  if (minutes < 60) {
+    return `Expires in ${minutes} min`;
+  }
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 48) {
+    return `Expires in ${hours} hr`;
+  }
+  const days = Math.ceil(hours / 24);
+  return `Expires in ${days} day${days === 1 ? '' : 's'}`;
+}
+
+function getAttachmentUrl(attachment) {
+  if (!attachment?.url) {
+    return '';
+  }
+  if (window.api.attachments?.url) {
+    return window.api.attachments.url(attachment.url);
+  }
+  return attachment.url;
+}
+
+function renderAttachment(container, attachment) {
+  if (!attachment) {
+    return;
+  }
+
+  const name = attachment.original_filename || 'Attachment';
+  const mime = String(attachment.mime_type || '');
+  const expiryLabel = formatAttachmentExpiry(attachment.expires_at);
+  if (mime.startsWith('image/')) {
+    const link = document.createElement('a');
+    link.className = 'msg-attachment-image-link';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+
+    const image = document.createElement('img');
+    image.className = 'msg-attachment-image';
+    image.alt = name;
+    image.loading = 'lazy';
+    image.dataset.attachmentId = String(attachment.id);
+    image.addEventListener('error', () => {
+      image.alt = 'Attachment failed to load.';
+    });
+    link.appendChild(image);
+    const expiry = document.createElement('span');
+    expiry.className = 'msg-attachment-expiry';
+    expiry.textContent = expiryLabel;
+    link.appendChild(expiry);
+    container.appendChild(link);
+    if (window.api.attachments?.objectUrl) {
+      window.api.attachments.objectUrl(attachment.url).then((objectUrl) => {
+        image.src = objectUrl;
+        link.href = objectUrl;
+      }).catch(() => {
+        image.alt = 'Attachment failed to load.';
+      });
+    } else {
+      const url = getAttachmentUrl(attachment);
+      image.src = url;
+      link.href = url;
+    }
+    return;
+  }
+
+  const link = document.createElement('a');
+  link.className = 'msg-attachment-file';
+  link.href = getAttachmentUrl(attachment);
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.innerHTML = '<i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i>';
+  link.addEventListener('click', async (event) => {
+    if (!window.api.attachments?.objectUrl) {
+      return;
+    }
+    event.preventDefault();
+    try {
+      const objectUrl = await window.api.attachments.objectUrl(attachment.url);
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+    } catch (_error) {
+      await showWarningDialog('Failed to open attachment.');
+    }
+  });
+
+  const details = document.createElement('span');
+  details.className = 'msg-attachment-file-details';
+  const filename = document.createElement('strong');
+  filename.textContent = name;
+  const meta = document.createElement('small');
+  meta.textContent = formatFileSize(attachment.file_size);
+  const expiry = document.createElement('span');
+  expiry.className = 'msg-attachment-expiry';
+  expiry.textContent = expiryLabel;
+  details.append(filename, meta, expiry);
+  link.appendChild(details);
+  container.appendChild(link);
+}
+
+function renderAttachmentChip() {
+  if (!ui.attachmentChip) {
+    return;
+  }
+  ui.attachmentChip.innerHTML = '';
+  const file = state.selectedAttachment;
+  ui.attachmentChip.classList.toggle('hidden', !file);
+  if (!file) {
+    return;
+  }
+
+  const icon = document.createElement('i');
+  icon.className = 'fa-solid fa-paperclip';
+  icon.setAttribute('aria-hidden', 'true');
+  const text = document.createElement('span');
+  text.textContent = `${file.name} (${formatFileSize(file.size)})`;
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.setAttribute('aria-label', 'Remove attachment');
+  remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+  remove.addEventListener('click', () => {
+    state.selectedAttachment = null;
+    if (ui.attachmentInput) {
+      ui.attachmentInput.value = '';
+    }
+    renderAttachmentChip();
+  });
+  ui.attachmentChip.append(icon, text, remove);
+}
+
+async function buildMessagePayload(basePayload, content) {
+  if (!state.selectedAttachment) {
+    return { ...basePayload, content };
+  }
+
+  if (window.api.attachments?.uploadMode === 'form') {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(basePayload)) {
+      formData.append(key, value);
+    }
+    formData.append('content', content);
+    formData.append('attachment', state.selectedAttachment);
+    return formData;
+  }
+
+  if (window.api.attachments?.uploadMode === 'ipc') {
+    return {
+      ...basePayload,
+      content,
+      attachment: {
+        name: state.selectedAttachment.name,
+        type: state.selectedAttachment.type || 'application/octet-stream',
+        size: state.selectedAttachment.size,
+        bytes: await state.selectedAttachment.arrayBuffer()
+      }
+    };
+  }
+
+  await showWarningDialog('Attachments are not available in this app mode.');
+  return null;
+}
+
+function clearSelectedAttachment() {
+  state.selectedAttachment = null;
+  if (ui.attachmentInput) {
+    ui.attachmentInput.value = '';
+  }
+  renderAttachmentChip();
+}
+
+async function confirmAndOpenChatLink(link) {
+  const href = link?.dataset?.href || link?.href || '';
+  const destination = normalizeChatUrl(href);
+  if (!destination) {
+    return;
+  }
+
+  const confirmed = await showConfirmDialog(
+    'Open Link',
+    `This link will open:\n\n${destination}`,
+    'Open',
+    'Cancel'
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  window.open(destination, '_blank', 'noopener,noreferrer');
+}
+
 function sanitizeDialogHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
@@ -1470,7 +1834,7 @@ function formatStandingLabel(standing) {
 async function showAdminServerView(serverId) {
   const result = await window.api.admin.getServerView({ serverId });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -1484,6 +1848,24 @@ async function showAdminServerView(serverId) {
       return `<li>${escapeHtmlText(member.username)} <span style="color:#94a3b8">(${escapeHtmlText(badges)} | Roles: ${escapeHtmlText(roleText)})</span></li>`;
     })
     .join('');
+  const messageItems = (result.messages || [])
+    .map((message) => {
+      const content = String(message.content || '').trim() || '[file only]';
+      const attachment = message.attachment
+        ? `<div class="admin-server-message-attachment"><i class="fa-solid fa-paperclip" aria-hidden="true"></i>${escapeHtmlText(message.attachment.original_filename || 'Attachment')} (${escapeHtmlText(formatFileSize(message.attachment.file_size))}) <span>${escapeHtmlText(formatAttachmentExpiry(message.attachment.expires_at))}</span></div>`
+        : '';
+      return `
+        <li class="admin-server-message-item">
+          <div class="admin-server-message-topline">
+            <strong>${escapeHtmlText(message.username || 'Unknown')}</strong>
+            <span>#${escapeHtmlText(message.channel_name || 'channel')} - ${escapeHtmlText(new Date(message.created_at).toLocaleString())}</span>
+          </div>
+          <div class="admin-server-message-content">${escapeHtmlText(content)}</div>
+          ${attachment}
+        </li>
+      `;
+    })
+    .join('');
 
   const html = `
     <p><strong>Server:</strong> ${escapeHtmlText(result.server?.name)}</p>
@@ -1491,8 +1873,67 @@ async function showAdminServerView(serverId) {
     <ul>${channelItems || '<li>No channels.</li>'}</ul>
     <p><strong>Members:</strong></p>
     <ul>${memberItems || '<li>No members.</li>'}</ul>
+    <p><strong>Recent Messages:</strong></p>
+    <ul class="admin-server-message-list">${messageItems || '<li>No messages.</li>'}</ul>
   `;
   await showMessageDialog(`Admin View: ${result.server?.name || 'Server'}`, html, { html: true });
+}
+
+function isAdminGhostServer(serverId = state.selectedServerId) {
+  return Boolean(state.adminViewedServer?.server?.id === serverId);
+}
+
+function getAdminGhostMessagesForChannel(channelId) {
+  return (state.adminViewedServer?.messages || []).filter((message) => message.channel_id === channelId);
+}
+
+function injectAdminGhostServer() {
+  const server = state.adminViewedServer?.server;
+  if (!server?.id) {
+    return;
+  }
+  const ghostServer = {
+    id: server.id,
+    name: server.name,
+    owner_user_id: server.owner_user_id,
+    adminView: true
+  };
+  const existingIndex = state.servers.findIndex((item) => item.id === server.id);
+  if (existingIndex >= 0) {
+    state.servers[existingIndex] = { ...state.servers[existingIndex], ...ghostServer };
+    return;
+  }
+  state.servers = [ghostServer, ...state.servers];
+}
+
+async function openAdminGhostServer(serverId) {
+  const result = await window.api.admin.getServerView({ serverId });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+
+  state.adminViewedServer = {
+    server: result.server,
+    channels: result.channels || [],
+    members: result.members || [],
+    messages: result.messages || []
+  };
+  injectAdminGhostServer();
+  closeAdminModal();
+  closeFriendsHome();
+  state.selectedServerId = result.server.id;
+  state.selectedDmUser = null;
+  syncDmCallButton();
+  closeServerOptions();
+  closeUserOptions();
+  renderServers();
+  ui.serverTitle.textContent = `${result.server.name} (Admin View)`;
+  await loadChannels(result.server.id);
+  await loadServerPresence(result.server.id);
+  if (window.innerWidth <= 700) {
+    closeMobileDrawers();
+  }
 }
 
 async function deleteAdminServer(serverId, serverName) {
@@ -1503,13 +1944,458 @@ async function deleteAdminServer(serverId, serverName) {
 
   const result = await window.api.admin.deleteServer({ serverId });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
   ui.channelTitle.textContent = `${result.serverName || serverName} deleted.`;
   await loadAdminUsers(ui.adminSearchInput.value.trim());
+  await loadAdminServers(ui.adminServerSearchInput?.value.trim() || '');
   await loadServers(false);
+}
+
+function renderAdminServers() {
+  if (!ui.adminServersList) {
+    return;
+  }
+  ui.adminServersList.innerHTML = '';
+  if (!state.adminServers.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'No servers found.';
+    ui.adminServersList.appendChild(empty);
+    return;
+  }
+
+  for (const server of state.adminServers) {
+    const item = document.createElement('div');
+    item.className = 'admin-server-item admin-server-search-item';
+
+    const row = document.createElement('div');
+    row.className = 'admin-server-row';
+
+    const name = document.createElement('div');
+    name.className = 'admin-server-name';
+    name.textContent = server.name;
+
+    const actions = document.createElement('div');
+    actions.className = 'admin-server-actions';
+
+    const viewBtn = document.createElement('button');
+    viewBtn.type = 'button';
+    setIconButtonContent(viewBtn, 'fa-solid fa-eye', 'Open');
+    viewBtn.addEventListener('click', async () => {
+      await openAdminGhostServer(server.id);
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    setIconButtonContent(deleteBtn, 'fa-solid fa-trash', 'Delete');
+    deleteBtn.addEventListener('click', async () => {
+      await deleteAdminServer(server.id, server.name);
+    });
+
+    actions.append(viewBtn, deleteBtn);
+    row.append(name, actions);
+
+    const meta = document.createElement('div');
+    meta.className = 'admin-server-meta';
+    const owner = server.owner_username ? `Owner: ${server.owner_username}` : 'Owner: None';
+    meta.textContent = `ID ${server.id} - ${owner} - ${server.member_count || 0} members - ${server.channel_count || 0} channels`;
+
+    item.append(row, meta);
+    ui.adminServersList.appendChild(item);
+  }
+}
+
+async function loadAdminServers(query = '') {
+  const result = await window.api.admin.listServers({ query });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  state.adminServers = result.servers || [];
+  renderAdminServers();
+}
+
+function formatReportStatus(status) {
+  const value = String(status || 'open');
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+async function updateAdminReport(report, status) {
+  const note = status === 'open'
+    ? ''
+    : ((await showPromptDialog(
+      'Review Report',
+      `Add an optional note for marking this report ${formatReportStatus(status).toLowerCase()}:`,
+      ''
+    )) || '');
+  const result = await window.api.admin.updateReport({
+    reportId: report.id,
+    status,
+    reviewNote: note
+  });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  await loadAdminReports(ui.adminReportFilter?.value || 'open');
+  if (state.selectedAdminUserId === report.target_user_id) {
+    await loadAdminUserDetails(report.target_user_id);
+  }
+}
+
+function renderAdminReports() {
+  if (!ui.adminReportsList) {
+    return;
+  }
+  ui.adminReportsList.innerHTML = '';
+  if (!state.adminReports.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'No reports in this queue.';
+    ui.adminReportsList.appendChild(empty);
+    return;
+  }
+
+  for (const report of state.adminReports) {
+    const item = document.createElement('div');
+    item.className = 'admin-report-item admin-queue-report';
+
+    const top = document.createElement('div');
+    top.className = 'admin-report-topline';
+    const target = document.createElement('button');
+    target.type = 'button';
+    target.className = 'admin-report-target-btn';
+    target.textContent = report.target_username || `User ${report.target_user_id}`;
+    target.addEventListener('click', async () => {
+      await loadAdminUserDetails(report.target_user_id);
+    });
+    const status = document.createElement('span');
+    status.className = `admin-report-status status-${report.status || 'open'}`;
+    status.textContent = formatReportStatus(report.status);
+    top.append(target, status);
+
+    const reason = document.createElement('div');
+    reason.textContent = report.reason;
+
+    const meta = document.createElement('div');
+    meta.className = 'admin-report-meta';
+    const origin = report.server_name ? ` in ${report.server_name}` : '';
+    meta.textContent = `Reported by ${report.reporter_username}${origin} on ${new Date(report.created_at).toLocaleString()}`;
+
+    item.append(top, reason, meta);
+
+    if (report.review_note || report.reviewed_by_username) {
+      const review = document.createElement('div');
+      review.className = 'admin-report-meta';
+      const reviewedAt = report.reviewed_at ? ` on ${new Date(report.reviewed_at).toLocaleString()}` : '';
+      const reviewedBy = report.reviewed_by_username ? `Reviewed by ${report.reviewed_by_username}${reviewedAt}` : 'Reviewed';
+      review.textContent = report.review_note ? `${reviewedBy}: ${report.review_note}` : reviewedBy;
+      item.appendChild(review);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'admin-report-actions';
+    for (const action of [
+      ['reviewed', 'Reviewed'],
+      ['dismissed', 'Dismiss'],
+      ['actioned', 'Actioned']
+    ]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = action[1];
+      button.disabled = report.status === action[0];
+      button.addEventListener('click', async () => {
+        await updateAdminReport(report, action[0]);
+      });
+      actions.appendChild(button);
+    }
+    if (report.status !== 'open') {
+      const reopen = document.createElement('button');
+      reopen.type = 'button';
+      reopen.textContent = 'Reopen';
+      reopen.addEventListener('click', async () => {
+        await updateAdminReport(report, 'open');
+      });
+      actions.appendChild(reopen);
+    }
+    item.appendChild(actions);
+    ui.adminReportsList.appendChild(item);
+  }
+}
+
+async function updateAdminBanAppeal(appeal, status) {
+  const note = ((await showPromptDialog(
+    'Review Ban Appeal',
+    `Add an optional note for marking this appeal ${status}:`,
+    ''
+  )) || '');
+  const result = await window.api.admin.updateBanAppeal({
+    appealId: appeal.id,
+    status,
+    reviewNote: note
+  });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  await loadAdminBanAppeals(ui.adminAppealFilter?.value || 'open');
+  await loadAdminUsers(ui.adminSearchInput?.value.trim() || '');
+}
+
+function renderAdminBanAppeals() {
+  if (!ui.adminAppealsList) {
+    return;
+  }
+  ui.adminAppealsList.innerHTML = '';
+  if (!state.adminAppeals.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'No ban appeals in this queue.';
+    ui.adminAppealsList.appendChild(empty);
+    return;
+  }
+
+  for (const appeal of state.adminAppeals) {
+    const item = document.createElement('div');
+    item.className = 'admin-report-item admin-queue-report';
+    const top = document.createElement('div');
+    top.className = 'admin-report-topline';
+    const title = document.createElement('button');
+    title.type = 'button';
+    title.className = 'admin-report-target-btn';
+    title.textContent = `${appeal.username} (${appeal.email})`;
+    title.addEventListener('click', async () => {
+      setAdminView('users');
+      await loadAdminUserDetails(appeal.user_id);
+    });
+    const status = document.createElement('span');
+    status.className = `admin-report-status status-${appeal.status || 'open'}`;
+    status.textContent = formatReportStatus(appeal.status || 'open');
+    top.append(title, status);
+
+    const meta = document.createElement('div');
+    meta.className = 'admin-report-meta';
+    meta.textContent = `Submitted ${new Date(appeal.created_at).toLocaleString()}`;
+    const reason = document.createElement('div');
+    reason.className = 'admin-report-reason';
+    reason.textContent = appeal.reason;
+    item.append(top, meta, reason);
+
+    if (appeal.review_note || appeal.reviewed_by_username) {
+      const review = document.createElement('div');
+      review.className = 'admin-report-meta';
+      const reviewedAt = appeal.reviewed_at ? ` on ${new Date(appeal.reviewed_at).toLocaleString()}` : '';
+      review.textContent = `${appeal.reviewed_by_username ? `Reviewed by ${appeal.reviewed_by_username}${reviewedAt}` : 'Reviewed'}${appeal.review_note ? `: ${appeal.review_note}` : ''}`;
+      item.appendChild(review);
+    }
+
+    if (appeal.status === 'open') {
+      const actions = document.createElement('div');
+      actions.className = 'admin-report-actions';
+      for (const [nextStatus, label] of [['reviewed', 'Reviewed'], ['dismissed', 'Dismiss'], ['approved', 'Approve + Unban']]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', async () => updateAdminBanAppeal(appeal, nextStatus));
+        actions.appendChild(button);
+      }
+      item.appendChild(actions);
+    }
+    ui.adminAppealsList.appendChild(item);
+  }
+}
+
+async function loadAdminBanAppeals(status = 'open') {
+  const result = await window.api.admin.listBanAppeals({ status });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  state.adminAppeals = result.appeals || [];
+  renderAdminBanAppeals();
+}
+
+async function loadAdminReports(status = 'open') {
+  const result = await window.api.admin.listReports({ status });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  state.adminReports = result.reports || [];
+  renderAdminReports();
+}
+
+function renderAdminStorageItem(container, label, value) {
+  const item = document.createElement('div');
+  item.className = 'admin-storage-item';
+  const title = document.createElement('div');
+  title.className = 'admin-storage-label';
+  title.textContent = label;
+  const content = document.createElement('div');
+  content.className = 'admin-storage-value';
+  content.textContent = value;
+  item.append(title, content);
+  container.appendChild(item);
+}
+
+function renderAdminStorageEditableItem(container, label, inputId, value, options = {}) {
+  const item = document.createElement('div');
+  item.className = 'admin-storage-item admin-storage-editable-item';
+  const title = document.createElement('label');
+  title.className = 'admin-storage-label';
+  title.setAttribute('for', inputId);
+  title.textContent = label;
+  const input = document.createElement('input');
+  input.id = inputId;
+  input.className = 'admin-storage-value-input';
+  input.type = 'number';
+  input.step = String(options.step || 1);
+  input.min = String(options.min ?? 0);
+  if (options.max !== undefined) {
+    input.max = String(options.max);
+  }
+  input.value = String(value);
+  item.append(title, input);
+  container.appendChild(item);
+}
+
+function renderAdminStorageQuotaBar(container, activeBytes, quotaMb) {
+  const item = document.createElement('div');
+  item.className = 'admin-storage-item admin-storage-quota-item';
+  const title = document.createElement('div');
+  title.className = 'admin-storage-label';
+  title.textContent = 'Storage Quota Usage';
+  const summary = document.createElement('div');
+  summary.className = 'admin-storage-value admin-storage-quota-summary';
+  const track = document.createElement('div');
+  track.className = 'admin-storage-quota-track';
+  const fill = document.createElement('div');
+  fill.className = 'admin-storage-quota-fill';
+  track.appendChild(fill);
+
+  const update = (nextQuotaMb) => {
+    const quotaBytes = Math.max(0, Number(nextQuotaMb || 0)) * 1024 * 1024;
+    const percent = quotaBytes > 0 ? Math.min(100, Math.round((Number(activeBytes || 0) / quotaBytes) * 100)) : 0;
+    fill.style.width = `${percent}%`;
+    fill.classList.toggle('is-warn', percent >= 70 && percent < 90);
+    fill.classList.toggle('is-danger', percent >= 90);
+    summary.textContent = quotaBytes > 0
+      ? `${formatFileSize(activeBytes)} / ${formatFileSize(quotaBytes)} (${percent}%)`
+      : `${formatFileSize(activeBytes)} / Unlimited`;
+  };
+
+  item.append(title, summary, track);
+  container.appendChild(item);
+  update(quotaMb);
+  return update;
+}
+
+function formatStorageDate(value) {
+  return value ? new Date(value).toLocaleString() : 'None';
+}
+
+function renderAdminStorage(data) {
+  if (!ui.adminStorageConfig || !ui.adminStorageStats) {
+    return;
+  }
+  const config = data?.config || {};
+  const stats = data?.stats || {};
+  ui.adminStorageConfig.innerHTML = '';
+  ui.adminStorageStats.innerHTML = '';
+
+  renderAdminStorageItem(ui.adminStorageConfig, 'Uploads Folder', config.attachmentsDir || 'uploads/attachments');
+  renderAdminStorageEditableItem(ui.adminStorageConfig, 'Max File Size MB', 'storage-max-upload-mb-input', config.maxUploadMb ?? 10, { min: 1, max: 1024 });
+  renderAdminStorageEditableItem(ui.adminStorageConfig, 'Attachment Expiry Days', 'storage-expire-days-input', config.expireDays ?? 30, { min: 1, max: 3650 });
+  renderAdminStorageEditableItem(ui.adminStorageConfig, 'Daily Uploads Per User', 'storage-max-uploads-day-input', config.maxUploadsPerDay ?? 50, { min: 1, max: 10000 });
+  renderAdminStorageEditableItem(ui.adminStorageConfig, 'Storage Quota MB', 'storage-quota-mb-input', config.storageQuotaMb ?? 0, { min: 0, max: 1048576 });
+  const updateQuotaBar = renderAdminStorageQuotaBar(ui.adminStorageConfig, Number(stats.active_bytes || 0), config.storageQuotaMb ?? 0);
+  document.getElementById('storage-quota-mb-input')?.addEventListener('input', (event) => {
+    updateQuotaBar(event.target.value);
+  });
+  renderAdminStorageItem(ui.adminStorageConfig, 'Encryption', config.encryptionEnabled ? 'AES-256-GCM enabled' : 'Disabled');
+  renderAdminStorageItem(ui.adminStorageConfig, 'Custom Key', config.encryptionKeyConfigured ? 'Configured' : 'Using fallback key');
+  renderAdminStorageEditableItem(ui.adminStorageConfig, 'Cleanup Interval Minutes', 'cleanup-interval-minutes-input', config.cleanupIntervalMinutes ?? 60, { min: 5, max: 10080 });
+  renderAdminStorageEditableItem(ui.adminStorageConfig, 'Empty Server Cleanup Days', 'cleanup-empty-server-days-input', config.emptyServerCleanupDays ?? 7, { min: 0, max: 3650 });
+  renderAdminStorageEditableItem(ui.adminStorageConfig, 'Banned User Cleanup Days', 'cleanup-banned-user-days-input', config.bannedUserCleanupDays ?? 30, { min: 0, max: 3650 });
+  renderAdminStorageItem(ui.adminStorageConfig, 'Blocked Types', (config.blockedExtensions || []).join(', '));
+
+  renderAdminStorageItem(ui.adminStorageStats, 'Active Attachments', `${stats.active_attachments || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Active Size', formatFileSize(stats.active_bytes || 0));
+  if (config.storageQuotaMb > 0) {
+    const quotaBytes = Number(config.storageQuotaMb || 0) * 1024 * 1024;
+    const activeBytes = Number(stats.active_bytes || 0);
+    const percent = quotaBytes > 0 ? Math.min(100, Math.round((activeBytes / quotaBytes) * 100)) : 0;
+    renderAdminStorageItem(ui.adminStorageStats, 'Quota Used', `${formatFileSize(activeBytes)} / ${formatFileSize(quotaBytes)} (${percent}%)`);
+  } else {
+    renderAdminStorageItem(ui.adminStorageStats, 'Quota Used', `${formatFileSize(stats.active_bytes || 0)} / Unlimited`);
+  }
+  renderAdminStorageItem(ui.adminStorageStats, 'Total Stored Records', `${stats.total_attachments || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Total Original Size', formatFileSize(stats.total_bytes || 0));
+  renderAdminStorageItem(ui.adminStorageStats, 'Expired Waiting Cleanup', `${stats.expired_attachments || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Expiring Within 7 Days', `${stats.expiring_soon || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Legacy Unencrypted', `${stats.legacy_unencrypted || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Newest Upload', formatStorageDate(stats.newest_attachment_at));
+}
+
+async function loadAdminStorage() {
+  const result = await window.api.admin.getStorageConfig();
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  renderAdminStorage(result);
+}
+
+async function saveAdminCleanupSettings() {
+  const storageMaxUploadMbInput = document.getElementById('storage-max-upload-mb-input');
+  const storageExpireDaysInput = document.getElementById('storage-expire-days-input');
+  const storageMaxUploadsDayInput = document.getElementById('storage-max-uploads-day-input');
+  const storageQuotaMbInput = document.getElementById('storage-quota-mb-input');
+  const cleanupEmptyServerDaysInput = document.getElementById('cleanup-empty-server-days-input');
+  const cleanupBannedUserDaysInput = document.getElementById('cleanup-banned-user-days-input');
+  const cleanupIntervalMinutesInput = document.getElementById('cleanup-interval-minutes-input');
+  const payload = {
+    maxUploadMb: Number(storageMaxUploadMbInput?.value || 10),
+    expireDays: Number(storageExpireDaysInput?.value || 30),
+    maxUploadsPerDay: Number(storageMaxUploadsDayInput?.value || 50),
+    storageQuotaMb: Number(storageQuotaMbInput?.value || 0),
+    emptyServerCleanupDays: Number(cleanupEmptyServerDaysInput?.value || 0),
+    bannedUserCleanupDays: Number(cleanupBannedUserDaysInput?.value || 0),
+    cleanupIntervalMinutes: Number(cleanupIntervalMinutesInput?.value || 60)
+  };
+  const result = await window.api.admin.updateCleanupSettings(payload);
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  await loadAdminStorage();
+  await showMessageDialog('Storage Settings Saved', 'Your storage settings were updated.', {
+    okLabel: 'Done'
+  });
+}
+
+function setAdminView(viewName) {
+  const selected = String(viewName || 'reports');
+  ui.adminModal?.querySelectorAll('.admin-modal-nav a[data-admin-view]').forEach((link) => {
+    link.classList.toggle('active', link.dataset.adminView === selected);
+  });
+  ui.adminModal?.querySelectorAll('.admin-view-section').forEach((section) => {
+    section.classList.toggle('hidden', section.id !== `admin-${selected}-view`);
+  });
+  if (selected === 'reports') {
+    loadAdminReports(ui.adminReportFilter?.value || 'open').catch(() => {});
+  } else if (selected === 'appeals') {
+    loadAdminBanAppeals(ui.adminAppealFilter?.value || 'open').catch(() => {});
+  } else if (selected === 'users') {
+    loadAdminUsers(ui.adminSearchInput?.value.trim() || '').catch(() => {});
+  } else if (selected === 'servers') {
+    loadAdminServers(ui.adminServerSearchInput?.value.trim() || '').catch(() => {});
+  } else if (selected === 'storage') {
+    loadAdminStorage().catch(() => {});
+  }
 }
 
 function renderAdminUserDetails() {
@@ -1535,47 +2421,46 @@ function renderAdminUserDetails() {
     empty.className = 'account-form-message';
     empty.textContent = 'This user is not in any servers.';
     ui.adminUserServersList.appendChild(empty);
-    return;
-  }
+  } else {
+    for (const server of details.servers) {
+      const item = document.createElement('div');
+      item.className = 'admin-server-item';
 
-  for (const server of details.servers) {
-    const item = document.createElement('div');
-    item.className = 'admin-server-item';
+      const row = document.createElement('div');
+      row.className = 'admin-server-row';
 
-    const row = document.createElement('div');
-    row.className = 'admin-server-row';
+      const name = document.createElement('div');
+      name.className = 'admin-server-name';
+      name.textContent = server.name;
 
-    const name = document.createElement('div');
-    name.className = 'admin-server-name';
-    name.textContent = server.name;
+      const actions = document.createElement('div');
+      actions.className = 'admin-server-actions';
 
-    const actions = document.createElement('div');
-    actions.className = 'admin-server-actions';
+      const viewBtn = document.createElement('button');
+      viewBtn.type = 'button';
+      setIconButtonContent(viewBtn, 'fa-solid fa-eye', 'Open');
+      viewBtn.addEventListener('click', async () => {
+        await openAdminGhostServer(server.id);
+      });
 
-    const viewBtn = document.createElement('button');
-    viewBtn.type = 'button';
-    setIconButtonContent(viewBtn, 'fa-solid fa-eye', 'View');
-    viewBtn.addEventListener('click', async () => {
-      await showAdminServerView(server.id);
-    });
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      setIconButtonContent(deleteBtn, 'fa-solid fa-trash', 'Delete Server');
+      deleteBtn.addEventListener('click', async () => {
+        await deleteAdminServer(server.id, server.name);
+      });
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    setIconButtonContent(deleteBtn, 'fa-solid fa-trash', 'Delete Server');
-    deleteBtn.addEventListener('click', async () => {
-      await deleteAdminServer(server.id, server.name);
-    });
+      actions.append(viewBtn, deleteBtn);
+      row.append(name, actions);
 
-    actions.append(viewBtn, deleteBtn);
-    row.append(name, actions);
+      const meta = document.createElement('div');
+      meta.className = 'admin-server-meta';
+      const roleText = server.role_names?.length ? `Roles: ${server.role_names.join(', ')}` : 'Roles: None';
+      meta.textContent = `${server.is_owner ? 'Owner' : 'Member'} - ${formatAdminServerJoinedAt(server.joined_at)} - ${roleText}`;
 
-    const meta = document.createElement('div');
-    meta.className = 'admin-server-meta';
-    const roleText = server.role_names?.length ? `Roles: ${server.role_names.join(', ')}` : 'Roles: None';
-    meta.textContent = `${server.is_owner ? 'Owner' : 'Member'} - ${formatAdminServerJoinedAt(server.joined_at)} - ${roleText}`;
-
-    item.append(row, meta);
-    ui.adminUserServersList.appendChild(item);
+      item.append(row, meta);
+      ui.adminUserServersList.appendChild(item);
+    }
   }
 
   const reportsTitle = document.createElement('div');
@@ -1598,12 +2483,24 @@ function renderAdminUserDetails() {
     const reason = document.createElement('div');
     reason.textContent = report.reason;
 
+    const status = document.createElement('div');
+    status.className = `admin-report-status status-${report.status || 'open'}`;
+    status.textContent = formatReportStatus(report.status);
+
     const meta = document.createElement('div');
     meta.className = 'admin-report-meta';
     const origin = report.server_name ? ` in ${report.server_name}` : '';
     meta.textContent = `Reported by ${report.reporter_username}${origin} on ${new Date(report.created_at).toLocaleString()}`;
 
-    item.append(reason, meta);
+    item.append(reason, status, meta);
+    if (report.review_note || report.reviewed_by_username) {
+      const review = document.createElement('div');
+      review.className = 'admin-report-meta';
+      const reviewedAt = report.reviewed_at ? ` on ${new Date(report.reviewed_at).toLocaleString()}` : '';
+      const reviewedBy = report.reviewed_by_username ? `Reviewed by ${report.reviewed_by_username}${reviewedAt}` : 'Reviewed';
+      review.textContent = report.review_note ? `${reviewedBy}: ${report.review_note}` : reviewedBy;
+      item.appendChild(review);
+    }
     ui.adminUserReportsList.appendChild(item);
   }
 }
@@ -1611,7 +2508,7 @@ function renderAdminUserDetails() {
 async function loadAdminUserDetails(userId) {
   const result = await window.api.admin.getUserDetails({ userId });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
   state.selectedAdminUserId = userId;
@@ -1671,7 +2568,7 @@ function renderAdminUsers() {
         incrementViolations: true
       });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       await loadAdminUsers(ui.adminSearchInput.value.trim());
@@ -1697,7 +2594,7 @@ function renderAdminUsers() {
         incrementViolations: true
       });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       await loadAdminUsers(ui.adminSearchInput.value.trim());
@@ -1717,7 +2614,7 @@ function renderAdminUsers() {
         isPlatformAdmin: !user.is_platform_admin
       });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       await loadAdminUsers(ui.adminSearchInput.value.trim());
@@ -1741,7 +2638,7 @@ function renderAdminUsers() {
         platformBanReason: reason
       });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       await loadAdminUsers(ui.adminSearchInput.value.trim());
@@ -1762,7 +2659,7 @@ function renderAdminUsers() {
       }
       const result = await window.api.admin.deleteUser({ userId: user.id });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       await loadAdminUsers(ui.adminSearchInput.value.trim());
@@ -1787,7 +2684,7 @@ function renderAdminUsers() {
         resetViolations: true
       });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       await loadAdminUsers(ui.adminSearchInput.value.trim());
@@ -1806,7 +2703,7 @@ function renderAdminUsers() {
 async function loadAdminUsers(query = '') {
   const result = await window.api.admin.listUsers({ query });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
   state.adminUsers = result.users || [];
@@ -1848,7 +2745,7 @@ function renderFriendRequests(requests) {
     acceptBtn.addEventListener('click', async () => {
       const result = await window.api.friends.respondRequest({ requestId: request.id, action: 'accept' });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       const next = await window.api.friends.getRequests();
@@ -1867,7 +2764,7 @@ function renderFriendRequests(requests) {
     rejectBtn.addEventListener('click', async () => {
       const result = await window.api.friends.respondRequest({ requestId: request.id, action: 'reject' });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       const next = await window.api.friends.getRequests();
@@ -1891,6 +2788,12 @@ function openAccountModal() {
   ui.accountNewPasswordInput.value = '';
   setAccountFormMessage('');
   animateShowOverlay(ui.accountModal);
+  const { scroller } = getAccountModalScrollState();
+  if (scroller) {
+    scroller.scrollTop = 0;
+  }
+  setActiveAccountModalSection('account-info-section');
+  setTimeout(syncActiveAccountModalSection, 0);
   loadPasskeys().catch(() => {});
 }
 
@@ -2064,14 +2967,14 @@ async function openVoiceView(roomLabel, channelId, tokenData, options = {}) {
   const sdk = window.LivekitClient;
   if (!sdk) {
     setVcStatus('Voice SDK failed to load.');
-    ui.channelTitle.textContent = 'Voice SDK failed to load.';
+    await showWarningDialog('Voice SDK failed to load.', 'Voice Unavailable');
     return;
   }
 
   const { Room } = sdk;
   if (!Room) {
     setVcStatus('Voice SDK unavailable.');
-    ui.channelTitle.textContent = 'Voice SDK unavailable.';
+    await showWarningDialog('Voice SDK unavailable.', 'Voice Unavailable');
     return;
   }
 
@@ -2151,7 +3054,7 @@ async function openVoiceView(roomLabel, channelId, tokenData, options = {}) {
     const url = tokenData?.livekitUrl ? ` url=${tokenData.livekitUrl}` : '';
 
     setVcStatus(`Failed to join voice: ${error.message}${iss}${room}${url}`);
-    ui.channelTitle.textContent = `Failed to join VC: ${error.message}`;
+    await showWarningDialog(`Failed to join VC: ${error.message}`, 'Voice Unavailable');
 
     renderVoiceParticipants();
   }
@@ -2160,6 +3063,81 @@ async function openVoiceView(roomLabel, channelId, tokenData, options = {}) {
 function setAuthMessage(message, isError = false) {
   ui.authMessage.textContent = message;
   ui.authMessage.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+function setBanAppealMessage(message, isError = false) {
+  if (!ui.banAppealMessage) {
+    return;
+  }
+  ui.banAppealMessage.textContent = message;
+  ui.banAppealMessage.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+function showBanAppealPrompt(result, email = '') {
+  openBanAppealPage(result, email);
+}
+
+function openBanAppealPage(result = null, email = '') {
+  ui.authPanel?.classList.add('hidden');
+  ui.chatPanel?.classList.add('hidden');
+  ui.banAppealPage?.classList.remove('hidden');
+  ui.appShell?.classList.remove('chat-mode');
+  closeMobileDrawers();
+  closeServerOptions();
+  closeUserOptions();
+  closeAccountSettingsMenu();
+  closeAccountModal();
+  closeFriendRequestsModal();
+  closeDobModal();
+  if (email && ui.banAppealEmail) {
+    ui.banAppealEmail.value = email;
+  }
+  if (ui.banAppealPassword && ui.loginPassword?.value) {
+    ui.banAppealPassword.value = ui.loginPassword.value;
+  }
+  if (ui.banAppealHelp) {
+    ui.banAppealHelp.textContent = result?.bannedUserCleanupDays > 0
+      ? `You have ${result.bannedUserCleanupDays} day(s) before this account is deleted.`
+      : 'Enter the banned account email, password, and why admins should review the ban.';
+  }
+  setBanAppealMessage('');
+  try {
+    const nextUrl = new URL('/ban-appeal', window.location.origin);
+    const nextEmail = email || ui.banAppealEmail?.value || '';
+    if (nextEmail) {
+      nextUrl.searchParams.set('email', nextEmail);
+    }
+    window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}`);
+  } catch (_error) {
+  }
+  if (!ui.banAppealEmail?.value) {
+    ui.banAppealEmail?.focus();
+  } else if (!ui.banAppealPassword?.value) {
+    ui.banAppealPassword?.focus();
+  } else {
+    ui.banAppealReason?.focus();
+  }
+}
+
+function hideBanAppealPrompt() {
+  ui.banAppealPage?.classList.add('hidden');
+  if (ui.banAppealReason) {
+    ui.banAppealReason.value = '';
+  }
+  if (ui.banAppealPassword) {
+    ui.banAppealPassword.value = '';
+  }
+  setBanAppealMessage('');
+}
+
+function openBanAppealFromUrl() {
+  const pathname = String(window.location.pathname || '');
+  const params = new URLSearchParams(window.location.search);
+  if (pathname !== '/ban-appeal') {
+    return;
+  }
+  const email = params.get('email') || '';
+  openBanAppealPage(null, email);
 }
 
 function closeAppDialog() {
@@ -2208,6 +3186,29 @@ async function showMessageDialog(title, message, options = {}) {
   return result;
 }
 
+function isRateLimitMessage(message) {
+  const text = String(message || '').toLowerCase();
+  return text.includes('too quickly') || text.includes('rate limit') || text.includes('slow down');
+}
+
+async function showSendBlockedDialog(message) {
+  if (isRateLimitMessage(message)) {
+    await showMessageDialog('WOAH THERE. WAY TOO SPICY', "You're sending messages too quickly!", {
+      okLabel: 'Enter the chill zone'
+    });
+    return;
+  }
+  await showMessageDialog('Message Not Sent', message || 'That message could not be sent.', {
+    okLabel: 'Got it'
+  });
+}
+
+async function showWarningDialog(message, title = 'Heads Up') {
+  await showMessageDialog(title, message || 'Something went wrong.', {
+    okLabel: 'Got it'
+  });
+}
+
 async function showConfirmDialog(title, message, okLabel = 'OK', cancelLabel = 'Cancel') {
   const result = await openAppDialog({ title, message, mode: 'confirm', okLabel, cancelLabel });
   return result === true;
@@ -2249,6 +3250,7 @@ function setupPasswordToggles() {
 }
 
 function showLogin() {
+  hideBanAppealPrompt();
   ui.showLoginBtn.classList.add('tab-active');
   ui.showRegisterBtn.classList.remove('tab-active');
   authTiming.loginShownAt = Date.now();
@@ -2256,6 +3258,7 @@ function showLogin() {
 }
 
 function showRegister() {
+  hideBanAppealPrompt();
   ui.showRegisterBtn.classList.add('tab-active');
   ui.showLoginBtn.classList.remove('tab-active');
   authTiming.registerShownAt = Date.now();
@@ -2441,8 +3444,7 @@ async function handlePendingInviteLink() {
   clearInviteLinkFromLocation();
 
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message || 'Failed to join invite.';
-    await showMessageDialog('Invite Link', result.message || 'Failed to join invite.');
+    await showWarningDialog(result.message || 'Failed to join invite.', 'Invite Link');
     return;
   }
 
@@ -2466,6 +3468,7 @@ function openChat() {
     setTimeout(() => {
       ui.authPanel.classList.remove('auth-swipe-out');
       ui.authPanel.classList.add('hidden');
+      ui.banAppealPage?.classList.add('hidden');
       ui.chatPanel.classList.remove('hidden');
       ui.chatPanel.classList.add('chat-swipe-in');
       ui.appShell.classList.add('chat-mode');
@@ -2480,6 +3483,7 @@ function openChat() {
 }
 
 function openAuth() {
+  ui.banAppealPage?.classList.add('hidden');
   ui.authPanel.classList.remove('hidden');
   ui.chatPanel.classList.add('hidden');
   ui.appShell.classList.remove('chat-mode');
@@ -2555,6 +3559,8 @@ async function performLogout(serverLogout = true) {
   state.isDobRequired = false;
   state.avatarPromptShown = false;
   state.adminUsers = [];
+  state.adminServers = [];
+  state.adminReports = [];
   state.selectedAdminUserId = null;
   state.adminUserDetails = null;
   state.notifications = [];
@@ -2775,7 +3781,7 @@ function renderRoleMembers() {
         enabled: !hasRole
       });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       await loadRolesState();
@@ -2812,7 +3818,7 @@ async function loadRolesState() {
   }
   const result = await window.api.roles.getState({ serverId: state.serverOptionsServerId });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
   state.serverPermissions = result.permissions || state.serverPermissions;
@@ -2857,7 +3863,7 @@ function renderBannedUsers() {
         targetUserId: user.user_id
       });
       if (!result.ok) {
-        ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
         return;
       }
       await loadBannedUsers();
@@ -2961,7 +3967,7 @@ function subscribeToSelectedChannel() {
 
 async function joinVoiceChannel(channel) {
   if (!state.selectedServerId) {
-    ui.channelTitle.textContent = 'Select a server first.';
+    await showWarningDialog('Select a server first.');
     return;
   }
 
@@ -2981,7 +3987,7 @@ async function joinVoiceChannel(channel) {
     channelId: channel.id
   });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message, 'Voice Unavailable');
     return;
   }
 
@@ -2995,7 +4001,7 @@ async function joinVoiceChannel(channel) {
 
 async function startPersonalCall(partnerUserId, partnerUsername, joinOnly = false) {
   if (!partnerUserId) {
-    ui.channelTitle.textContent = 'Select someone to call first.';
+    await showWarningDialog('Select someone to call first.');
     return;
   }
 
@@ -3013,7 +4019,7 @@ async function startPersonalCall(partnerUserId, partnerUsername, joinOnly = fals
   const fn = joinOnly ? window.api.dm.joinCall : window.api.dm.startCall;
   const result = await fn({ partnerUserId });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message, 'Call Unavailable');
     return;
   }
 
@@ -3364,7 +4370,7 @@ function renderMessages(messages) {
         }
 
         if (state.selectedDmUser) {
-          ui.channelTitle.textContent = 'Editing DM messages is not supported yet.';
+          await showWarningDialog('Editing DM messages is not supported yet.');
           return;
         }
 
@@ -3374,7 +4380,7 @@ function renderMessages(messages) {
         });
 
         if (!result.ok) {
-          ui.channelTitle.textContent = result.message;
+          await showWarningDialog(result.message);
         }
       });
 
@@ -3389,13 +4395,13 @@ function renderMessages(messages) {
         }
 
         if (state.selectedDmUser) {
-          ui.channelTitle.textContent = 'Deleting DM messages is not supported yet.';
+          await showWarningDialog('Deleting DM messages is not supported yet.');
           return;
         }
 
         const result = await window.api.chat.deleteMessage({ messageId: msg.id });
         if (!result.ok) {
-          ui.channelTitle.textContent = result.message;
+          await showWarningDialog(result.message);
         }
       });
 
@@ -3404,7 +4410,9 @@ function renderMessages(messages) {
     }
 
     const body = document.createElement('div');
-    body.textContent = msg.content;
+    body.className = 'msg-body';
+    appendLinkedMessageText(body, msg.content);
+    renderAttachment(body, msg.attachment);
 
     const content = document.createElement('div');
     content.append(meta, body);
@@ -3417,9 +4425,15 @@ function renderMessages(messages) {
 }
 
 async function loadMessages(channelId) {
+  if (isAdminGhostServer()) {
+    renderMessages(getAdminGhostMessagesForChannel(channelId));
+    state.subscribedChannelId = null;
+    return;
+  }
+
   const response = await window.api.chat.getMessages(channelId);
   if (!response.ok) {
-    ui.channelTitle.textContent = response.message;
+    await showWarningDialog(response.message);
     return;
   }
 
@@ -3432,7 +4446,7 @@ async function loadDmMessages(partnerUserId, partnerUsername) {
   closeFriendsHome();
   const response = await window.api.dm.getMessages({ partnerUserId });
   if (!response.ok) {
-    ui.channelTitle.textContent = response.message;
+    await showWarningDialog(response.message);
     return;
   }
 
@@ -3469,10 +4483,12 @@ function renderChannels() {
       renderChannels();
       if (channelType === 'voice') {
         state.subscribedChannelId = null;
-        await joinVoiceChannel(channel);
+        if (!isAdminGhostServer()) {
+          await joinVoiceChannel(channel);
+        }
         await loadMessages(channel.id);
       } else {
-        ui.channelTitle.textContent = `# ${channel.name}`;
+        ui.channelTitle.textContent = isAdminGhostServer() ? `# ${channel.name} - Admin View` : `# ${channel.name}`;
         await loadMessages(channel.id);
       }
       if (window.innerWidth <= 700) {
@@ -3487,9 +4503,46 @@ function renderChannels() {
 }
 
 async function loadChannels(serverId, resetSelection = true) {
+  if (isAdminGhostServer(serverId)) {
+    const previousSelected = state.selectedChannelId;
+    state.channels = (state.adminViewedServer.channels || []).map((channel) => ({
+      ...channel,
+      type: String(channel.type || 'text').toLowerCase()
+    }));
+    state.canCreateChannels = false;
+    state.serverPermissions = {
+      manage_server: false,
+      manage_roles: false,
+      manage_channels: false,
+      create_invites: false,
+      moderate_members: false
+    };
+    updateChannelCreateButton();
+    if (resetSelection) {
+      state.selectedChannelId = pickDefaultChannelId(state.channels);
+    } else {
+      const stillExists = state.channels.some((channel) => channel.id === previousSelected);
+      state.selectedChannelId = stillExists ? previousSelected : pickDefaultChannelId(state.channels);
+    }
+    renderChannels();
+    if (state.selectedChannelId) {
+      state.selectedDmUser = null;
+      syncDmCallButton();
+      const selected = getSelectedChannel();
+      await loadMessages(state.selectedChannelId);
+      ui.channelTitle.textContent = selected ? `# ${selected.name} - Admin View` : 'Select a channel';
+    } else {
+      ui.channelTitle.textContent = 'No channels available';
+      ui.messagesList.innerHTML = '';
+      state.subscribedChannelId = null;
+    }
+    syncVoicePanelVisibility();
+    return;
+  }
+
   const response = await window.api.chat.getChannels(serverId);
   if (!response.ok) {
-    ui.channelTitle.textContent = response.message;
+    await showWarningDialog(response.message);
     state.canCreateChannels = false;
     state.serverPermissions = {
       manage_server: false,
@@ -3552,7 +4605,7 @@ function attachServerButtonInteractions(button, serverId) {
     closeUserOptions();
     renderServers();
     const server = state.servers.find((x) => x.id === serverId);
-    ui.serverTitle.textContent = server ? server.name : 'Channels';
+    ui.serverTitle.textContent = server ? `${server.name}${server.adminView ? ' (Admin View)' : ''}` : 'Channels';
     await loadChannels(serverId);
     await loadServerPresence(serverId);
     if (window.innerWidth <= 700) {
@@ -3571,6 +4624,9 @@ function attachServerButtonInteractions(button, serverId) {
   button.addEventListener('contextmenu', async (event) => {
     event.preventDefault();
     await selectServer();
+    if (state.servers.find((server) => server.id === serverId)?.adminView) {
+      return;
+    }
     openServerOptions(serverId, button);
   });
 
@@ -3578,6 +4634,10 @@ function attachServerButtonInteractions(button, serverId) {
   button.addEventListener('touchstart', () => {
     holdTimer = setTimeout(async () => {
       await selectServer();
+      if (state.servers.find((server) => server.id === serverId)?.adminView) {
+        suppressClickOnce = true;
+        return;
+      }
       openServerOptions(serverId, button);
       suppressClickOnce = true;
     }, 500);
@@ -3601,7 +4661,10 @@ function renderServers() {
     const item = document.createElement('li');
     const button = document.createElement('button');
     button.textContent = server.name.slice(0, 2).toUpperCase();
-    button.title = server.name;
+    button.title = server.adminView ? `${server.name} (Admin View)` : server.name;
+    if (server.adminView) {
+      button.classList.add('admin-ghost-server');
+    }
 
     if (server.id === state.selectedServerId) {
       button.classList.add('active');
@@ -3617,25 +4680,26 @@ function renderServers() {
 async function loadServers(resetSelection = true) {
   const response = await window.api.chat.getServers();
   if (!response.ok) {
-    ui.channelTitle.textContent = response.message;
+    await showWarningDialog(response.message);
     return;
   }
 
   const previousSelected = state.selectedServerId;
   state.servers = response.servers;
+  injectAdminGhostServer();
 
   if (resetSelection) {
-    state.selectedServerId = response.servers[0]?.id || null;
+    state.selectedServerId = state.servers[0]?.id || null;
   } else {
-    const stillExists = response.servers.some((server) => server.id === previousSelected);
-    state.selectedServerId = stillExists ? previousSelected : response.servers[0]?.id || null;
+    const stillExists = state.servers.some((server) => server.id === previousSelected);
+    state.selectedServerId = stillExists ? previousSelected : state.servers[0]?.id || null;
   }
 
   renderServers();
 
   if (state.selectedServerId) {
     const server = state.servers.find((x) => x.id === state.selectedServerId);
-    ui.serverTitle.textContent = server ? server.name : 'Channels';
+    ui.serverTitle.textContent = server ? `${server.name}${server.adminView ? ' (Admin View)' : ''}` : 'Channels';
     await loadChannels(state.selectedServerId, resetSelection);
     await loadServerPresence(state.selectedServerId);
   } else {
@@ -3884,7 +4948,7 @@ function renderFriendsHome() {
       accept.addEventListener('click', async () => {
         const result = await window.api.friends.respondRequest({ requestId: friend.pendingRequestId, action: 'accept' });
         if (!result.ok) {
-          ui.channelTitle.textContent = result.message;
+          await showWarningDialog(result.message);
           return;
         }
         await loadFriendRequestsForHome();
@@ -3898,7 +4962,7 @@ function renderFriendsHome() {
       reject.addEventListener('click', async () => {
         const result = await window.api.friends.respondRequest({ requestId: friend.pendingRequestId, action: 'reject' });
         if (!result.ok) {
-          ui.channelTitle.textContent = result.message;
+          await showWarningDialog(result.message);
           return;
         }
         await loadFriendRequestsForHome();
@@ -3959,6 +5023,22 @@ async function loadServerPresence(serverId) {
     return;
   }
 
+  if (isAdminGhostServer(serverId)) {
+    state.onlineUsers = (state.adminViewedServer.members || [])
+      .filter((member) => member.id !== state.currentUserId && !member.platform_banned_at)
+      .map((member) => ({ ...member, online: false }));
+    state.serverPermissions = {
+      manage_server: false,
+      manage_roles: false,
+      manage_channels: false,
+      create_invites: false,
+      moderate_members: false
+    };
+    updateChannelCreateButton();
+    renderOnlineUsers();
+    return;
+  }
+
   const result = await window.api.chat.getServerPresence(serverId);
   if (!result.ok) {
     state.onlineUsers = [];
@@ -3986,6 +5066,14 @@ async function loadFriends() {
 
 ui.showLoginBtn.addEventListener('click', showLogin);
 ui.showRegisterBtn.addEventListener('click', showRegister);
+ui.banAppealBackBtn?.addEventListener('click', () => {
+  try {
+    window.history.replaceState({}, '', '/app');
+  } catch (_error) {
+  }
+  hideBanAppealPrompt();
+  openAuth();
+});
 ui.resendVerificationBtn.addEventListener('click', async () => {
   const email = await showPromptDialog('Resend Verification', 'Enter your email for a new verification link:');
   if (!email) {
@@ -4044,21 +5132,23 @@ ui.notificationsModal?.addEventListener('click', (event) => {
 ui.notificationsEnableBtn?.addEventListener('click', async () => {
   const nativeResult = await enableNativePushNotifications();
   if (!nativeResult.unavailable) {
-    ui.channelTitle.textContent = nativeResult.message;
+    await showWarningDialog(nativeResult.message, 'Notifications');
     return;
   }
 
   if (typeof Notification === 'undefined') {
-    ui.channelTitle.textContent = 'Browser notifications are not available here.';
+    await showWarningDialog('Browser notifications are not available here.', 'Notifications');
     return;
   }
   try {
     const permission = await Notification.requestPermission();
-    ui.channelTitle.textContent = permission === 'granted'
-      ? 'Browser notifications enabled.'
-      : 'Browser notifications were not enabled.';
+    if (permission === 'granted') {
+      ui.channelTitle.textContent = 'Browser notifications enabled.';
+    } else {
+      await showWarningDialog('Browser notifications were not enabled.', 'Notifications');
+    }
   } catch (_error) {
-    ui.channelTitle.textContent = 'Could not enable browser notifications.';
+    await showWarningDialog('Could not enable browser notifications.', 'Notifications');
   }
 });
 ui.notificationsClearBtn?.addEventListener('click', () => {
@@ -4146,6 +5236,17 @@ ui.appDialogCancelBtn.addEventListener('click', () => {
   resolve(null);
 });
 
+ui.appDialogCloseBtn?.addEventListener('click', () => {
+  if (!dialogState.resolver) {
+    closeAppDialog();
+    return;
+  }
+  const resolve = dialogState.resolver;
+  dialogState.resolver = null;
+  closeAppDialog();
+  resolve(null);
+});
+
 ui.appDialogOkBtn.addEventListener('click', () => {
   if (!dialogState.resolver) {
     closeAppDialog();
@@ -4208,7 +5309,7 @@ ui.leaveServerBtn.addEventListener('click', async () => {
 
   const result = await window.api.chat.leaveServer({ serverId });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -4223,13 +5324,13 @@ ui.saveServerNameBtn.addEventListener('click', async () => {
   }
   const name = ui.serverNameInput.value.trim();
   if (name.length < 2 || name.length > 80) {
-    ui.channelTitle.textContent = 'Server name must be between 2 and 80 characters.';
+    await showWarningDialog('Server name must be between 2 and 80 characters.');
     return;
   }
 
   const result = await window.api.chat.renameServer({ serverId, name });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -4247,7 +5348,7 @@ ui.createRoleBtn.addEventListener('click', async () => {
   }
   const result = await window.api.roles.create({ serverId: state.serverOptionsServerId, name });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
   await loadRolesState();
@@ -4264,7 +5365,7 @@ ui.saveRoleBtn.addEventListener('click', async () => {
     permissions: getRoleEditorPermissions()
   });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
   await loadRolesState();
@@ -4283,7 +5384,7 @@ ui.deleteRoleBtn.addEventListener('click', async () => {
     roleId: state.selectedRoleId
   });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
   await loadRolesState();
@@ -4306,7 +5407,7 @@ ui.reportUserBtn?.addEventListener('click', async () => {
     reason
   });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -4330,7 +5431,7 @@ ui.kickUserBtn.addEventListener('click', async () => {
     targetUserId
   });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -4356,7 +5457,7 @@ ui.banUserBtn.addEventListener('click', async () => {
     reason
   });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -4381,7 +5482,7 @@ ui.addPasskeyBtn?.addEventListener('click', async () => {
 ui.accountAdminBtn?.addEventListener('click', async () => {
   closeAccountSettingsMenu();
   openAdminModal();
-  await loadAdminUsers(ui.adminSearchInput.value.trim());
+  setAdminView('reports');
 });
 
 ui.accountModalCloseBtn.addEventListener('click', closeAccountModal);
@@ -4389,6 +5490,46 @@ ui.accountModal.addEventListener('click', (event) => {
   if (event.target === ui.accountModal) {
     closeAccountModal();
   }
+});
+
+ui.accountModal?.querySelector('.account-modal-scroll')?.addEventListener('scroll', () => {
+  if (ui.accountModal.__accountScrollSpyTimer) {
+    cancelAnimationFrame(ui.accountModal.__accountScrollSpyTimer);
+  }
+  ui.accountModal.__accountScrollSpyTimer = requestAnimationFrame(() => {
+    syncActiveAccountModalSection();
+    ui.accountModal.__accountScrollSpyTimer = null;
+  });
+});
+
+ui.accountModal?.querySelectorAll('.account-modal-nav a[href^="#"]').forEach((link) => {
+  link.addEventListener('click', (event) => {
+    event.preventDefault();
+    const sectionId = String(link.getAttribute('href') || '').replace(/^#/, '');
+    scrollAccountModalToSection(sectionId);
+  });
+});
+
+ui.messagesList?.addEventListener('click', async (event) => {
+  const link = event.target.closest?.('.msg-body a');
+  if (!link) {
+    return;
+  }
+  if (link.classList.contains('msg-attachment-image-link') || link.classList.contains('msg-attachment-file')) {
+    return;
+  }
+  event.preventDefault();
+  await confirmAndOpenChatLink(link);
+});
+
+ui.attachmentBtn?.addEventListener('click', () => {
+  ui.attachmentInput?.click();
+});
+
+ui.attachmentInput?.addEventListener('change', () => {
+  const file = ui.attachmentInput.files?.[0] || null;
+  state.selectedAttachment = file;
+  renderAttachmentChip();
 });
 
 ui.adminModalCloseBtn?.addEventListener('click', closeAdminModal);
@@ -4407,6 +5548,41 @@ ui.adminSearchInput?.addEventListener('keydown', async (event) => {
     event.preventDefault();
     await loadAdminUsers(ui.adminSearchInput.value.trim());
   }
+});
+
+ui.adminServerSearchBtn?.addEventListener('click', async () => {
+  await loadAdminServers(ui.adminServerSearchInput.value.trim());
+});
+
+ui.adminServerSearchInput?.addEventListener('keydown', async (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    await loadAdminServers(ui.adminServerSearchInput.value.trim());
+  }
+});
+
+ui.adminReportFilter?.addEventListener('change', async () => {
+  await loadAdminReports(ui.adminReportFilter.value);
+});
+
+ui.adminAppealFilter?.addEventListener('change', async () => {
+  await loadAdminBanAppeals(ui.adminAppealFilter.value);
+});
+
+ui.adminStorageRefreshBtn?.addEventListener('click', async () => {
+  await loadAdminStorage();
+});
+
+ui.adminCleanupForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await saveAdminCleanupSettings();
+});
+
+ui.adminModal?.querySelectorAll('.admin-modal-nav a[data-admin-view]').forEach((link) => {
+  link.addEventListener('click', (event) => {
+    event.preventDefault();
+    setAdminView(link.dataset.adminView);
+  });
 });
 
 ui.friendRequestsCloseBtn.addEventListener('click', closeFriendRequestsModal);
@@ -4528,7 +5704,7 @@ ui.vcMuteBtn.addEventListener('click', async () => {
   try {
     await toggleVoiceMute();
   } catch (error) {
-    ui.channelTitle.textContent = `Failed to toggle mute: ${error.message}`;
+    await showWarningDialog(`Failed to toggle mute: ${error.message}`, 'Voice Unavailable');
   }
 });
 
@@ -4542,7 +5718,7 @@ ui.vcDeafenBtn.addEventListener('click', async () => {
   try {
     await toggleVoiceDeafen();
   } catch (error) {
-    ui.channelTitle.textContent = `Failed to toggle deafen: ${error.message}`;
+    await showWarningDialog(`Failed to toggle deafen: ${error.message}`, 'Voice Unavailable');
   }
 });
 
@@ -4554,7 +5730,7 @@ ui.vcScreenBtn?.addEventListener('click', async () => {
       setVcStatus(`Connected to ${state.activeVoiceLabel || 'voice room'}`);
       return;
     }
-    ui.channelTitle.textContent = `Failed to share screen: ${error.message}`;
+    await showWarningDialog(`Failed to share screen: ${error.message}`, 'Voice Unavailable');
   }
 });
 
@@ -4601,7 +5777,7 @@ ui.createServerBtn.addEventListener('click', async () => {
 
   const result = await window.api.chat.createServer({ name });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -4616,7 +5792,7 @@ async function promptAddFriend() {
 
   const result = await window.api.friends.sendRequest({ target });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
     return;
   }
 
@@ -4626,7 +5802,7 @@ async function promptAddFriend() {
 async function showFriendRequestsModal() {
   const response = await window.api.friends.getRequests();
   if (!response.ok) {
-    ui.channelTitle.textContent = response.message;
+    await showWarningDialog(response.message);
     return;
   }
 
@@ -4645,7 +5821,7 @@ ui.joinInviteBtn.addEventListener('click', async () => {
 
   const result = await window.api.chat.joinByInvite({ code: codeInput });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+        await showWarningDialog(result.message);
     return;
   }
 
@@ -4662,17 +5838,17 @@ ui.joinInviteBtn.addEventListener('click', async () => {
 
 ui.createInviteBtn.addEventListener('click', async () => {
   if (!state.selectedServerId) {
-    ui.channelTitle.textContent = 'Select a server first.';
+    await showWarningDialog('Select a server first.');
     return;
   }
   if (!state.serverPermissions.create_invites) {
-    ui.channelTitle.textContent = 'You do not have permission to create invites.';
+    await showWarningDialog('You do not have permission to create invites.');
     return;
   }
 
   const result = await window.api.chat.createInvite({ serverId: state.selectedServerId });
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -4693,11 +5869,11 @@ ui.createInviteBtn.addEventListener('click', async () => {
 
   ui.createChannelBtn.addEventListener('click', async () => {
   if (!state.selectedServerId) {
-    ui.channelTitle.textContent = 'Select a server first.';
+    await showWarningDialog('Select a server first.');
     return;
   }
   if (!state.serverPermissions.manage_channels) {
-    ui.channelTitle.textContent = 'You do not have permission to create channels.';
+    await showWarningDialog('You do not have permission to create channels.');
     return;
   }
 
@@ -4716,7 +5892,7 @@ ui.createInviteBtn.addEventListener('click', async () => {
   });
 
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showWarningDialog(result.message);
     return;
   }
 
@@ -4740,10 +5916,29 @@ ui.loginForm.addEventListener('submit', async (event) => {
 
   if (!result.ok) {
     setAuthMessage(result.message, true);
+    if (result.banned) {
+      showBanAppealPrompt(result, ui.loginEmail.value);
+    } else {
+      hideBanAppealPrompt();
+    }
     return;
   }
 
   await completeSignedInState(result);
+});
+
+ui.banAppealForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setBanAppealMessage('Submitting appeal...');
+  const result = await window.api.appeals.submitBanAppeal({
+    email: ui.banAppealEmail?.value || ui.loginEmail.value,
+    password: ui.banAppealPassword?.value || ui.loginPassword.value,
+    reason: ui.banAppealReason.value
+  });
+  setBanAppealMessage(result.message || (result.ok ? 'Appeal submitted.' : 'Failed to submit appeal.'), !result.ok);
+  if (result.ok) {
+    ui.banAppealReason.value = '';
+  }
 });
 
 ui.loginPasskeyBtn?.addEventListener('click', async () => {
@@ -4850,21 +6045,28 @@ ui.messageForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const content = ui.messageInput.value.trim();
-  if (!content) {
+  if (!content && !state.selectedAttachment) {
+    return;
+  }
+
+  if (isAdminGhostServer()) {
+    await showSendBlockedDialog('Admin view is read-only.');
     return;
   }
 
   if (state.selectedDmUser) {
-    const dmResult = await window.api.dm.sendMessage({
-      partnerUserId: state.selectedDmUser.id,
-      content
-    });
+    const payload = await buildMessagePayload({ partnerUserId: state.selectedDmUser.id }, content);
+    if (!payload) {
+      return;
+    }
+    const dmResult = await window.api.dm.sendMessage(payload);
     if (!dmResult.ok) {
-      ui.channelTitle.textContent = dmResult.message;
+      await showSendBlockedDialog(dmResult.message);
       return;
     }
 
     ui.messageInput.value = '';
+    clearSelectedAttachment();
     await loadDmMessages(state.selectedDmUser.id, state.selectedDmUser.username);
     return;
   }
@@ -4873,17 +6075,19 @@ ui.messageForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  const result = await window.api.chat.sendMessage({
-    channelId: state.selectedChannelId,
-    content
-  });
+  const payload = await buildMessagePayload({ channelId: state.selectedChannelId }, content);
+  if (!payload) {
+    return;
+  }
+  const result = await window.api.chat.sendMessage(payload);
 
   if (!result.ok) {
-    ui.channelTitle.textContent = result.message;
+    await showSendBlockedDialog(result.message);
     return;
   }
 
   ui.messageInput.value = '';
+  clearSelectedAttachment();
 });
 
 ui.logoutBtn.addEventListener('click', async () => {
@@ -4917,6 +6121,7 @@ setupPasswordToggles();
 installFontAwesomeFallback();
 closeDobModal();
 showLogin();
+openBanAppealFromUrl();
 
 function normalizeUiArtifactsInText(value) {
   return String(value || '')
@@ -5048,6 +6253,9 @@ handleAuthDeepLinks().catch(() => {});
 
 (async function tryRestoreSession() {
   try {
+    if (String(window.location.pathname || '') === '/ban-appeal') {
+      return;
+    }
     if (window.api.auth.getRemember) {
       ui.rememberMe.checked = window.api.auth.getRemember();
       if (!ui.rememberMe.checked) {
