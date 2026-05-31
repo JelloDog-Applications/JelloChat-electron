@@ -29,7 +29,7 @@ jobs:
         run: npm run build:win
         env:
           APP_PUBLIC_URL: https://chat.jellodog.com
-          GH_TOKEN: ${{ secrets.TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

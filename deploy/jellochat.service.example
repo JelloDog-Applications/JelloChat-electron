@@ -1,0 +1,16 @@
+[Unit]
+Description=JelloChat web server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/JelloChat-electron
+EnvironmentFile=/home/ubuntu/JelloChat-electron/.env
+ExecStart=/usr/bin/npm run web
+Restart=always
+RestartSec=5
+User=ubuntu
+Group=ubuntu
+
+[Install]
+WantedBy=multi-user.target
