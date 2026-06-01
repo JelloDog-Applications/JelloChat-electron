@@ -10,17 +10,18 @@ AutoName: JelloChat
 
 RepoType: git
 Repo: https://github.com/JelloDog-Applications/JelloChat-electron.git
+Binaries: https://github.com/JelloDog-Applications/JelloChat-electron/releases/download/v%v/JelloChat-fdroid-signed.apk
 
 Builds:
   - versionName: 1.1.3
     versionCode: 3
-    commit: v1.1.3
-    subdir: android
+    commit: 6a3a50c6e9ed6f115e76ddf51e0e2ba3044146c0
+    subdir: android/app
     sudo:
       - apt-get update
       - apt-get install -y npm
     init:
-      - cd .. && npm ci --omit=dev
+      - cd ../.. && npm ci --omit=dev
       - npm run prepare:fdroid
       - find node_modules -mindepth 1 -maxdepth 1 ! -name '@capacitor' -exec rm -rf
         {} +
@@ -28,9 +29,9 @@ Builds:
         rm -rf {} +
     gradle:
       - fdroid
-    output: app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 CurrentVersion: 1.1.3
 CurrentVersionCode: 3
+AllowedAPKSigningKeys: 16461a56c7e0796dd8c03340effb399e9b5545aaed2bc0c0d19b3866c23bb35e

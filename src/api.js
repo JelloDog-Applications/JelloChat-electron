@@ -38,9 +38,19 @@
     }
   }
 
-  function apiBase() {
+  function isLoopbackHost(hostname) {
+    return ['localhost', '127.0.0.1', '::1'].includes(String(hostname || '').toLowerCase());
+  }
+
+  function isAppShell() {
+    const protocol = String(location.protocol || '');
     const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
-    if (!isNative && location.protocol !== 'file:') {
+    const isCapacitorLocalhost = protocol === 'https:' && isLoopbackHost(location.hostname);
+    return isNative || protocol === 'file:' || isCapacitorLocalhost;
+  }
+
+  function apiBase() {
+    if (!isAppShell()) {
       return '';
     }
     const fromStorage = localStorage.getItem(API_BASE_KEY);
@@ -98,7 +108,7 @@
   }
 
   function wsBaseUrl() {
-    if (location.protocol === 'file:') {
+    if (isAppShell()) {
       const httpBase = apiBase();
       const wsBase = httpBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
       return `${wsBase}/ws`;

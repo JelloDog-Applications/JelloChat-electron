@@ -5965,8 +5965,22 @@ async function showPrivacyPolicyDialog() {
   await showMessageDialog('Privacy Policy', html, { html: true });
 }
 
+function isLoopbackHost(hostname) {
+  return ['localhost', '127.0.0.1', '::1'].includes(String(hostname || '').toLowerCase());
+}
+
+function isLocalAppShell() {
+  if (typeof location === 'undefined') {
+    return false;
+  }
+  const protocol = String(location.protocol || '');
+  const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
+  const isCapacitorLocalhost = protocol === 'https:' && isLoopbackHost(location.hostname);
+  return isNative || protocol === 'file:' || isCapacitorLocalhost;
+}
+
 function getPublicPageUrl(pathname) {
-  if (typeof location !== 'undefined' && location.protocol !== 'file:') {
+  if (!isLocalAppShell()) {
     return pathname;
   }
   const base = String(localStorage?.getItem('jellochat_api_base') || 'https://chat.jellodog.com').trim().replace(/\/+$/, '');
@@ -6181,7 +6195,7 @@ function setupAndroidAppPrompt() {
   const isAndroid = userAgent.includes('android');
   const isAppWebView = userAgent.includes('jellochatandroidapp');
   const canPromptHere = ['http:', 'https:'].includes(window.location.protocol);
-  if (!isAndroid || isAppWebView || !canPromptHere) {
+  if (!isAndroid || isAppWebView || isLocalAppShell() || !canPromptHere) {
     return;
   }
 
@@ -6213,7 +6227,7 @@ function setupAndroidAppPrompt() {
 
   openBtn.addEventListener('click', () => {
     rememberChoice();
-    window.location.href = '/download/android';
+    window.location.href = getPublicPageUrl('/download/android');
   });
 
   window.setTimeout(() => {
@@ -6223,7 +6237,7 @@ function setupAndroidAppPrompt() {
 
 setupAndroidAppPrompt();
 
-if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+if ('serviceWorker' in navigator && window.location.protocol === 'https:' && !isLocalAppShell()) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js').catch(() => {});
   });

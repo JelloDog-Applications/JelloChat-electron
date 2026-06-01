@@ -29,9 +29,13 @@ android/local.properties
 
 # Android signing and proprietary service files
 *.jks
+*.jks.base64
 *.keystore
+*.keystore.base64
 *.p12
+*.p12.base64
 *.pfx
+*.pfx.base64
 key.properties
 **/google-services.json
 
