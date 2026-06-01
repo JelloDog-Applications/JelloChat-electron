@@ -8,8 +8,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.webkit.PermissionRequest;
 import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.webkit.WebChromeClient;
 
 import androidx.core.app.ActivityCompat;
@@ -28,14 +26,6 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getBridge().getWebView().setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                flushPendingAuthUrl();
-            }
-        });
-
         getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
@@ -50,6 +40,7 @@ public class MainActivity extends BridgeActivity {
         appendAppUserAgentMarker();
         ensureAudioPermission();
         handleAuthIntent(getIntent());
+        getBridge().getWebView().postDelayed(this::flushPendingAuthUrl, 500);
     }
 
     @Override
