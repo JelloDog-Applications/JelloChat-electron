@@ -14,9 +14,9 @@ Binaries:
   https://github.com/JelloDog-Applications/JelloChat-electron/releases/download/v%v/JelloChat-fdroid-signed.apk
 
 Builds:
-  - versionName: 1.1.9
-    versionCode: 9
-    commit: 688d6a3bae92d7f23d1b42358da8b776d695838c
+  - versionName: 1.1.10
+    versionCode: 10
+    commit: adf1f172c203353cc0341a14edbf45edb4d1c408
     subdir: android/app
     sudo:
       - apt-get update
@@ -36,5 +36,5 @@ AllowedAPKSigningKeys: 16461a56c7e0796dd8c03340effb399e9b5545aaed2bc0c0d19b3866c
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 1.1.9
-CurrentVersionCode: 9
+CurrentVersion: 1.1.10
+CurrentVersionCode: 10
