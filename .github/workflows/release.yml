@@ -77,6 +77,10 @@ jobs:
           ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
         run: |
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner" sign \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled false \
+            --v4-signing-enabled false \
             --ks dist/release/android-release.jks \
             --ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS" \
             --ks-pass "pass:$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
