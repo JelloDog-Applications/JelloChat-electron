@@ -10,13 +10,13 @@ AutoName: JelloChat
 
 RepoType: git
 Repo: https://github.com/JelloDog-Applications/JelloChat-electron.git
-Binaries:
+Binaries: 
   https://github.com/JelloDog-Applications/JelloChat-electron/releases/download/v%v/JelloChat-fdroid-signed.apk
 
 Builds:
-  - versionName: 1.1.7
-    versionCode: 7
-    commit: 45ce5a72f9de89ad99febb1e7249ba238f992aa3
+  - versionName: 1.1.8
+    versionCode: 8
+    commit: aca85fe8abac9f8021d8c8937e14ccfcdaf76f2c
     subdir: android/app
     sudo:
       - apt-get update
@@ -36,5 +36,5 @@ AllowedAPKSigningKeys: 16461a56c7e0796dd8c03340effb399e9b5545aaed2bc0c0d19b3866c
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 1.1.7
-CurrentVersionCode: 7
+CurrentVersion: 1.1.8
+CurrentVersionCode: 8
