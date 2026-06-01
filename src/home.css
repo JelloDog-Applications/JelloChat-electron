@@ -263,6 +263,38 @@ h1 {
   line-height: 1;
 }
 
+.source-callout {
+  display: grid;
+  gap: 6px;
+  max-width: 520px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(115, 167, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(115, 167, 255, 0.08);
+  animation: riseIn 780ms 600ms ease both;
+}
+
+.source-callout strong {
+  color: var(--text);
+  font-size: 0.96rem;
+}
+
+.source-callout span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.source-callout a {
+  color: var(--blue);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.source-callout a:hover {
+  text-decoration: underline;
+}
+
 .app-preview {
   position: relative;
   display: grid;
