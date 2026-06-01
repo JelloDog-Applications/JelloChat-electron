@@ -16,6 +16,17 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    flavorDimensions "distribution"
+    productFlavors {
+        standard {
+            dimension "distribution"
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
+        }
+        fdroid {
+            dimension "distribution"
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
@@ -43,12 +54,3 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
-
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
-}

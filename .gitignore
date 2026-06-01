@@ -2,6 +2,40 @@ node_modules/
 dist/
 out/
 build/
+coverage/
+
+# Runtime uploads and local databases
 uploads/
-.env
 *.db
+*.sqlite
+*.sqlite3
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Android/Gradle local build outputs
+android/.gradle/
+android/**/build/
+android/app/release/
+android/local.properties
+
+# Android signing and proprietary service files
+*.jks
+*.keystore
+*.p12
+*.pfx
+key.properties
+**/google-services.json
+
+# Packaged release artifacts
+*.apk
+*.aab
+*.apks

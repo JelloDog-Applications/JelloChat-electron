@@ -24,7 +24,6 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/assets/app-icon-256.png" sizes="256x256" type="image/png" />
     <link rel="apple-touch-icon" href="/assets/app-icon-256.png" />
-    <script src="https://kit.fontawesome.com/8f09e2b497.js" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="./styles.css?v=20260520-standing-meter" />
   </head>
   <body>
@@ -97,6 +96,7 @@
           <button id="resend-verification-btn" type="button"><i class="fa-solid fa-envelope-circle-check" aria-hidden="true"></i><span>Resend Verification</span></button>
           <button id="forgot-password-btn" type="button"><i class="fa-solid fa-unlock-keyhole" aria-hidden="true"></i><span>Forgot Password</span></button>
           <button id="verify-token-btn" type="button"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Verify Token</span></button>
+          <button id="server-url-btn" type="button"><i class="fa-solid fa-server" aria-hidden="true"></i><span>Server URL</span></button>
         </div>
 
         <p id="auth-message" class="message"></p>
@@ -580,8 +580,8 @@
     </div>
 
     <script src="./api.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.15.7/dist/livekit-client.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+    <script src="./vendor/livekit-client.umd.min.js"></script>
+    <script src="./vendor/marked.min.js"></script>
     <script src="./renderer.js?v=20260520-standing-meter"></script>
   </body>
 </html>

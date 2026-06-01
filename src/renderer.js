@@ -34,6 +34,7 @@ const ui = {
   resendVerificationBtn: document.getElementById('resend-verification-btn'),
   forgotPasswordBtn: document.getElementById('forgot-password-btn'),
   verifyTokenBtn: document.getElementById('verify-token-btn'),
+  serverUrlBtn: document.getElementById('server-url-btn'),
   serversList: document.getElementById('servers-list'),
   serverOptionsMenu: document.getElementById('server-options-menu'),
   serverTabGeneral: document.getElementById('server-tab-general'),
@@ -601,6 +602,7 @@ function getIconFallback(iconClass = '', label = '') {
     'fa-phone-slash': 'end',
     'fa-plus': '+',
     'fa-right-to-bracket': 'in',
+    'fa-server': 'srv',
     'fa-shield-halved': 'ok',
     'fa-stop': 'stop',
     'fa-trash': 'del',
@@ -619,6 +621,7 @@ function getIconFallback(iconClass = '', label = '') {
 }
 
 function installFontAwesomeFallback() {
+  document.body?.classList.add('fa-fallback-icons');
   const applyFallbackLabels = () => {
     for (const icon of document.querySelectorAll('i.fa-solid')) {
       if (!icon.dataset.fallback) {
@@ -5073,6 +5076,21 @@ ui.banAppealBackBtn?.addEventListener('click', () => {
   }
   hideBanAppealPrompt();
   openAuth();
+});
+ui.serverUrlBtn?.addEventListener('click', async () => {
+  const key = 'jellochat_api_base';
+  const current = String(localStorage?.getItem(key) || 'https://chat.jellodog.com').trim();
+  const next = await showPromptDialog('Server URL', 'Enter the JelloChat server URL:', current);
+  if (!next) {
+    return;
+  }
+  const normalized = String(next).trim().replace(/\/+$/, '');
+  if (!/^https:\/\/[^/\s]+/i.test(normalized)) {
+    setAuthMessage('Use a valid HTTPS server URL.', true);
+    return;
+  }
+  localStorage.setItem(key, normalized);
+  setAuthMessage(`Server URL set to ${normalized}`);
 });
 ui.resendVerificationBtn.addEventListener('click', async () => {
   const email = await showPromptDialog('Resend Verification', 'Enter your email for a new verification link:');

@@ -81,3 +81,7 @@ psql -U postgres -d jellochat -f .\sql\schema.sql
 ## Important note
 
 The seed data creates one server (`Jello HQ`) and three channels. Newly registered users are auto-added to `Jello HQ`.
+
+## License
+
+JelloChat is licensed under the GNU Affero General Public License v3.0 or later. See [LICENSE](./LICENSE).

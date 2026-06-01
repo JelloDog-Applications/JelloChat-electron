@@ -19,7 +19,7 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private static final int AUDIO_PERMISSION_REQUEST_CODE = 1001;
-    private static final String APP_WEB_BASE_URL = "http://192.168.1.162:3000";
+    private static final String PUBLIC_WEB_HOST = "chat.jellodog.com";
     private static final String APP_USER_AGENT_MARKER = "JelloChatAndroidApp";
     private String pendingAuthUrl;
     private boolean authNavigationHandled;
@@ -115,22 +115,36 @@ public class MainActivity extends BridgeActivity {
         }
 
         if ("jellochat".equalsIgnoreCase(scheme) && "auth".equalsIgnoreCase(host)) {
-            if ("/reset-password".equals(path)) {
-                return APP_WEB_BASE_URL + path + (query == null || query.isEmpty() ? "" : "?" + query);
-            }
-            if ("/verify-email".equals(path)) {
-                return APP_WEB_BASE_URL + path + (query == null || query.isEmpty() ? "" : "?" + query);
+            if (isAuthPath(path)) {
+                return buildInAppUrl(path, query);
             }
             return null;
         }
 
-        if (("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
-                && "192.168.1.162".equalsIgnoreCase(host)
-                && ("/reset-password".equals(path) || "/verify-email".equals(path))) {
-            return data.toString();
+        if ("https".equalsIgnoreCase(scheme)
+                && PUBLIC_WEB_HOST.equalsIgnoreCase(host)
+                && isAuthPath(path)) {
+            return buildInAppUrl(path, query);
         }
 
         return null;
+    }
+
+    private boolean isAuthPath(String path) {
+        return "/reset-password".equals(path)
+                || "/verify-email".equals(path)
+                || "/ban-appeal".equals(path);
+    }
+
+    private String buildInAppUrl(String path, String query) {
+        String currentUrl = getBridge().getWebView().getUrl();
+        Uri current = Uri.parse(currentUrl == null || currentUrl.isEmpty() ? "https://localhost" : currentUrl);
+        return current.buildUpon()
+                .path(path)
+                .encodedQuery(query == null || query.isEmpty() ? null : query)
+                .fragment(null)
+                .build()
+                .toString();
     }
 
     private void flushPendingAuthUrl() {

@@ -7,7 +7,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="${usesCleartextTraffic}"
         android:theme="@style/AppTheme">
 
         <activity
@@ -31,6 +31,7 @@
 
                 <data android:scheme="jellochat" android:host="auth" android:pathPrefix="/reset-password" />
                 <data android:scheme="jellochat" android:host="auth" android:pathPrefix="/verify-email" />
+                <data android:scheme="jellochat" android:host="auth" android:pathPrefix="/ban-appeal" />
             </intent-filter>
 
             <intent-filter>
@@ -39,8 +40,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="http" android:host="192.168.1.162" android:port="3000" android:pathPrefix="/reset-password" />
-                <data android:scheme="http" android:host="192.168.1.162" android:port="3000" android:pathPrefix="/verify-email" />
+                <data android:scheme="https" android:host="chat.jellodog.com" android:pathPrefix="/reset-password" />
+                <data android:scheme="https" android:host="chat.jellodog.com" android:pathPrefix="/verify-email" />
+                <data android:scheme="https" android:host="chat.jellodog.com" android:pathPrefix="/ban-appeal" />
             </intent-filter>
 
         </activity>

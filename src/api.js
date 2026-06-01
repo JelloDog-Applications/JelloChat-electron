@@ -39,7 +39,8 @@
   }
 
   function apiBase() {
-    if (location.protocol !== 'file:') {
+    const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
+    if (!isNative && location.protocol !== 'file:') {
       return '';
     }
     const fromStorage = localStorage.getItem(API_BASE_KEY);
