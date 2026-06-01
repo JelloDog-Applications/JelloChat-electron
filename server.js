@@ -33,6 +33,46 @@ const CURRENT_PRIVACY_VERSION = '2026-05-20-protections';
 
 const app = express();
 app.disable('x-powered-by');
+
+const DEFAULT_ALLOWED_APP_ORIGINS = [
+  'https://localhost',
+  'capacitor://localhost',
+  'ionic://localhost'
+];
+
+function getAllowedCorsOrigins() {
+  const configured = String(process.env.APP_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const publicUrl = String(process.env.APP_PUBLIC_URL || '').trim();
+  if (publicUrl) {
+    try {
+      configured.push(new URL(publicUrl).origin);
+    } catch (_error) {
+    }
+  }
+  return new Set([...DEFAULT_ALLOWED_APP_ORIGINS, ...configured]);
+}
+
+app.use((req, res, next) => {
+  const origin = String(req.headers.origin || '');
+  if (origin && getAllowedCorsOrigins().has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+
+  next();
+});
+
 app.use(express.json({ limit: '64kb' }));
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
