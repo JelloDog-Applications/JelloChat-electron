@@ -5049,13 +5049,13 @@ ui.banAppealBackBtn?.addEventListener('click', () => {
 });
 ui.serverUrlBtn?.addEventListener('click', async () => {
   const key = 'jellochat_api_base';
-  const current = String(localStorage?.getItem(key) || 'https://chat.jellodog.com').trim();
+  const current = getConfiguredServerBase();
   const next = await showPromptDialog('Server URL', 'Enter the JelloChat server URL:', current);
   if (!next) {
     return;
   }
-  const normalized = String(next).trim().replace(/\/+$/, '');
-  if (!/^https:\/\/[^/\s]+/i.test(normalized)) {
+  const normalized = normalizeRemoteBase(next);
+  if (!normalized || !/^https:\/\/[^/\s]+/i.test(normalized)) {
     setAuthMessage('Use a valid HTTPS server URL.', true);
     return;
   }
@@ -5933,7 +5933,7 @@ async function fetchLegalDoc(path) {
     return fn ? await fn() : null;
   }
   try {
-    const base = typeof location !== 'undefined' && location.protocol === 'file:' ? (localStorage?.getItem('jellochat_api_base') || 'https://chat.jellodog.com') : '';
+    const base = isLocalAppShell() ? getConfiguredServerBase() : '';
     const res = await fetch(`${base}/api/legal/${path}`);
     return await res.json();
   } catch (e) {
@@ -5979,11 +5979,37 @@ function isLocalAppShell() {
   return isNative || protocol === 'file:' || isCapacitorLocalhost;
 }
 
+function normalizeRemoteBase(value) {
+  const raw = String(value || '').trim().replace(/\/+$/, '');
+  if (!raw) {
+    return '';
+  }
+  try {
+    const url = new URL(raw);
+    if (isLoopbackHost(url.hostname)) {
+      return '';
+    }
+    return url.origin;
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getConfiguredServerBase() {
+  const key = 'jellochat_api_base';
+  const stored = normalizeRemoteBase(localStorage?.getItem(key));
+  if (stored) {
+    return stored;
+  }
+  localStorage?.removeItem(key);
+  return 'https://chat.jellodog.com';
+}
+
 function getPublicPageUrl(pathname) {
   if (!isLocalAppShell()) {
     return pathname;
   }
-  const base = String(localStorage?.getItem('jellochat_api_base') || 'https://chat.jellodog.com').trim().replace(/\/+$/, '');
+  const base = getConfiguredServerBase();
   return `${base}${pathname}`;
 }
 

@@ -49,12 +49,32 @@
     return isNative || protocol === 'file:' || isCapacitorLocalhost;
   }
 
+  function normalizeRemoteBase(value) {
+    const raw = String(value || '').trim().replace(/\/+$/, '');
+    if (!raw) {
+      return '';
+    }
+    try {
+      const url = new URL(raw);
+      if (isLoopbackHost(url.hostname)) {
+        return '';
+      }
+      return url.origin;
+    } catch (_error) {
+      return '';
+    }
+  }
+
   function apiBase() {
     if (!isAppShell()) {
       return '';
     }
-    const fromStorage = localStorage.getItem(API_BASE_KEY);
-    return fromStorage || DEFAULT_API_BASE;
+    const fromStorage = normalizeRemoteBase(localStorage.getItem(API_BASE_KEY));
+    if (fromStorage) {
+      return fromStorage;
+    }
+    localStorage.removeItem(API_BASE_KEY);
+    return DEFAULT_API_BASE;
   }
 
   async function request(method, path, body) {
