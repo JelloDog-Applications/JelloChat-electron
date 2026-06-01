@@ -58,8 +58,8 @@ The `Release` GitHub Actions workflow builds the F-Droid APK when a tag matching
 `v*` is pushed, or when it is run manually from the Actions tab.
 
 ```powershell
-git tag v1.1.2
-git push origin v1.1.2
+git tag v1.1.3
+git push origin v1.1.3
 ```
 
 By default, the workflow uploads an unsigned APK and `SHA256SUMS.txt`. That is
