@@ -1,5 +1,5 @@
 Categories:
-  - Internet
+  - Messaging
 License: AGPL-3.0-or-later
 AuthorName: JelloChat
 WebSite: https://chat.jellodog.com
@@ -7,25 +7,6 @@ SourceCode: https://github.com/JelloDog-Applications/JelloChat-electron
 IssueTracker: https://github.com/JelloDog-Applications/JelloChat-electron/issues
 
 AutoName: JelloChat
-Summary: Open source chat for servers, friends, DMs, and voice.
-Description: |-
-    JelloChat is an open source chat system for communities and friends.
-
-    Features:
-
-    * Servers and channels
-    * Direct messages
-    * Friend requests
-    * Voice channels
-    * Screen sharing
-    * Roles and moderation tools
-    * Attachments
-    * Admin tools
-    * Self-hostable server URL support
-
-    The Android build is prepared for F-Droid distribution without Google Play
-    Services, Firebase, or remote CDN JavaScript. JelloChat is licensed under
-    AGPL-3.0-or-later.
 
 RepoType: git
 Repo: https://github.com/JelloDog-Applications/JelloChat-electron.git
@@ -41,8 +22,10 @@ Builds:
     init:
       - cd .. && npm ci --omit=dev
       - npm run prepare:fdroid
-      - find node_modules -mindepth 1 -maxdepth 1 ! -name '@capacitor' -exec rm -rf {} +
-      - find node_modules/@capacitor -mindepth 1 -maxdepth 1 ! -name android -exec rm -rf {} +
+      - find node_modules -mindepth 1 -maxdepth 1 ! -name '@capacitor' -exec rm -rf
+        {} +
+      - find node_modules/@capacitor -mindepth 1 -maxdepth 1 ! -name android -exec
+        rm -rf {} +
     gradle:
       - fdroid
     output: app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk
