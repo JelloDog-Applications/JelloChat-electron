@@ -45,6 +45,7 @@ Builds:
       - find node_modules/@capacitor -mindepth 1 -maxdepth 1 ! -name android -exec rm -rf {} +
     gradle:
       - fdroid
+    output: app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
