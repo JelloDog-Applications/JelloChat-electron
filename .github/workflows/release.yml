@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to create or update, for example v1.1.0'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark the GitHub release as a prerelease'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  fdroid-android:
+    name: Build F-Droid Android APK
+    runs-on: ubuntu-latest
+    env:
+      HAS_ANDROID_SIGNING: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 != '' && secrets.ANDROID_RELEASE_KEY_ALIAS != '' && secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD != '' && secrets.ANDROID_RELEASE_KEY_PASSWORD != '' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare F-Droid Android project
+        run: npm run prepare:fdroid
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Build F-Droid release APK
+        working-directory: android
+        run: ./gradlew assembleFdroidRelease
+
+      - name: Collect release artifacts
+        run: |
+          mkdir -p dist/release
+          cp android/app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk dist/release/JelloChat-fdroid-unsigned.apk
+          sha256sum dist/release/JelloChat-fdroid-unsigned.apk > dist/release/SHA256SUMS.txt
+
+      - name: Decode Android signing keystore
+        if: ${{ env.HAS_ANDROID_SIGNING == 'true' }}
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > dist/release/android-release.jks
+
+      - name: Sign APK
+        if: ${{ env.HAS_ANDROID_SIGNING == 'true' }}
+        env:
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner" sign \
+            --ks dist/release/android-release.jks \
+            --ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS" \
+            --ks-pass "pass:$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
+            --key-pass "pass:$ANDROID_RELEASE_KEY_PASSWORD" \
+            --out dist/release/JelloChat-fdroid-signed.apk \
+            dist/release/JelloChat-fdroid-unsigned.apk
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner" verify --verbose dist/release/JelloChat-fdroid-signed.apk
+          sha256sum dist/release/JelloChat-fdroid-signed.apk >> dist/release/SHA256SUMS.txt
+          rm -f dist/release/android-release.jks
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: jellochat-fdroid-release
+          path: dist/release/*
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: JelloChat ${{ github.event.inputs.tag_name || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+          generate_release_notes: true
+          files: dist/release/*

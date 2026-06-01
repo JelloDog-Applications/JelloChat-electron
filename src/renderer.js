@@ -1440,52 +1440,6 @@ async function sendBrowserNotification(title, body) {
   }
 }
 
-function getNativePushNotificationsPlugin() {
-  return window.Capacitor?.Plugins?.PushNotifications || null;
-}
-
-async function enableNativePushNotifications() {
-  const push = getNativePushNotificationsPlugin();
-  if (!push) {
-    return { ok: false, unavailable: true, message: 'Android app notifications are not available here.' };
-  }
-
-  let permission = await push.checkPermissions();
-  if (permission.receive === 'prompt' || permission.receive === 'prompt-with-rationale') {
-    permission = await push.requestPermissions();
-  }
-
-  if (permission.receive !== 'granted') {
-    return { ok: false, message: 'Android app notifications were not enabled.' };
-  }
-
-  await push.register();
-
-  return { ok: true, message: 'Android app notifications enabled.' };
-}
-
-function setupNativePushNotificationListeners() {
-  const push = getNativePushNotificationsPlugin();
-  if (!push) {
-    return;
-  }
-
-  push.addListener('registration', (token) => {
-    try {
-      window.localStorage.setItem('jellochat_push_token', token.value || '');
-    } catch (_error) {
-    }
-  });
-
-  push.addListener('registrationError', (error) => {
-    pushNotificationItem('Notifications', error?.error || 'Could not register this device for push notifications.');
-  });
-
-  push.addListener('pushNotificationReceived', (notification) => {
-    notifyUser(notification.title || 'JelloChat', notification.body || '');
-  });
-}
-
 function notifyUser(title, body) {
   pushNotificationItem(title, body);
   sendBrowserNotification(title, body).catch(() => {});
@@ -5148,12 +5102,6 @@ ui.notificationsModal?.addEventListener('click', (event) => {
   }
 });
 ui.notificationsEnableBtn?.addEventListener('click', async () => {
-  const nativeResult = await enableNativePushNotifications();
-  if (!nativeResult.unavailable) {
-    await showWarningDialog(nativeResult.message, 'Notifications');
-    return;
-  }
-
   if (typeof Notification === 'undefined') {
     await showWarningDialog('Browser notifications are not available here.', 'Notifications');
     return;
@@ -6258,7 +6206,6 @@ function setupAndroidAppPrompt() {
 }
 
 setupAndroidAppPrompt();
-setupNativePushNotificationListeners();
 
 if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
   window.addEventListener('load', () => {

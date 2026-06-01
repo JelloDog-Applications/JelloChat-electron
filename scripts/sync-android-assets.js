@@ -19,13 +19,20 @@ for (const file of filesToCopy) {
 const vendorSrcDir = path.join(srcDir, 'vendor');
 const vendorAndroidDir = path.join(androidPublicDir, 'vendor');
 if (fs.existsSync(vendorSrcDir)) {
-  fs.mkdirSync(vendorAndroidDir, { recursive: true });
-  for (const file of fs.readdirSync(vendorSrcDir)) {
-    const from = path.join(vendorSrcDir, file);
-    const to = path.join(vendorAndroidDir, file);
-    if (fs.statSync(from).isFile()) {
+  copyDirectory(vendorSrcDir, vendorAndroidDir, 'vendor');
+}
+
+function copyDirectory(fromDir, toDir, label) {
+  fs.mkdirSync(toDir, { recursive: true });
+  for (const entry of fs.readdirSync(fromDir)) {
+    const from = path.join(fromDir, entry);
+    const to = path.join(toDir, entry);
+    const nextLabel = `${label}/${entry}`;
+    if (fs.statSync(from).isDirectory()) {
+      copyDirectory(from, to, nextLabel);
+    } else {
       fs.copyFileSync(from, to);
-      console.log(`Synced vendor/${file}`);
+      console.log(`Synced ${nextLabel}`);
     }
   }
 }

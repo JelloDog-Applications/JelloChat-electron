@@ -1,0 +1,18 @@
+JelloChat is an open source chat system for communities and friends.
+
+Features:
+
+- Servers and channels
+- Direct messages
+- Friend requests
+- Voice channels
+- Screen sharing
+- Roles and moderation tools
+- Attachments
+- Admin tools
+- Self-hostable server URL support
+
+The Android build is prepared for F-Droid distribution without Google Play Services, Firebase, or remote CDN JavaScript. JelloChat is licensed under AGPL-3.0-or-later.
+
+Source code:
+https://github.com/JelloDog-Applications/JelloChat-electron
