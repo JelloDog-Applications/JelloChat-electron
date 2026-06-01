@@ -78,7 +78,7 @@ jobs:
         run: |
           "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner" sign \
             --v1-signing-enabled true \
-            --v2-signing-enabled true \
+            --v2-signing-enabled false \
             --v3-signing-enabled false \
             --v4-signing-enabled false \
             --ks dist/release/android-release.jks \
