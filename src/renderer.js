@@ -621,7 +621,6 @@ function getIconFallback(iconClass = '', label = '') {
 }
 
 function installFontAwesomeFallback() {
-  document.body?.classList.add('fa-fallback-icons');
   const applyFallbackLabels = () => {
     for (const icon of document.querySelectorAll('i.fa-solid')) {
       if (!icon.dataset.fallback) {
@@ -630,6 +629,23 @@ function installFontAwesomeFallback() {
     }
   };
   applyFallbackLabels();
+  const enableFallbackIfNeeded = () => {
+    const testIcon = document.querySelector('i.fa-solid');
+    if (!testIcon) {
+      return;
+    }
+    const fontFamily = String(window.getComputedStyle(testIcon, '::before').fontFamily || '');
+    if (!/Font Awesome/i.test(fontFamily)) {
+      document.body?.classList.add('fa-fallback-icons');
+    } else {
+      document.body?.classList.remove('fa-fallback-icons');
+    }
+  };
+  if (document.fonts?.ready) {
+    document.fonts.ready.then(enableFallbackIfNeeded).catch(enableFallbackIfNeeded);
+  } else {
+    window.setTimeout(enableFallbackIfNeeded, 500);
+  }
 }
 
 
