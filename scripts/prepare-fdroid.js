@@ -9,8 +9,8 @@ function writeJson(filePath, value) {
 
 const capacitorConfigPath = path.join(rootDir, 'android', 'app', 'src', 'main', 'assets', 'capacitor.config.json');
 writeJson(capacitorConfigPath, {
-  appId: 'com.jellochat.app',
-  appName: 'JelloChat',
+  appId: 'com.jellodog.chat',
+  appName: 'JelloDog Chat',
   webDir: 'src',
   bundledWebRuntime: false
 });

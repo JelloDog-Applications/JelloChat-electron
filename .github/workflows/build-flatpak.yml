@@ -62,19 +62,19 @@ jobs:
             --repo=dist/flatpak-repo \
             --install-deps-from=flathub \
             dist/flatpak-build \
-            flatpak/com.jellochat.app.yml
+            flatpak/com.jellodog.chat.yml
 
       - name: Export Flatpak bundle
         run: |
           mkdir -p dist/artifacts
           flatpak build-bundle \
             dist/flatpak-repo \
-            dist/artifacts/JelloChat.flatpak \
-            com.jellochat.app
+            dist/artifacts/JelloDogChat.flatpak \
+            com.jellodog.chat
 
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v6
         with:
-          name: jellochat-flatpak
-          path: dist/artifacts/JelloChat.flatpak
+          name: jellodog-chat-flatpak
+          path: dist/artifacts/JelloDogChat.flatpak
           if-no-files-found: error

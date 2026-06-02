@@ -1,4 +1,4 @@
-app-id: com.jellochat.app
+app-id: com.jellodog.chat
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
@@ -22,6 +22,6 @@ modules:
       - install -Dm755 metadata/jellochat-flatpak /app/bin/jellochat
       - mkdir -p /app/jellochat
       - cp -a app/jellochat/. /app/jellochat/
-      - install -Dm644 metadata/com.jellochat.app.desktop /app/share/applications/com.jellochat.app.desktop
-      - install -Dm644 metadata/com.jellochat.app.metainfo.xml /app/share/metainfo/com.jellochat.app.metainfo.xml
-      - install -Dm644 icons/hicolor/256x256/apps/com.jellochat.app.png /app/share/icons/hicolor/256x256/apps/com.jellochat.app.png
+      - install -Dm644 metadata/com.jellodog.chat.desktop /app/share/applications/com.jellodog.chat.desktop
+      - install -Dm644 metadata/com.jellodog.chat.metainfo.xml /app/share/metainfo/com.jellodog.chat.metainfo.xml
+      - install -Dm644 icons/hicolor/256x256/apps/com.jellodog.chat.png /app/share/icons/hicolor/256x256/apps/com.jellodog.chat.png

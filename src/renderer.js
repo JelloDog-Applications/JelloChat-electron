@@ -188,10 +188,22 @@ const ui = {
   appDialogCancelBtn: document.getElementById('app-dialog-cancel-btn'),
   appDialogOkBtn: document.getElementById('app-dialog-ok-btn'),
   appDialogCloseBtn: document.getElementById('app-dialog-close-btn'),
+  serverUrlModal: document.getElementById('server-url-modal'),
+  serverUrlCloseBtn: document.getElementById('server-url-close-btn'),
+  serverUrlCurrent: document.getElementById('server-url-current'),
+  serverUrlForm: document.getElementById('server-url-form'),
+  serverUrlInput: document.getElementById('server-url-input'),
+  serverUrlList: document.getElementById('server-url-list'),
+  serverUrlResetBtn: document.getElementById('server-url-reset-btn'),
+  serverUrlMessage: document.getElementById('server-url-message'),
   screenSourceModal: document.getElementById('screen-source-modal'),
   screenSourceGrid: document.getElementById('screen-source-grid'),
   screenSourceCancelBtn: document.getElementById('screen-source-cancel-btn')
 };
+
+const API_BASE_KEY = 'jellochat_api_base';
+const API_BASES_KEY = 'jellochat_api_bases';
+const DEFAULT_SERVER_BASE = 'https://chat.jellodog.com';
 
 const state = {
   user: null,
@@ -1062,7 +1074,7 @@ function getAccountStandingDetails(user) {
       index: 4,
       label: 'Suspended',
       badge: '5/5',
-      description: 'This account is suspended from JelloChat.'
+      description: 'This account is suspended from JelloDog Chat.'
     };
   }
   if (rawStanding === 'restricted' || violationCount >= 3) {
@@ -5048,19 +5060,31 @@ ui.banAppealBackBtn?.addEventListener('click', () => {
   openAuth();
 });
 ui.serverUrlBtn?.addEventListener('click', async () => {
-  const key = 'jellochat_api_base';
-  const current = getConfiguredServerBase();
-  const next = await showPromptDialog('Server URL', 'Enter the JelloChat server URL:', current);
-  if (!next) {
+  openServerUrlModal();
+});
+ui.serverUrlCloseBtn?.addEventListener('click', closeServerUrlModal);
+ui.serverUrlModal?.addEventListener('click', (event) => {
+  if (event.target === ui.serverUrlModal) {
+    closeServerUrlModal();
+  }
+});
+ui.serverUrlForm?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const normalized = normalizeRemoteBase(ui.serverUrlInput?.value || '');
+  if (!isAllowedServerBase(normalized)) {
+    setServerUrlMessage('Use HTTPS, or HTTP only for localhost/private-network development URLs.', true);
     return;
   }
-  const normalized = normalizeRemoteBase(next);
-  if (!normalized || !/^https:\/\/[^/\s]+/i.test(normalized)) {
-    setAuthMessage('Use a valid HTTPS server URL.', true);
-    return;
-  }
-  localStorage.setItem(key, normalized);
+  setServerBase(normalized);
   setAuthMessage(`Server URL set to ${normalized}`);
+  setServerUrlMessage('Saved.');
+  renderServerUrlModal();
+});
+ui.serverUrlResetBtn?.addEventListener('click', () => {
+  clearServerBase();
+  setAuthMessage('Server URL reset.');
+  setServerUrlMessage('Using default server.');
+  renderServerUrlModal();
 });
 ui.resendVerificationBtn.addEventListener('click', async () => {
   const email = await showPromptDialog('Resend Verification', 'Enter your email for a new verification link:');
@@ -5966,7 +5990,7 @@ async function showPrivacyPolicyDialog() {
 }
 
 function isLoopbackHost(hostname) {
-  return ['localhost', '127.0.0.1', '::1'].includes(String(hostname || '').toLowerCase());
+  return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(String(hostname || '').toLowerCase());
 }
 
 function isLocalAppShell() {
@@ -5986,7 +6010,7 @@ function normalizeRemoteBase(value) {
   }
   try {
     const url = new URL(raw);
-    if (isLoopbackHost(url.hostname)) {
+    if (!isAllowedServerBase(url.origin)) {
       return '';
     }
     return url.origin;
@@ -5995,14 +6019,207 @@ function normalizeRemoteBase(value) {
   }
 }
 
+function isPrivateNetworkHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
+    return true;
+  }
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    return true;
+  }
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    return true;
+  }
+  const match = host.match(/^172\.(\d{1,2})\.\d{1,3}\.\d{1,3}$/);
+  if (match) {
+    const second = Number(match[1]);
+    return second >= 16 && second <= 31;
+  }
+  return false;
+}
+
+function isAllowedServerBase(value) {
+  if (!value) {
+    return false;
+  }
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === 'https:') {
+      return true;
+    }
+    return parsed.protocol === 'http:' && isPrivateNetworkHost(parsed.hostname);
+  } catch (_error) {
+    return false;
+  }
+}
+
+function getSavedServerBases() {
+  let parsed = [];
+  try {
+    parsed = JSON.parse(localStorage?.getItem(API_BASES_KEY) || '[]');
+  } catch (_error) {
+    parsed = [];
+  }
+  const saved = [];
+  for (const value of Array.isArray(parsed) ? parsed : []) {
+    const normalized = normalizeRemoteBase(value);
+    if (isAllowedServerBase(normalized) && !saved.includes(normalized)) {
+      saved.push(normalized);
+    }
+  }
+  const current = normalizeRemoteBase(localStorage?.getItem(API_BASE_KEY));
+  if (isAllowedServerBase(current) && !saved.includes(current)) {
+    saved.unshift(current);
+  }
+  return saved.slice(0, 8);
+}
+
+function saveServerBaseOption(value) {
+  const normalized = normalizeRemoteBase(value);
+  if (!isAllowedServerBase(normalized)) {
+    return;
+  }
+  const saved = [normalized, ...getSavedServerBases().filter((url) => url !== normalized)].slice(0, 8);
+  localStorage?.setItem(API_BASES_KEY, JSON.stringify(saved));
+}
+
+function removeSavedServerBase(value) {
+  const normalized = normalizeRemoteBase(value);
+  const saved = getSavedServerBases().filter((url) => url !== normalized);
+  localStorage?.setItem(API_BASES_KEY, JSON.stringify(saved));
+}
+
+function setServerBase(normalized) {
+  if (window.api?.config?.setServerBase) {
+    window.api.config.setServerBase(normalized);
+  } else {
+    localStorage.setItem(API_BASE_KEY, normalized);
+    localStorage.removeItem('jellochat_token');
+  }
+  saveServerBaseOption(normalized);
+}
+
+function clearServerBase() {
+  if (window.api?.config?.clearServerBase) {
+    window.api.config.clearServerBase();
+  } else {
+    localStorage.removeItem(API_BASE_KEY);
+    localStorage.removeItem('jellochat_token');
+  }
+}
+
+function setServerUrlMessage(message, isError = false) {
+  if (!ui.serverUrlMessage) {
+    return;
+  }
+  ui.serverUrlMessage.textContent = message || '';
+  ui.serverUrlMessage.classList.toggle('error', Boolean(isError));
+}
+
+function renderServerUrlModal() {
+  if (!ui.serverUrlModal) {
+    return;
+  }
+  const current = getConfiguredServerBase();
+  if (ui.serverUrlCurrent) {
+    ui.serverUrlCurrent.textContent = current;
+  }
+  if (ui.serverUrlInput) {
+    ui.serverUrlInput.value = current;
+  }
+  if (!ui.serverUrlList) {
+    return;
+  }
+  ui.serverUrlList.innerHTML = '';
+  const savedBases = getSavedServerBases();
+  if (!savedBases.length) {
+    const empty = document.createElement('p');
+    empty.className = 'message';
+    empty.textContent = 'No saved servers yet.';
+    ui.serverUrlList.appendChild(empty);
+    return;
+  }
+  for (const url of savedBases) {
+    const row = document.createElement('div');
+    row.className = 'server-url-row';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `Fill server URL ${url}`);
+    row.classList.toggle('is-active', url === current);
+    const fillInput = () => {
+      if (ui.serverUrlInput) {
+        ui.serverUrlInput.value = url;
+        ui.serverUrlInput.focus();
+        ui.serverUrlInput.select();
+      }
+      setServerUrlMessage('URL filled. Press Save to switch to it.');
+    };
+    row.addEventListener('click', fillInput);
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        fillInput();
+      }
+    });
+    const label = document.createElement('strong');
+    label.textContent = url;
+    const useBtn = document.createElement('button');
+    useBtn.type = 'button';
+    useBtn.className = 'server-url-use-btn';
+    useBtn.textContent = url === current ? 'Active' : 'Use';
+    useBtn.disabled = url === current;
+    useBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setServerBase(url);
+      setAuthMessage(`Server URL set to ${url}`);
+      setServerUrlMessage('Saved.');
+      renderServerUrlModal();
+    });
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      removeSavedServerBase(url);
+      setServerUrlMessage('Removed saved server.');
+      renderServerUrlModal();
+    });
+    row.append(label, useBtn, removeBtn);
+    ui.serverUrlList.appendChild(row);
+  }
+}
+
+function openServerUrlModal() {
+  setServerUrlMessage('');
+  renderServerUrlModal();
+  animateShowOverlay(ui.serverUrlModal);
+  setTimeout(() => ui.serverUrlInput?.focus(), 0);
+}
+
+function closeServerUrlModal() {
+  animateHideOverlay(ui.serverUrlModal);
+}
+
 function getConfiguredServerBase() {
-  const key = 'jellochat_api_base';
-  const stored = normalizeRemoteBase(localStorage?.getItem(key));
+  if (window.api?.config?.getServerBase) {
+    const configured = window.api.config.getServerBase();
+    if (configured) {
+      return configured;
+    }
+    if (!isLocalAppShell() && typeof location !== 'undefined') {
+      return location.origin;
+    }
+    return window.api.config.defaultServerBase || DEFAULT_SERVER_BASE;
+  }
+  const stored = normalizeRemoteBase(localStorage?.getItem(API_BASE_KEY));
   if (stored) {
     return stored;
   }
-  localStorage?.removeItem(key);
-  return 'https://chat.jellodog.com';
+  localStorage?.removeItem(API_BASE_KEY);
+  if (!isLocalAppShell() && typeof location !== 'undefined') {
+    return location.origin;
+  }
+  return DEFAULT_SERVER_BASE;
 }
 
 function getPublicPageUrl(pathname) {
@@ -6219,7 +6436,7 @@ function setupAndroidAppPrompt() {
 
   const userAgent = String(navigator.userAgent || '').toLowerCase();
   const isAndroid = userAgent.includes('android');
-  const isAppWebView = userAgent.includes('jellochatandroidapp');
+  const isAppWebView = userAgent.includes('jellodogchatandroidapp') || userAgent.includes('jellochatandroidapp');
   const canPromptHere = ['http:', 'https:'].includes(window.location.protocol);
   if (!isAndroid || isAppWebView || isLocalAppShell() || !canPromptHere) {
     return;

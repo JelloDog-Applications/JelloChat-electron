@@ -36,6 +36,9 @@ app.disable('x-powered-by');
 
 const DEFAULT_ALLOWED_APP_ORIGINS = [
   'https://localhost',
+  'http://localhost',
+  'http://127.0.0.1',
+  'https://127.0.0.1',
   'capacitor://localhost',
   'ionic://localhost'
 ];
@@ -55,9 +58,24 @@ function getAllowedCorsOrigins() {
   return new Set([...DEFAULT_ALLOWED_APP_ORIGINS, ...configured]);
 }
 
+function isAllowedLoopbackOrigin(origin) {
+  try {
+    const parsed = new URL(origin);
+    const hostname = parsed.hostname.toLowerCase();
+    return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(hostname)
+      && ['http:', 'https:'].includes(parsed.protocol);
+  } catch (_error) {
+    return false;
+  }
+}
+
+function isAllowedCorsOrigin(origin) {
+  return getAllowedCorsOrigins().has(origin) || isAllowedLoopbackOrigin(origin);
+}
+
 app.use((req, res, next) => {
   const origin = String(req.headers.origin || '');
-  if (origin && getAllowedCorsOrigins().has(origin)) {
+  if (origin && isAllowedCorsOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -636,7 +654,7 @@ function buildAuthWebUrl(mode, rawToken) {
 }
 
 function buildAuthAppUrl(mode, rawToken) {
-  return `jellochat://auth/${mode === 'verify' ? 'verify-email' : 'reset-password'}?token=${encodeURIComponent(rawToken)}`;
+  return `jellodogchat://auth/${mode === 'verify' ? 'verify-email' : 'reset-password'}?token=${encodeURIComponent(rawToken)}`;
 }
 
 function buildAuthEmailUrl(mode, rawToken) {
@@ -1265,7 +1283,7 @@ function getAutomatedRequestSignal(req) {
   if (req?.method === 'POST' && !contentType.includes('application/json')) {
     return 'Unexpected request format.';
   }
-  if (!acceptLanguage && !/JelloChatAndroidApp/i.test(userAgent)) {
+  if (!acceptLanguage && !/JelloDogChatAndroidApp|JelloChatAndroidApp/i.test(userAgent)) {
     return 'Missing browser language signal.';
   }
   return null;

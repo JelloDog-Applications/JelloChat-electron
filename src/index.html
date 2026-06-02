@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>JelloChat</title>
-    <meta name="description" content="JelloChat is an experimental chat, community, direct message, and voice app." />
-    <meta property="og:site_name" content="JelloChat" />
-    <meta property="og:title" content="JelloChat" />
+    <title>JelloDog Chat</title>
+    <meta name="description" content="JelloDog Chat is an experimental chat, community, direct message, and voice app." />
+    <meta property="og:site_name" content="JelloDog Chat" />
+    <meta property="og:title" content="JelloDog Chat" />
     <meta property="og:description" content="Chat, servers, friends, direct messages, voice, and screen sharing." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/assets/app-icon-1024.png" />
@@ -15,22 +15,22 @@
     <meta name="color-scheme" content="dark" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="JelloChat" />
+    <meta name="apple-mobile-web-app-title" content="JelloDog Chat" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="JelloChat" />
+    <meta name="twitter:title" content="JelloDog Chat" />
     <meta name="twitter:description" content="Chat, servers, friends, direct messages, voice, and screen sharing." />
     <meta name="twitter:image" content="/assets/app-icon-1024.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/assets/app-icon-256.png" sizes="256x256" type="image/png" />
     <link rel="apple-touch-icon" href="/assets/app-icon-256.png" />
     <link rel="stylesheet" href="./vendor/fontawesome/css/all.min.css" />
-    <link rel="stylesheet" href="./styles.css?v=20260531-fdroid-icons" />
+    <link rel="stylesheet" href="./styles.css?v=20260601-server-url" />
   </head>
   <body>
     <main class="app-shell">
       <section id="auth-panel" class="auth-panel">
-        <h1>JelloChat</h1>
+        <h1>JelloDog Chat</h1>
         <p>Login to continue.</p>
 
         <div class="auth-tabs">
@@ -551,6 +551,34 @@
           </div>
         </div>
       </section>
+      <section id="server-url-modal" class="app-dialog hidden">
+        <div class="app-dialog-card server-url-card">
+          <div class="app-dialog-title-row">
+            <h3>Server URL</h3>
+            <button id="server-url-close-btn" type="button" aria-label="Close server URL settings">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="server-url-current">
+            <span>Connected To</span>
+            <strong id="server-url-current">Default</strong>
+          </div>
+          <form id="server-url-form" class="server-url-form">
+            <label for="server-url-input">Server URL</label>
+            <div class="server-url-input-row">
+              <input id="server-url-input" type="url" placeholder="https://chat.jellodog.com" />
+              <button id="server-url-save-btn" type="submit">Save</button>
+            </div>
+            <p id="server-url-help">Use HTTPS for real servers. Debug builds can use your PC address, like http://192.168.1.162:3000.</p>
+          </form>
+          <div class="server-url-saved-head">
+            <span>Saved Servers</span>
+            <button id="server-url-reset-btn" type="button">Use Default</button>
+          </div>
+          <div id="server-url-list" class="server-url-list"></div>
+          <p id="server-url-message" class="message"></p>
+        </div>
+      </section>
       <section id="screen-source-modal" class="screen-source-modal hidden">
         <div class="screen-source-card">
           <div class="screen-source-header">
@@ -566,7 +594,7 @@
       <div class="android-app-card">
         <div class="android-app-icon">JE</div>
         <div class="android-app-copy">
-          <h2 id="android-app-prompt-title">Open JelloChat for Android?</h2>
+          <h2 id="android-app-prompt-title">Open JelloDog Chat for Android?</h2>
           <p>The Android app can give you a more app-like experience, but you can keep using the website too.</p>
         </div>
         <label class="android-app-choice">
@@ -580,9 +608,9 @@
       </div>
     </div>
 
-    <script src="./api.js"></script>
+    <script src="./api.js?v=20260601-server-url"></script>
     <script src="./vendor/livekit-client.umd.min.js"></script>
     <script src="./vendor/marked.min.js"></script>
-    <script src="./renderer.js?v=20260531-fdroid-icons"></script>
+    <script src="./renderer.js?v=20260601-server-url"></script>
   </body>
 </html>

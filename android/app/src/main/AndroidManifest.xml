@@ -29,9 +29,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="jellochat" android:host="auth" android:pathPrefix="/reset-password" />
-                <data android:scheme="jellochat" android:host="auth" android:pathPrefix="/verify-email" />
-                <data android:scheme="jellochat" android:host="auth" android:pathPrefix="/ban-appeal" />
+                <data android:scheme="jellodogchat" android:host="auth" android:pathPrefix="/reset-password" />
+                <data android:scheme="jellodogchat" android:host="auth" android:pathPrefix="/verify-email" />
+                <data android:scheme="jellodogchat" android:host="auth" android:pathPrefix="/ban-appeal" />
             </intent-filter>
 
             <intent-filter>

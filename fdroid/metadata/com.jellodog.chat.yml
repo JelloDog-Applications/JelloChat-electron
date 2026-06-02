@@ -1,21 +1,21 @@
 Categories:
   - Messaging
 License: AGPL-3.0-or-later
-AuthorName: JelloChat
+AuthorName: JelloDog Applications
 WebSite: https://chat.jellodog.com
 SourceCode: https://github.com/JelloDog-Applications/JelloChat-electron
 IssueTracker: https://github.com/JelloDog-Applications/JelloChat-electron/issues
 
-AutoName: JelloChat
+AutoName: JelloDog Chat
 
 RepoType: git
 Repo: https://github.com/JelloDog-Applications/JelloChat-electron.git
 Binaries: 
-  https://github.com/JelloDog-Applications/JelloChat-electron/releases/download/v%v/JelloChat-fdroid-signed.apk
+  https://github.com/JelloDog-Applications/JelloChat-electron/releases/download/v%v/JelloDogChat-fdroid-signed.apk
 
 Builds:
-  - versionName: 1.1.10
-    versionCode: 10
+  - versionName: 1.1.11
+    versionCode: 11
     commit: adf1f172c203353cc0341a14edbf45edb4d1c408
     subdir: android/app
     sudo:
@@ -36,5 +36,5 @@ AllowedAPKSigningKeys: 16461a56c7e0796dd8c03340effb399e9b5545aaed2bc0c0d19b3866c
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 1.1.10
-CurrentVersionCode: 10
+CurrentVersion: 1.1.11
+CurrentVersionCode: 11

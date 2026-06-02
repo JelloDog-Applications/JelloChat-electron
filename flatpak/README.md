@@ -1,4 +1,4 @@
-# JelloChat Flatpak
+# JelloDog Chat Flatpak
 
 These files package the Electron Linux build as a Flatpak for Steam Deck and Linux desktops.
 
@@ -30,14 +30,14 @@ The command does three things:
 ## Run
 
 ```bash
-flatpak run com.jellochat.app
+flatpak run com.jellodog.chat
 ```
 
 ## Export a bundle
 
 ```bash
-flatpak-builder --repo=dist/flatpak-repo --force-clean dist/flatpak-build flatpak/com.jellochat.app.yml
-flatpak build-bundle dist/flatpak-repo dist/JelloChat.flatpak com.jellochat.app
+flatpak-builder --repo=dist/flatpak-repo --force-clean dist/flatpak-build flatpak/com.jellodog.chat.yml
+flatpak build-bundle dist/flatpak-repo dist/JelloDogChat.flatpak com.jellodog.chat
 ```
 
 ## Notes

@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.jellochat.app',
-  appName: 'JelloChat',
+  appId: 'com.jellodog.chat',
+  appName: 'JelloDog Chat',
   webDir: 'src',
   bundledWebRuntime: false
 };

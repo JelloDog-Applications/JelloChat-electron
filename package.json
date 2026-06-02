@@ -1,8 +1,8 @@
 {
-  "name": "jellochat",
-  "version": "1.1.10",
+  "name": "jellodog-chat",
+  "version": "1.1.11",
   "description": "Electron chat app with PostgreSQL",
-  "author": "JelloChat",
+  "author": "JelloDog Applications",
   "license": "AGPL-3.0-or-later",
   "main": "main.js",
   "scripts": {
@@ -14,12 +14,14 @@
     "build:linux": "electron-builder --linux AppImage",
     "build:linux:dir": "electron-builder --linux dir",
     "flatpak:prepare": "node scripts/prepare-flatpak.js",
-    "build:flatpak": "npm run build:linux:dir && npm run flatpak:prepare && flatpak-builder --force-clean --user --install-deps-from=flathub dist/flatpak-build flatpak/com.jellochat.app.yml",
+    "build:flatpak": "npm run build:linux:dir && npm run flatpak:prepare && flatpak-builder --force-clean --user --install-deps-from=flathub dist/flatpak-build flatpak/com.jellodog.chat.yml",
     "sync:android-assets": "node scripts/sync-android-assets.js",
     "cap:sync": "npm run sync:web-vendor && npm run sync:android-assets && npx cap sync android",
     "cap:open": "npx cap open android",
     "prepare:fdroid": "npm run cap:sync && node scripts/prepare-fdroid.js",
-    "build:fdroid": "npm run prepare:fdroid && cd android && gradlew.bat assembleFdroidRelease",
+    "build:fdroid": "npm run prepare:fdroid && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && cd android && gradlew.bat assembleFdroidRelease",
+    "build:android-debug": "npm run cap:sync && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && cd android && gradlew.bat assembleStandardDebug",
+    "install:android-debug": "npm run cap:sync && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && cd android && gradlew.bat installStandardDebug",
     "build:apk": "npm run cap:sync && npx cap open android"
   },
   "dependencies": {
@@ -44,8 +46,8 @@
     "electron-builder": "^26.7.0"
   },
   "build": {
-    "appId": "com.jellochat.app",
-    "productName": "JelloChat",
+    "appId": "com.jellodog.chat",
+    "productName": "JelloDog Chat",
     "files": [
       "main.js",
       "preload.js",
