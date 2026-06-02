@@ -1986,7 +1986,8 @@ function renderAdminServers() {
     const meta = document.createElement('div');
     meta.className = 'admin-server-meta';
     const owner = server.owner_username ? `Owner: ${server.owner_username}` : 'Owner: None';
-    meta.textContent = `ID ${server.id} - ${owner} - ${server.member_count || 0} members - ${server.channel_count || 0} channels`;
+    const cleanupText = formatEmptyServerCleanupText(server);
+    meta.textContent = `ID ${server.id} - ${owner} - ${server.member_count || 0} members - ${server.channel_count || 0} channels${cleanupText ? ` - ${cleanupText}` : ''}`;
 
     item.append(row, meta);
     ui.adminServersList.appendChild(item);
@@ -2323,6 +2324,8 @@ function renderAdminStorage(data) {
   renderAdminStorageItem(ui.adminStorageStats, 'Expiring Within 7 Days', `${stats.expiring_soon || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Banned Accounts Retained', `${stats.banned_accounts_retained || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Banned Accounts Waiting Delete', `${stats.banned_accounts_waiting_delete || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Empty Servers Retained', `${stats.empty_servers_retained || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Empty Servers Waiting Delete', `${stats.empty_servers_waiting_delete || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Legacy Unencrypted', `${stats.legacy_unencrypted || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Newest Upload', formatStorageDate(stats.newest_attachment_at));
 }
@@ -2530,6 +2533,24 @@ function renderAdminUserDetails() {
     }
     ui.adminUserReportsList.appendChild(item);
   }
+}
+
+function formatEmptyServerCleanupText(server) {
+  if (!server?.empty_since) {
+    return '';
+  }
+  const cleanupDays = Number(server.empty_cleanup_days || 0);
+  if (cleanupDays <= 0) {
+    return 'Empty server auto-delete disabled';
+  }
+  const remaining = Number(server.empty_delete_days_remaining);
+  if (!Number.isFinite(remaining)) {
+    return '';
+  }
+  if (remaining <= 0) {
+    return 'Empty - deletes on next cleanup';
+  }
+  return `Empty - ${remaining} day${remaining === 1 ? '' : 's'} left`;
 }
 
 function formatBannedAccountCleanupText(user) {

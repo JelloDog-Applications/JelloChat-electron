@@ -1290,6 +1290,42 @@ function addBannedAccountCleanupInfoToUsers(users, settings) {
   return (users || []).map((user) => addBannedAccountCleanupInfo(user, settings));
 }
 
+function addEmptyServerCleanupInfo(server, settings) {
+  if (!server) {
+    return server;
+  }
+  const cleanupDays = Math.max(0, Number(settings?.emptyServerCleanupDays || 0));
+  const emptySince = server.empty_since ? new Date(server.empty_since) : null;
+  if (!emptySince || Number.isNaN(emptySince.getTime())) {
+    return {
+      ...server,
+      empty_cleanup_days: cleanupDays,
+      empty_delete_at: null,
+      empty_delete_days_remaining: null
+    };
+  }
+  if (cleanupDays <= 0) {
+    return {
+      ...server,
+      empty_cleanup_days: cleanupDays,
+      empty_delete_at: null,
+      empty_delete_days_remaining: null
+    };
+  }
+  const deleteAt = new Date(emptySince.getTime() + cleanupDays * 24 * 60 * 60 * 1000);
+  const remainingMs = deleteAt.getTime() - Date.now();
+  return {
+    ...server,
+    empty_cleanup_days: cleanupDays,
+    empty_delete_at: deleteAt.toISOString(),
+    empty_delete_days_remaining: Math.max(0, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)))
+  };
+}
+
+function addEmptyServerCleanupInfoToServers(servers, settings) {
+  return (servers || []).map((server) => addEmptyServerCleanupInfo(server, settings));
+}
+
 async function requirePlatformAdmin(userId) {
   const user = await getUserAdminState(userId);
   return Boolean(user?.is_platform_admin);
@@ -2428,11 +2464,33 @@ async function getAttachmentStorageOverview() {
              AND is_platform_admin = FALSE
          )::int AS banned_accounts_retained,
          0::int AS banned_accounts_waiting_delete
-       FROM users`
+      FROM users`
+    );
+  const emptyServerStats = storageSettings.emptyServerCleanupDays > 0
+    ? await db.query(
+      `SELECT
+         COUNT(*) FILTER (
+           WHERE empty_since IS NOT NULL
+         )::int AS empty_servers_retained,
+         COUNT(*) FILTER (
+           WHERE empty_since IS NOT NULL
+             AND empty_since <= NOW() - ($1::int * INTERVAL '1 day')
+         )::int AS empty_servers_waiting_delete
+       FROM servers`,
+      [storageSettings.emptyServerCleanupDays]
+    )
+    : await db.query(
+      `SELECT
+         COUNT(*) FILTER (
+           WHERE empty_since IS NOT NULL
+         )::int AS empty_servers_retained,
+         0::int AS empty_servers_waiting_delete
+       FROM servers`
     );
   const combinedStats = {
     ...(stats.rows[0] || {}),
-    ...(bannedAccountStats.rows[0] || {})
+    ...(bannedAccountStats.rows[0] || {}),
+    ...(emptyServerStats.rows[0] || {})
   };
   return {
     config: {
@@ -4321,6 +4379,7 @@ app.get('/api/admin/servers', authMiddleware, async (req, res) => {
               s.name,
               s.owner_user_id,
               s.created_at,
+              s.empty_since,
               owner.username AS owner_username,
               COUNT(DISTINCT sm.user_id)::int AS member_count,
               COUNT(DISTINCT c.id)::int AS channel_count
@@ -4332,13 +4391,14 @@ app.get('/api/admin/servers', authMiddleware, async (req, res) => {
           OR s.name ILIKE $1
           OR owner.username ILIKE $1
           OR CAST(s.id AS TEXT) = $2
-       GROUP BY s.id, s.name, s.owner_user_id, s.created_at, owner.username
+       GROUP BY s.id, s.name, s.owner_user_id, s.created_at, s.empty_since, owner.username
        ORDER BY LOWER(s.name), s.id
        LIMIT 100`,
       [like, query]
     );
 
-    res.json({ ok: true, servers: servers.rows });
+    const cleanupSettings = await getCleanupSettings();
+    res.json({ ok: true, servers: addEmptyServerCleanupInfoToServers(servers.rows, cleanupSettings) });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load servers: ${error.message}` });
   }
