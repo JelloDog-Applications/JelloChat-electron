@@ -2459,32 +2459,71 @@ function renderAdminUserDetails() {
     empty.className = 'account-form-message';
     empty.textContent = 'No reports for this account.';
     ui.adminUserReportsList.appendChild(empty);
+  } else {
+    for (const report of details.reports) {
+      const item = document.createElement('div');
+      item.className = 'admin-report-item';
+
+      const reason = document.createElement('div');
+      reason.textContent = report.reason;
+
+      const status = document.createElement('div');
+      status.className = `admin-report-status status-${report.status || 'open'}`;
+      status.textContent = formatReportStatus(report.status);
+
+      const meta = document.createElement('div');
+      meta.className = 'admin-report-meta';
+      const origin = report.server_name ? ` in ${report.server_name}` : '';
+      meta.textContent = `Reported by ${report.reporter_username}${origin} on ${new Date(report.created_at).toLocaleString()}`;
+
+      item.append(reason, status, meta);
+      if (report.review_note || report.reviewed_by_username) {
+        const review = document.createElement('div');
+        review.className = 'admin-report-meta';
+        const reviewedAt = report.reviewed_at ? ` on ${new Date(report.reviewed_at).toLocaleString()}` : '';
+        const reviewedBy = report.reviewed_by_username ? `Reviewed by ${report.reviewed_by_username}${reviewedAt}` : 'Reviewed';
+        review.textContent = report.review_note ? `${reviewedBy}: ${report.review_note}` : reviewedBy;
+        item.appendChild(review);
+      }
+      ui.adminUserReportsList.appendChild(item);
+    }
+  }
+
+  const appealsTitle = document.createElement('div');
+  appealsTitle.className = 'admin-server-name';
+  appealsTitle.textContent = 'Ban Appeals';
+  ui.adminUserReportsList.appendChild(appealsTitle);
+
+  if (!details.appeals?.length) {
+    const empty = document.createElement('div');
+    empty.className = 'account-form-message';
+    empty.textContent = 'No ban appeals for this account.';
+    ui.adminUserReportsList.appendChild(empty);
     return;
   }
 
-  for (const report of details.reports) {
+  for (const appeal of details.appeals) {
     const item = document.createElement('div');
     item.className = 'admin-report-item';
 
     const reason = document.createElement('div');
-    reason.textContent = report.reason;
+    reason.textContent = appeal.reason;
 
     const status = document.createElement('div');
-    status.className = `admin-report-status status-${report.status || 'open'}`;
-    status.textContent = formatReportStatus(report.status);
+    status.className = `admin-report-status status-${appeal.status || 'open'}`;
+    status.textContent = formatReportStatus(appeal.status || 'open');
 
     const meta = document.createElement('div');
     meta.className = 'admin-report-meta';
-    const origin = report.server_name ? ` in ${report.server_name}` : '';
-    meta.textContent = `Reported by ${report.reporter_username}${origin} on ${new Date(report.created_at).toLocaleString()}`;
+    meta.textContent = `Submitted on ${new Date(appeal.created_at).toLocaleString()}`;
 
     item.append(reason, status, meta);
-    if (report.review_note || report.reviewed_by_username) {
+    if (appeal.review_note || appeal.reviewed_by_username) {
       const review = document.createElement('div');
       review.className = 'admin-report-meta';
-      const reviewedAt = report.reviewed_at ? ` on ${new Date(report.reviewed_at).toLocaleString()}` : '';
-      const reviewedBy = report.reviewed_by_username ? `Reviewed by ${report.reviewed_by_username}${reviewedAt}` : 'Reviewed';
-      review.textContent = report.review_note ? `${reviewedBy}: ${report.review_note}` : reviewedBy;
+      const reviewedAt = appeal.reviewed_at ? ` on ${new Date(appeal.reviewed_at).toLocaleString()}` : '';
+      const reviewedBy = appeal.reviewed_by_username ? `Reviewed by ${appeal.reviewed_by_username}${reviewedAt}` : 'Reviewed';
+      review.textContent = appeal.review_note ? `${reviewedBy}: ${appeal.review_note}` : reviewedBy;
       item.appendChild(review);
     }
     ui.adminUserReportsList.appendChild(item);

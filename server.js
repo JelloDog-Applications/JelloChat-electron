@@ -4065,8 +4065,19 @@ app.get('/api/admin/users/:userId', authMiddleware, async (req, res) => {
        LIMIT 50`,
       [targetUserId]
     );
+    const appeals = await db.query(
+      `SELECT ba.id, ba.reason, ba.status, ba.review_note, ba.reviewed_at, ba.created_at,
+              ba.reviewed_by_user_id,
+              reviewer.username AS reviewed_by_username
+       FROM ban_appeals ba
+       LEFT JOIN users reviewer ON reviewer.id = ba.reviewed_by_user_id
+       WHERE ba.user_id = $1
+       ORDER BY (ba.status = 'open') DESC, ba.created_at DESC
+       LIMIT 50`,
+      [targetUserId]
+    );
 
-    res.json({ ok: true, user, servers: memberships.rows, reports: reports.rows });
+    res.json({ ok: true, user, servers: memberships.rows, reports: reports.rows, appeals: appeals.rows });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load user details: ${error.message}` });
   }
