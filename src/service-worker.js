@@ -1,7 +1,8 @@
-const CACHE_NAME = 'jellochat-shell-v2';
+const CACHE_NAME = 'jellochat-shell-v3';
 const SHELL_ASSETS = [
   '/app',
   '/ban-appeal',
+  '/api.js',
   '/styles.css',
   '/renderer.js',
   '/manifest.webmanifest',

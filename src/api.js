@@ -39,7 +39,33 @@
   }
 
   function isLoopbackHost(hostname) {
-    return ['localhost', '127.0.0.1', '::1'].includes(String(hostname || '').toLowerCase());
+    return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(String(hostname || '').toLowerCase());
+  }
+
+  function isPrivateNetworkHost(hostname) {
+    const host = String(hostname || '').toLowerCase();
+    if (isLoopbackHost(host)) {
+      return true;
+    }
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+      return true;
+    }
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) {
+      return true;
+    }
+    const match = host.match(/^172\.(\d{1,2})\.\d{1,3}\.\d{1,3}$/);
+    if (match) {
+      const second = Number(match[1]);
+      return second >= 16 && second <= 31;
+    }
+    return false;
+  }
+
+  function isAllowedApiBase(url) {
+    if (url.protocol === 'https:') {
+      return true;
+    }
+    return url.protocol === 'http:' && isPrivateNetworkHost(url.hostname);
   }
 
   function isAppShell() {
@@ -56,7 +82,7 @@
     }
     try {
       const url = new URL(raw);
-      if (isLoopbackHost(url.hostname)) {
+      if (!isAllowedApiBase(url)) {
         return '';
       }
       return url.origin;
@@ -65,16 +91,45 @@
     }
   }
 
-  function apiBase() {
-    if (!isAppShell()) {
-      return '';
-    }
+  function getConfiguredApiBase() {
     const fromStorage = normalizeRemoteBase(localStorage.getItem(API_BASE_KEY));
     if (fromStorage) {
       return fromStorage;
     }
     localStorage.removeItem(API_BASE_KEY);
+    return '';
+  }
+
+  function apiBase() {
+    const configuredBase = getConfiguredApiBase();
+    if (configuredBase) {
+      return configuredBase;
+    }
+    if (!isAppShell()) {
+      return '';
+    }
     return DEFAULT_API_BASE;
+  }
+
+  function setApiBase(value) {
+    const normalized = normalizeRemoteBase(value);
+    if (!normalized) {
+      return '';
+    }
+    const previous = apiBase();
+    localStorage.setItem(API_BASE_KEY, normalized);
+    if (previous !== normalized) {
+      clearToken();
+    }
+    return normalized;
+  }
+
+  function clearApiBase() {
+    const previous = apiBase();
+    localStorage.removeItem(API_BASE_KEY);
+    if (previous !== apiBase()) {
+      clearToken();
+    }
   }
 
   async function request(method, path, body) {
@@ -140,6 +195,12 @@
   window.api = {
     realtime: {
       getConfig: async () => ({ ok: true, wsUrl: wsBaseUrl() })
+    },
+    config: {
+      getServerBase: apiBase,
+      setServerBase: setApiBase,
+      clearServerBase: clearApiBase,
+      defaultServerBase: DEFAULT_API_BASE
     },
     auth: {
       register: (payload) => request('POST', '/api/auth/register', payload),

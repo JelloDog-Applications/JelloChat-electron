@@ -1,4 +1,4 @@
-JelloChat is an open source chat system for communities and friends.
+JelloDog Chat is an open source chat system for communities and friends.
 
 Features:
 
@@ -12,7 +12,7 @@ Features:
 - Admin tools
 - Self-hostable server URL support
 
-The Android build is prepared for F-Droid distribution without Google Play Services, Firebase, or remote CDN JavaScript. JelloChat is licensed under AGPL-3.0-or-later.
+The Android build is prepared for F-Droid distribution without Google Play Services, Firebase, or remote CDN JavaScript. JelloDog Chat is licensed under AGPL-3.0-or-later.
 
 Source code:
 https://github.com/JelloDog-Applications/JelloChat-electron

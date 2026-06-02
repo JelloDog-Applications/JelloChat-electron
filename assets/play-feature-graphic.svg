@@ -21,7 +21,7 @@
     <rect x="182" y="236" width="110" height="28" fill="#111111"/>
   </g>
 
-  <text x="560" y="210" fill="#F6FFF1" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700">JelloChat</text>
+  <text x="560" y="210" fill="#F6FFF1" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700">JelloDog Chat</text>
   <text x="560" y="270" fill="#E4F7D9" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="600">Text. DMs. Voice.</text>
   <text x="560" y="330" fill="#D7F0C9" font-family="Arial, Helvetica, sans-serif" font-size="24">Chat with friends in real time.</text>
 </svg>

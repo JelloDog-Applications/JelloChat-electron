@@ -3640,6 +3640,164 @@ button svg + span {
   color: #0c1a16;
 }
 
+#server-url-close-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+}
+
+#server-url-close-btn:hover {
+  color: var(--text);
+}
+
+.server-url-card {
+  gap: 16px;
+}
+
+.server-url-current {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(31, 36, 48, 0.7);
+}
+
+.server-url-current span,
+.server-url-saved-head span,
+.server-url-form label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.server-url-current strong {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.server-url-form {
+  display: grid;
+  gap: 8px;
+}
+
+.server-url-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+#server-url-input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 11px 12px;
+  font-size: 14px;
+}
+
+#server-url-save-btn,
+#server-url-reset-btn,
+.server-url-list button {
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+#server-url-save-btn {
+  min-height: 42px;
+  padding: 0 16px;
+  background: var(--accent);
+  color: #0c1a16;
+}
+
+#server-url-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.server-url-saved-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#server-url-reset-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  background: var(--button-bg);
+  color: var(--text);
+}
+
+.server-url-list {
+  display: grid;
+  gap: 8px;
+}
+
+.server-url-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(31, 36, 48, 0.7);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.server-url-row strong {
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.server-url-row:hover,
+.server-url-row:focus-visible {
+  border-color: var(--accent);
+  background: rgba(45, 141, 116, 0.12);
+  outline: none;
+}
+
+.server-url-row.is-active {
+  border-color: var(--accent);
+  background: rgba(45, 141, 116, 0.16);
+}
+
+.server-url-row button {
+  min-height: 34px;
+  padding: 0 10px;
+  background: var(--button-bg);
+  color: var(--text);
+}
+
+.server-url-row .server-url-use-btn {
+  background: var(--accent);
+  color: #0c1a16;
+}
+
+@media (max-width: 560px) {
+  .server-url-input-row,
+  .server-url-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .android-app-prompt {
   position: fixed;
   inset: 0;

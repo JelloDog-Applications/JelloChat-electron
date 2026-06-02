@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.jellochat.app</id>
-  <name>JelloChat</name>
+  <id>com.jellodog.chat</id>
+  <name>JelloDog Chat</name>
   <summary>Chat with friends, servers, DMs, voice, and screen sharing.</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>LicenseRef-proprietary</project_license>
   <description>
-    <p>JelloChat is a community chat app with servers, direct messages, friends, voice channels, and screen sharing.</p>
+    <p>JelloDog Chat is a community chat app with servers, direct messages, friends, voice channels, and screen sharing.</p>
   </description>
-  <launchable type="desktop-id">com.jellochat.app.desktop</launchable>
-  <developer_name>JelloChat</developer_name>
+  <launchable type="desktop-id">com.jellodog.chat.desktop</launchable>
+  <developer_name>JelloDog Applications</developer_name>
   <url type="homepage">https://chat.jellodog.com</url>
   <screenshots>
     <screenshot type="default">
       <image>https://chat.jellodog.com/assets/app-icon-1024.png</image>
-      <caption>JelloChat</caption>
+      <caption>JelloDog Chat</caption>
     </screenshot>
   </screenshots>
   <releases>

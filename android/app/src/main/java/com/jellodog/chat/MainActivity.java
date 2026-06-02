@@ -1,7 +1,9 @@
-package com.jellochat.app;
+package com.jellodog.chat;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -9,6 +11,8 @@ import android.os.Bundle;
 import android.webkit.PermissionRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebChromeClient;
+import android.webkit.ValueCallback;
+import android.webkit.WebView;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -17,8 +21,10 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private static final int AUDIO_PERMISSION_REQUEST_CODE = 1001;
+    private static final int FILE_CHOOSER_REQUEST_CODE = 1002;
     private static final String PUBLIC_WEB_HOST = "chat.jellodog.com";
-    private static final String APP_USER_AGENT_MARKER = "JelloChatAndroidApp";
+    private static final String APP_USER_AGENT_MARKER = "JelloDogChatAndroidApp";
+    private ValueCallback<Uri[]> pendingFileChooserCallback;
     private String pendingAuthUrl;
     private boolean authNavigationHandled;
 
@@ -31,12 +37,42 @@ public class MainActivity extends BridgeActivity {
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> request.grant(request.getResources()));
             }
+
+            @Override
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (pendingFileChooserCallback != null) {
+                    pendingFileChooserCallback.onReceiveValue(null);
+                }
+                pendingFileChooserCallback = filePathCallback;
+
+                Intent intent;
+                try {
+                    intent = fileChooserParams.createIntent();
+                } catch (Exception error) {
+                    intent = new Intent(Intent.ACTION_GET_CONTENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("*/*");
+                }
+
+                try {
+                    startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE);
+                } catch (Exception error) {
+                    pendingFileChooserCallback = null;
+                    filePathCallback.onReceiveValue(null);
+                    return false;
+                }
+
+                return true;
+            }
         });
 
         getBridge().getWebView().clearCache(true);
         getBridge().getWebView().clearHistory();
         getBridge().getWebView().getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
         getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
+        if (isDebuggableBuild() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
         appendAppUserAgentMarker();
         ensureAudioPermission();
         handleAuthIntent(getIntent());
@@ -48,6 +84,23 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleAuthIntent(intent);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            ValueCallback<Uri[]> callback = pendingFileChooserCallback;
+            pendingFileChooserCallback = null;
+            if (callback != null) {
+                Uri[] results = resultCode == Activity.RESULT_OK
+                        ? WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+                        : null;
+                callback.onReceiveValue(results);
+            }
+            return;
+        }
+
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     private void ensureAudioPermission() {
@@ -63,6 +116,10 @@ public class MainActivity extends BridgeActivity {
                     AUDIO_PERMISSION_REQUEST_CODE
             );
         }
+    }
+
+    private boolean isDebuggableBuild() {
+        return (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
 
     private void appendAppUserAgentMarker() {
@@ -105,7 +162,7 @@ public class MainActivity extends BridgeActivity {
             return null;
         }
 
-        if ("jellochat".equalsIgnoreCase(scheme) && "auth".equalsIgnoreCase(host)) {
+        if ("jellodogchat".equalsIgnoreCase(scheme) && "auth".equalsIgnoreCase(host)) {
             if (isAuthPath(path)) {
                 return buildInAppUrl(path, query);
             }

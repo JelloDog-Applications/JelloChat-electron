@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=JelloChat
+Name=JelloDog Chat
 Comment=Chat with friends, servers, DMs, voice, and screen sharing.
 Exec=jellochat
-Icon=com.jellochat.app
+Icon=com.jellodog.chat
 Terminal=false
 Categories=Network;Chat;InstantMessaging;
-StartupWMClass=JelloChat
+StartupWMClass=JelloDog Chat

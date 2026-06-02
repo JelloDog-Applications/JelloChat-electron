@@ -1,6 +1,6 @@
 {
-  "name": "JelloChat",
-  "short_name": "JelloChat",
+  "name": "JelloDog Chat",
+  "short_name": "JelloDog",
   "description": "Chat with friends, join servers, send direct messages, and use voice with screen sharing.",
   "id": "/app",
   "start_url": "/app",
@@ -27,7 +27,7 @@
   ],
   "shortcuts": [
     {
-      "name": "Open JelloChat",
+      "name": "Open JelloDog Chat",
       "short_name": "Chat",
       "url": "/app",
       "icons": [

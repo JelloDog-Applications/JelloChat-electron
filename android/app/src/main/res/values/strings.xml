@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">JelloChat</string>
-    <string name="title_activity_main">JelloChat</string>
-    <string name="package_name">com.jellochat.app</string>
-    <string name="custom_url_scheme">com.jellochat.app</string>
+    <string name="app_name">JelloDog Chat</string>
+    <string name="title_activity_main">JelloDog Chat</string>
+    <string name="package_name">com.jellodog.chat</string>
+    <string name="custom_url_scheme">com.jellodog.chat</string>
 </resources>
