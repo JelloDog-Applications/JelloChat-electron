@@ -70,6 +70,9 @@ ADD COLUMN IF NOT EXISTS privacy_notified_version VARCHAR(40);
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS privacy_email_notified_version VARCHAR(40);
 
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS ban_deletion_reminder_sent_at TIMESTAMPTZ;
+
 DO $$
 DECLARE
   rec RECORD;

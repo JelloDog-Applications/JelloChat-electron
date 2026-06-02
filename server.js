@@ -725,6 +725,28 @@ async function sendTerminationEmail(email, username, reason, options = {}) {
   });
 }
 
+async function sendBanDeletionReminderEmail(email, username, daysRemaining) {
+  const appealUrl = buildBanAppealUrl(email);
+  const remaining = Math.max(0, Number(daysRemaining || 0));
+  const remainingText = remaining === 1 ? '1 day' : `${remaining} days`;
+  return sendMail({
+    to: email,
+    subject: 'Your JelloDog Chat account will be deleted soon',
+    text: `Hi ${username},\n\nYour banned JelloDog Chat account is scheduled for deletion in about ${remainingText}.\n\nIf you believe this ban should be reviewed, submit a ban appeal here: ${appealUrl}\n\nAfter the account is deleted, the account data cannot be restored.`,
+    html: `<p>Hi ${escapeHtml(username)},</p><p>Your banned JelloDog Chat account is scheduled for deletion in about ${escapeHtml(remainingText)}.</p><p>If you believe this ban should be reviewed, submit a ban appeal here: <a href="${escapeHtml(appealUrl)}">${escapeHtml(appealUrl)}</a></p><p>After the account is deleted, the account data cannot be restored.</p>`
+  });
+}
+
+async function sendBannedAccountDeletedEmail(email, username) {
+  const supportUrl = buildPublicUrl('/terms-of-service');
+  return sendMail({
+    to: email,
+    subject: 'Your JelloDog Chat account was deleted',
+    text: `Hi ${username},\n\nYour banned JelloDog Chat account has been deleted after the ban retention period ended.\n\nFor more information, review our Terms of Service: ${supportUrl}`,
+    html: `<p>Hi ${escapeHtml(username)},</p><p>Your banned JelloDog Chat account has been deleted after the ban retention period ended.</p><p>For more information, review our <a href="${escapeHtml(supportUrl)}">Terms of Service</a>.</p>`
+  });
+}
+
 async function sendBanAppealStatusEmail(email, username, status, reviewNote) {
   const normalizedStatus = String(status || '').toLowerCase();
   const label = normalizedStatus === 'dismissed' ? 'declined' : normalizedStatus;
@@ -2385,8 +2407,32 @@ async function cleanupBannedUsers() {
   if (settings.bannedUserCleanupDays <= 0) {
     return;
   }
+  const reminderWindowDays = Math.min(7, settings.bannedUserCleanupDays);
+  const reminders = await db.query(
+    `SELECT id, username, email, platform_banned_at
+     FROM users
+     WHERE platform_banned_at IS NOT NULL
+       AND is_platform_admin = FALSE
+       AND email IS NOT NULL
+       AND ban_deletion_reminder_sent_at IS NULL
+       AND platform_banned_at <= NOW() - (($1::int - $2::int) * INTERVAL '1 day')
+       AND platform_banned_at > NOW() - ($1::int * INTERVAL '1 day')`,
+    [settings.bannedUserCleanupDays, reminderWindowDays]
+  );
+  for (const user of reminders.rows) {
+    const deleteAt = new Date(new Date(user.platform_banned_at).getTime() + settings.bannedUserCleanupDays * 24 * 60 * 60 * 1000);
+    const daysRemaining = Math.max(1, Math.ceil((deleteAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+    try {
+      const mailResult = await sendBanDeletionReminderEmail(user.email, user.username, daysRemaining);
+      if (mailResult?.ok) {
+        await db.query('UPDATE users SET ban_deletion_reminder_sent_at = NOW() WHERE id = $1', [user.id]);
+      }
+    } catch (error) {
+      console.warn(`Ban deletion reminder failed for user ${user.id}: ${error.message}`);
+    }
+  }
   const expired = await db.query(
-    `SELECT id, username
+    `SELECT id, username, email
      FROM users
      WHERE platform_banned_at IS NOT NULL
        AND is_platform_admin = FALSE
@@ -2394,6 +2440,11 @@ async function cleanupBannedUsers() {
     [settings.bannedUserCleanupDays]
   );
   for (const user of expired.rows) {
+    if (user.email) {
+      await sendBannedAccountDeletedEmail(user.email, user.username).catch((error) => {
+        console.warn(`Banned account deletion email failed for user ${user.id}: ${error.message}`);
+      });
+    }
     await deleteAttachmentFilesForUser(user.id);
     await db.query('DELETE FROM users WHERE id = $1', [user.id]);
     await clearAuthTokensForUser(user.id);
