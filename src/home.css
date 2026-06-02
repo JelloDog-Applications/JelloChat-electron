@@ -195,6 +195,26 @@ h1 {
   background: rgba(115, 167, 255, 0.08);
 }
 
+.download-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  animation: riseIn 780ms 420ms ease both;
+}
+
+.download-options a {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+
+.download-options a:hover {
+  color: var(--text);
+}
+
 .signal-row {
   display: flex;
   flex-wrap: wrap;

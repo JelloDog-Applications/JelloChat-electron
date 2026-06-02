@@ -22,7 +22,7 @@ permissions:
 jobs:
   fdroid-android:
     name: Build F-Droid Android APK
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     env:
       HAS_ANDROID_SIGNING: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 != '' && secrets.ANDROID_RELEASE_KEY_ALIAS != '' && secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD != '' && secrets.ANDROID_RELEASE_KEY_PASSWORD != '' }}
 
@@ -91,12 +91,127 @@ jobs:
           sha256sum dist/release/JelloDogChat-fdroid-signed.apk >> dist/release/SHA256SUMS.txt
           rm -f dist/release/android-release.jks
 
-      - name: Upload workflow artifacts
+      - name: Upload F-Droid artifacts
         uses: actions/upload-artifact@v6
         with:
           name: jellodog-chat-fdroid-release
           path: dist/release/*
           if-no-files-found: error
+
+  windows-installer:
+    name: Build Windows Installer
+    runs-on: windows-2025
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows app
+        run: npm run build:win
+        env:
+          APP_PUBLIC_URL: https://chat.jellodog.com
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect Windows artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/release | Out-Null
+          $installer = Get-ChildItem -Path dist -Filter '*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $installer) {
+            throw 'Windows installer was not produced.'
+          }
+          Copy-Item -LiteralPath $installer.FullName -Destination dist/release/JelloDogChat-windows-setup.exe -Force
+          Get-ChildItem -Path dist -Filter '*.blockmap' | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path 'dist/release' $_.Name) -Force
+          }
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: jellodog-chat-windows-release
+          path: dist/release/*
+          if-no-files-found: error
+
+  flatpak:
+    name: Build Flatpak
+    runs-on: [self-hosted, Linux, X64]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Electron Linux directory
+        run: npm run build:linux:dir
+        env:
+          APP_PUBLIC_URL: https://chat.jellodog.com
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare Flatpak source
+        run: npm run flatpak:prepare
+
+      - name: Build Flatpak repository
+        run: |
+          flatpak-builder \
+            --force-clean \
+            --repo=dist/flatpak-repo \
+            --install-deps-from=flathub \
+            dist/flatpak-build \
+            flatpak/com.jellodog.chat.yml
+
+      - name: Export Flatpak bundle
+        run: |
+          mkdir -p dist/release
+          flatpak build-bundle \
+            dist/flatpak-repo \
+            dist/release/JelloDogChat.flatpak \
+            com.jellodog.chat
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: jellodog-chat-flatpak-release
+          path: dist/release/JelloDogChat.flatpak
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - fdroid-android
+      - windows-installer
+      - flatpak
+    runs-on: [self-hosted, Linux, X64]
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: dist/release
+          merge-multiple: true
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

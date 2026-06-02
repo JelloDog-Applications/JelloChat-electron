@@ -575,12 +575,28 @@ function serializePasskey(row) {
   };
 }
 
+function getReleaseDownloadBaseUrl() {
+  return String(
+    process.env.APP_RELEASE_DOWNLOAD_BASE_URL
+    || 'https://github.com/JelloDog-Applications/JelloChat-electron/releases/latest/download'
+  ).trim().replace(/\/+$/, '');
+}
+
+function buildReleaseAssetUrl(filename) {
+  return `${getReleaseDownloadBaseUrl()}/${encodeURIComponent(filename)}`;
+}
+
+function buildDownloadUrls() {
+  return {
+    android: String(process.env.APP_ANDROID_DOWNLOAD_URL || buildReleaseAssetUrl('JelloDogChat-fdroid-signed.apk')).trim(),
+    windows: String(process.env.APP_WINDOWS_DOWNLOAD_URL || buildReleaseAssetUrl('JelloDogChat-windows-setup.exe')).trim(),
+    flatpak: String(process.env.APP_FLATPAK_DOWNLOAD_URL || buildReleaseAssetUrl('JelloDogChat.flatpak')).trim(),
+    source: 'https://github.com/JelloDog-Applications/JelloChat-electron'
+  };
+}
+
 function buildAndroidDownloadUrl() {
-  const configured = String(process.env.APP_ANDROID_DOWNLOAD_URL || 'https://play.google.com/store/apps/details?id=com.jellochat.app&hl=en_US').trim();
-  if (configured) {
-    return configured;
-  }
-  return buildPublicUrl('/download/android');
+  return buildDownloadUrls().android || buildPublicUrl('/download/android');
 }
 
 function isAndroidRequest(req) {
@@ -602,7 +618,7 @@ function shouldRedirectAndroidToDownload(req) {
   if (
     pathname.startsWith('/api/') ||
     pathname.startsWith('/auth-link') ||
-    pathname.startsWith('/download/android') ||
+    pathname.startsWith('/download') ||
     pathname.startsWith('/ban-appeal') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email')
@@ -1018,16 +1034,72 @@ app.get('/delete-account', (_req, res) => {
 </html>`);
 });
 
-app.get('/download/android', (req, res) => {
-  const apkUrl = String(process.env.APP_ANDROID_DOWNLOAD_URL || '').trim();
+app.get('/api/public/downloads', (_req, res) => {
+  res.json({
+    ok: true,
+    downloads: buildDownloadUrls()
+  });
+});
+
+function detectDownloadPlatform(req) {
+  const userAgent = String(req.get('user-agent') || '').toLowerCase();
+  if (userAgent.includes('android')) {
+    return 'android';
+  }
+  if (userAgent.includes('windows')) {
+    return 'windows';
+  }
+  if (userAgent.includes('linux') || userAgent.includes('x11')) {
+    return 'flatpak';
+  }
+  return 'source';
+}
+
+function resolveDownloadUrl(platform) {
+  const downloads = buildDownloadUrls();
+  const key = String(platform || '').trim().toLowerCase();
+  if (key === 'android') {
+    return downloads.android;
+  }
+  if (key === 'windows') {
+    return downloads.windows;
+  }
+  if (key === 'linux' || key === 'flatpak') {
+    return downloads.flatpak;
+  }
+  return downloads.source;
+}
+
+app.get('/download', (req, res) => {
+  const platform = detectDownloadPlatform(req);
+  res.redirect(resolveDownloadUrl(platform));
+});
+
+app.get('/download/:platform', (req, res) => {
+  const platform = String(req.params.platform || '').trim().toLowerCase();
+  const downloadUrl = resolveDownloadUrl(platform);
   const continueUrl = buildPublicUrl('/');
+  const titles = {
+    android: 'Get JelloDog Chat for Android',
+    windows: 'Get JelloDog Chat for Windows',
+    flatpak: 'Get JelloDog Chat for Linux',
+    linux: 'Get JelloDog Chat for Linux'
+  };
+  const labels = {
+    android: 'Download Android APK',
+    windows: 'Download Windows Installer',
+    flatpak: 'Download Flatpak',
+    linux: 'Download Flatpak'
+  };
+  const title = titles[platform] || 'Get JelloDog Chat';
+  const label = labels[platform] || 'Download JelloDog Chat';
 
   res.type('html').send(`<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Get JelloChat for Android</title>
+    <title>${escapeHtml(title)}</title>
     <style>
       body { font-family: Arial, sans-serif; background: #0f172a; color: #e5e7eb; margin: 0; min-height: 100vh; display: grid; place-items: center; }
       main { width: min(92vw, 520px); background: #111827; border: 1px solid #334155; border-radius: 16px; padding: 24px; }
@@ -1041,11 +1113,11 @@ app.get('/download/android', (req, res) => {
   </head>
   <body>
     <main>
-      <h1>Get the Android app</h1>
-      <p>You are on an Android device, so JelloChat works best in the app.</p>
-      ${apkUrl
-        ? `<a class="primary" href="${apkUrl}">Download Android App</a>`
-        : '<p class="hint">Set APP_ANDROID_DOWNLOAD_URL on the server to point this button at your APK or Play Store listing.</p>'}
+      <h1>${escapeHtml(title)}</h1>
+      <p>Choose the installer for this device, or continue to the website.</p>
+      ${downloadUrl
+        ? `<a class="primary" href="${escapeHtml(downloadUrl)}">${escapeHtml(label)}</a>`
+        : '<p class="hint">Set the matching APP_*_DOWNLOAD_URL environment variable on the server.</p>'}
       <a class="secondary" href="${continueUrl}">Continue to website</a>
     </main>
   </body>
