@@ -22,7 +22,7 @@ permissions:
 jobs:
   fdroid-android:
     name: Build F-Droid Android APK
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     env:
       HAS_ANDROID_SIGNING: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 != '' && secrets.ANDROID_RELEASE_KEY_ALIAS != '' && secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD != '' && secrets.ANDROID_RELEASE_KEY_PASSWORD != '' }}
 
@@ -143,7 +143,7 @@ jobs:
 
   flatpak:
     name: Build Flatpak
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
@@ -204,7 +204,7 @@ jobs:
       - fdroid-android
       - windows-installer
       - flatpak
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Download release artifacts

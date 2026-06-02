@@ -42,7 +42,7 @@ jobs:
 
   build-android:
     name: Build Android Release Artifacts
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
