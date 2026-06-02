@@ -1254,6 +1254,42 @@ async function getUserAdminState(userId) {
   return result.rows[0] || null;
 }
 
+function addBannedAccountCleanupInfo(user, settings) {
+  if (!user) {
+    return user;
+  }
+  const cleanupDays = Math.max(0, Number(settings?.bannedUserCleanupDays || 0));
+  const bannedAt = user.platform_banned_at ? new Date(user.platform_banned_at) : null;
+  if (!bannedAt || Number.isNaN(bannedAt.getTime())) {
+    return {
+      ...user,
+      banned_cleanup_days: cleanupDays,
+      banned_delete_at: null,
+      banned_delete_days_remaining: null
+    };
+  }
+  if (cleanupDays <= 0) {
+    return {
+      ...user,
+      banned_cleanup_days: cleanupDays,
+      banned_delete_at: null,
+      banned_delete_days_remaining: null
+    };
+  }
+  const deleteAt = new Date(bannedAt.getTime() + cleanupDays * 24 * 60 * 60 * 1000);
+  const remainingMs = deleteAt.getTime() - Date.now();
+  return {
+    ...user,
+    banned_cleanup_days: cleanupDays,
+    banned_delete_at: deleteAt.toISOString(),
+    banned_delete_days_remaining: Math.max(0, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)))
+  };
+}
+
+function addBannedAccountCleanupInfoToUsers(users, settings) {
+  return (users || []).map((user) => addBannedAccountCleanupInfo(user, settings));
+}
+
 async function requirePlatformAdmin(userId) {
   const user = await getUserAdminState(userId);
   return Boolean(user?.is_platform_admin);
@@ -3971,7 +4007,8 @@ app.post('/api/admin/users/search', authMiddleware, async (req, res) => {
        LIMIT 100`,
       [like]
     );
-    res.json({ ok: true, users: result.rows });
+    const cleanupSettings = await getCleanupSettings();
+    res.json({ ok: true, users: addBannedAccountCleanupInfoToUsers(result.rows, cleanupSettings) });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load users: ${error.message}` });
   }
@@ -3990,7 +4027,9 @@ app.get('/api/admin/users/:userId', authMiddleware, async (req, res) => {
       return;
     }
 
-    const user = await getUserAdminState(targetUserId);
+    const cleanupSettings = await getCleanupSettings();
+    const rawUser = await getUserAdminState(targetUserId);
+    const user = addBannedAccountCleanupInfo(rawUser, cleanupSettings);
     if (!user) {
       res.status(404).json({ ok: false, message: 'User not found.' });
       return;
@@ -4476,7 +4515,8 @@ app.post('/api/admin/users/:userId', authMiddleware, async (req, res) => {
       }).catch(() => {});
     }
 
-    res.json({ ok: true, user: updated.rows[0] });
+    const cleanupSettings = await getCleanupSettings();
+    res.json({ ok: true, user: addBannedAccountCleanupInfo(updated.rows[0], cleanupSettings) });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to update user: ${error.message}` });
   }

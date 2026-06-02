@@ -2396,8 +2396,9 @@ function renderAdminUserDetails() {
   const user = details.user;
   const role = user.is_platform_admin ? 'Platform Admin' : 'Member';
   const banStatus = user.platform_banned_at ? 'Banned' : 'Active';
+  const banCleanupText = formatBannedAccountCleanupText(user);
   ui.adminUserDetailsTitle.textContent = user.username;
-  ui.adminUserDetailsMeta.textContent = `${user.email} - ${role} - ${banStatus} - Standing: ${formatStandingLabel(user.account_standing)} (${user.tos_violation_count || 0})`;
+  ui.adminUserDetailsMeta.textContent = `${user.email} - ${role} - ${banStatus}${banCleanupText ? ` - ${banCleanupText}` : ''} - Standing: ${formatStandingLabel(user.account_standing)} (${user.tos_violation_count || 0})`;
   ui.adminUserServersList.innerHTML = '';
   ui.adminUserReportsList.innerHTML = '';
 
@@ -2490,6 +2491,24 @@ function renderAdminUserDetails() {
   }
 }
 
+function formatBannedAccountCleanupText(user) {
+  if (!user?.platform_banned_at) {
+    return '';
+  }
+  const cleanupDays = Number(user.banned_cleanup_days || 0);
+  if (cleanupDays <= 0) {
+    return 'Auto-delete disabled';
+  }
+  const remaining = Number(user.banned_delete_days_remaining);
+  if (!Number.isFinite(remaining)) {
+    return '';
+  }
+  if (remaining <= 0) {
+    return 'Deletes on next cleanup';
+  }
+  return `${remaining} day${remaining === 1 ? '' : 's'} left`;
+}
+
 async function loadAdminUserDetails(userId) {
   const result = await window.api.admin.getUserDetails({ userId });
   if (!result.ok) {
@@ -2530,7 +2549,8 @@ function renderAdminUsers() {
     email.textContent = user.email || '';
     const flags = document.createElement('div');
     flags.className = 'admin-user-flags';
-    flags.textContent = `${user.is_platform_admin ? 'Admin' : 'Member'}${user.platform_banned_at ? ' - Banned' : ''}`;
+    const banCleanupText = formatBannedAccountCleanupText(user);
+    flags.textContent = `${user.is_platform_admin ? 'Admin' : 'Member'}${user.platform_banned_at ? ` - Banned${banCleanupText ? ` - ${banCleanupText}` : ''}` : ''}`;
     meta.append(name, email, flags);
 
     const actions = document.createElement('div');
