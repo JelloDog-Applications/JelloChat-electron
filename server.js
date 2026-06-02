@@ -2404,8 +2404,36 @@ async function getAttachmentStorageOverview() {
        COUNT(*) FILTER (WHERE encryption_iv IS NULL OR encryption_auth_tag IS NULL)::int AS legacy_unencrypted,
        MIN(created_at) AS oldest_attachment_at,
        MAX(created_at) AS newest_attachment_at
-     FROM message_attachments`
+      FROM message_attachments`
   );
+  const bannedAccountStats = storageSettings.bannedUserCleanupDays > 0
+    ? await db.query(
+      `SELECT
+         COUNT(*) FILTER (
+           WHERE platform_banned_at IS NOT NULL
+             AND is_platform_admin = FALSE
+         )::int AS banned_accounts_retained,
+         COUNT(*) FILTER (
+           WHERE platform_banned_at IS NOT NULL
+             AND is_platform_admin = FALSE
+             AND platform_banned_at <= NOW() - ($1::int * INTERVAL '1 day')
+         )::int AS banned_accounts_waiting_delete
+       FROM users`,
+      [storageSettings.bannedUserCleanupDays]
+    )
+    : await db.query(
+      `SELECT
+         COUNT(*) FILTER (
+           WHERE platform_banned_at IS NOT NULL
+             AND is_platform_admin = FALSE
+         )::int AS banned_accounts_retained,
+         0::int AS banned_accounts_waiting_delete
+       FROM users`
+    );
+  const combinedStats = {
+    ...(stats.rows[0] || {}),
+    ...(bannedAccountStats.rows[0] || {})
+  };
   return {
     config: {
       attachmentsDir: ATTACHMENTS_DIR,
@@ -2420,7 +2448,7 @@ async function getAttachmentStorageOverview() {
       bannedUserCleanupDays: storageSettings.bannedUserCleanupDays,
       blockedExtensions: Array.from(BLOCKED_ATTACHMENT_EXTENSIONS).sort()
     },
-    stats: stats.rows[0] || {}
+    stats: combinedStats
   };
 }
 

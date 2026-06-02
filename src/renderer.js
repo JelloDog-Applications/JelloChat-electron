@@ -2321,6 +2321,8 @@ function renderAdminStorage(data) {
   renderAdminStorageItem(ui.adminStorageStats, 'Total Original Size', formatFileSize(stats.total_bytes || 0));
   renderAdminStorageItem(ui.adminStorageStats, 'Expired Waiting Cleanup', `${stats.expired_attachments || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Expiring Within 7 Days', `${stats.expiring_soon || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Banned Accounts Retained', `${stats.banned_accounts_retained || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Banned Accounts Waiting Delete', `${stats.banned_accounts_waiting_delete || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Legacy Unencrypted', `${stats.legacy_unencrypted || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Newest Upload', formatStorageDate(stats.newest_attachment_at));
 }
