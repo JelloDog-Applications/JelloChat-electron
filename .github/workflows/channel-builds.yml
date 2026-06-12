@@ -5,6 +5,11 @@ on:
     branches:
       - ptb
       - canary
+    tags:
+      - 'v*-ptb*'
+      - 'v*-PTB*'
+      - 'v*-canary*'
+      - 'v*-CANARY*'
   workflow_dispatch:
     inputs:
       channel:
@@ -30,18 +35,20 @@ jobs:
         include:
           - channel: ptb
             branch: ptb
+            upper_channel: PTB
             label: PTB
             product_name: JelloDog Chat PTB
             app_id: com.jellodog.chat.ptb
             artifact_prefix: JelloDogChat-PTB
           - channel: canary
             branch: canary
+            upper_channel: CANARY
             label: Canary
             product_name: JelloDog Chat Canary
             app_id: com.jellodog.chat.canary
             artifact_prefix: JelloDogChat-Canary
     env:
-      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch }}
+      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch || github.ref_type == 'tag' && (contains(github.ref_name, matrix.channel) || contains(github.ref_name, matrix.upper_channel)) }}
     steps:
       - name: Check out repository
         if: ${{ env.SHOULD_BUILD == 'true' }}
@@ -105,6 +112,7 @@ jobs:
         include:
           - channel: ptb
             branch: ptb
+            upper_channel: PTB
             label: PTB
             app_name: JelloDog Chat PTB
             app_id: com.jellodog.chat.ptb
@@ -112,13 +120,14 @@ jobs:
             version_offset: 120000
           - channel: canary
             branch: canary
+            upper_channel: CANARY
             label: Canary
             app_name: JelloDog Chat Canary
             app_id: com.jellodog.chat.canary
             artifact_prefix: JelloDogChat-Canary
             version_offset: 130000
     env:
-      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch }}
+      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch || github.ref_type == 'tag' && (contains(github.ref_name, matrix.channel) || contains(github.ref_name, matrix.upper_channel)) }}
       HAS_ANDROID_SIGNING: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 != '' && secrets.ANDROID_RELEASE_KEY_ALIAS != '' && secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD != '' && secrets.ANDROID_RELEASE_KEY_PASSWORD != '' }}
 
     steps:
@@ -248,18 +257,20 @@ jobs:
         include:
           - channel: ptb
             branch: ptb
+            upper_channel: PTB
             label: PTB
             product_name: JelloDog Chat PTB
             app_id: com.jellodog.chat.ptb
             artifact_prefix: JelloDogChat-PTB
           - channel: canary
             branch: canary
+            upper_channel: CANARY
             label: Canary
             product_name: JelloDog Chat Canary
             app_id: com.jellodog.chat.canary
             artifact_prefix: JelloDogChat-Canary
     env:
-      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch }}
+      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch || github.ref_type == 'tag' && (contains(github.ref_name, matrix.channel) || contains(github.ref_name, matrix.upper_channel)) }}
     steps:
       - name: Check out repository
         if: ${{ env.SHOULD_BUILD == 'true' }}
