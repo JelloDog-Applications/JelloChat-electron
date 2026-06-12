@@ -1,0 +1,349 @@
+name: PTB and Canary Builds
+
+on:
+  push:
+    branches:
+      - ptb
+      - canary
+    tags:
+      - 'v*-ptb*'
+      - 'v*-PTB*'
+      - 'v*-canary*'
+      - 'v*-CANARY*'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Build channel'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - ptb
+          - canary
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build ${{ matrix.label }} Windows Installer
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - channel: ptb
+            branch: ptb
+            upper_channel: PTB
+            label: PTB
+            product_name: JelloDog Chat PTB
+            app_id: com.jellodog.chat.ptb
+            artifact_prefix: JelloDogChat-PTB
+          - channel: canary
+            branch: canary
+            upper_channel: CANARY
+            label: Canary
+            product_name: JelloDog Chat Canary
+            app_id: com.jellodog.chat.canary
+            artifact_prefix: JelloDogChat-Canary
+    env:
+      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch || github.ref_type == 'tag' && (contains(github.ref_name, matrix.channel) || contains(github.ref_name, matrix.upper_channel)) }}
+    steps:
+      - name: Check out repository
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        run: npm ci
+
+      - name: Build Windows channel app
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        shell: pwsh
+        env:
+          APP_PUBLIC_URL: https://chat.jellodog.com
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL_APP_ID: ${{ matrix.app_id }}
+          CHANNEL_PRODUCT_NAME: ${{ matrix.product_name }}
+        run: |
+          npx electron-builder --win nsis `
+            --config.appId="$env:CHANNEL_APP_ID" `
+            --config.productName="$env:CHANNEL_PRODUCT_NAME" `
+            --publish never
+
+      - name: Collect Windows artifacts
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        shell: pwsh
+        env:
+          ARTIFACT_PREFIX: ${{ matrix.artifact_prefix }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/channel | Out-Null
+          $installer = Get-ChildItem -Path dist -Filter '*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $installer) {
+            throw 'Windows installer was not produced.'
+          }
+          Copy-Item -LiteralPath $installer.FullName -Destination "dist/channel/$env:ARTIFACT_PREFIX-windows-setup.exe" -Force
+          Get-ChildItem -Path dist -Filter '*.blockmap' | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path 'dist/channel' "$env:ARTIFACT_PREFIX-$($_.Name)") -Force
+          }
+
+      - name: Upload Windows channel artifacts
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_prefix }}-windows
+          path: dist/channel/*
+          if-no-files-found: error
+
+  android:
+    name: Build ${{ matrix.label }} Android APK
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - channel: ptb
+            branch: ptb
+            upper_channel: PTB
+            label: PTB
+            app_name: JelloDog Chat PTB
+            app_id: com.jellodog.chat.ptb
+            artifact_prefix: JelloDogChat-PTB
+            version_offset: 120000
+          - channel: canary
+            branch: canary
+            upper_channel: CANARY
+            label: Canary
+            app_name: JelloDog Chat Canary
+            app_id: com.jellodog.chat.canary
+            artifact_prefix: JelloDogChat-Canary
+            version_offset: 130000
+    env:
+      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch || github.ref_type == 'tag' && (contains(github.ref_name, matrix.channel) || contains(github.ref_name, matrix.upper_channel)) }}
+      HAS_ANDROID_SIGNING: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 != '' && secrets.ANDROID_RELEASE_KEY_ALIAS != '' && secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD != '' && secrets.ANDROID_RELEASE_KEY_PASSWORD != '' }}
+
+    steps:
+      - name: Check out repository
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install dependencies
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        run: npm ci
+
+      - name: Sync Capacitor Android project
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        run: npm run cap:sync
+
+      - name: Apply Android channel metadata
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        env:
+          CHANNEL_NAME: ${{ matrix.channel }}
+          CHANNEL_APP_NAME: ${{ matrix.app_name }}
+          CHANNEL_APP_ID: ${{ matrix.app_id }}
+          VERSION_OFFSET: ${{ matrix.version_offset }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const appGradlePath = 'android/app/build.gradle';
+          const stringsPath = 'android/app/src/main/res/values/strings.xml';
+          const packageJson = require('./package.json');
+          const versionOffset = Number(process.env.VERSION_OFFSET || 0);
+          const runNumber = Number(process.env.GITHUB_RUN_NUMBER || 0);
+          const versionCode = versionOffset + runNumber;
+          const versionName = `${packageJson.version}-${process.env.CHANNEL_NAME}.${runNumber}`;
+
+          let gradle = fs.readFileSync(appGradlePath, 'utf8');
+          gradle = gradle
+            .replace(/applicationId "com\.jellodog\.chat"/, `applicationId "${process.env.CHANNEL_APP_ID}"`)
+            .replace(/versionCode \d+/, `versionCode ${versionCode}`)
+            .replace(/versionName "[^"]+"/, `versionName "${versionName}"`);
+          fs.writeFileSync(appGradlePath, gradle);
+
+          let strings = fs.readFileSync(stringsPath, 'utf8');
+          strings = strings
+            .replace(/<string name="app_name">[^<]+<\/string>/, `<string name="app_name">${process.env.CHANNEL_APP_NAME}</string>`)
+            .replace(/<string name="title_activity_main">[^<]+<\/string>/, `<string name="title_activity_main">${process.env.CHANNEL_APP_NAME}</string>`)
+            .replace(/<string name="package_name">[^<]+<\/string>/, `<string name="package_name">${process.env.CHANNEL_APP_ID}</string>`)
+            .replace(/<string name="custom_url_scheme">[^<]+<\/string>/, `<string name="custom_url_scheme">${process.env.CHANNEL_APP_ID}</string>`);
+          fs.writeFileSync(stringsPath, strings);
+          NODE
+
+      - name: Make Gradle wrapper executable
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        run: chmod +x android/gradlew
+
+      - name: Build unsigned Android APK
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        working-directory: android
+        run: ./gradlew assembleStandardRelease
+
+      - name: Collect unsigned Android artifact
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        env:
+          ARTIFACT_PREFIX: ${{ matrix.artifact_prefix }}
+        run: |
+          mkdir -p dist/channel
+          cp android/app/build/outputs/apk/standard/release/app-standard-release-unsigned.apk "dist/channel/${ARTIFACT_PREFIX}-android-unsigned.apk"
+          sha256sum "dist/channel/${ARTIFACT_PREFIX}-android-unsigned.apk" > "dist/channel/${ARTIFACT_PREFIX}-SHA256SUMS.txt"
+
+      - name: Decode Android signing keystore
+        if: ${{ env.SHOULD_BUILD == 'true' && env.HAS_ANDROID_SIGNING == 'true' }}
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > dist/channel/android-release.jks
+
+      - name: Sign Android APK
+        if: ${{ env.SHOULD_BUILD == 'true' && env.HAS_ANDROID_SIGNING == 'true' }}
+        env:
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          ARTIFACT_PREFIX: ${{ matrix.artifact_prefix }}
+        run: |
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled false \
+            --v4-signing-enabled false \
+            --ks dist/channel/android-release.jks \
+            --ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS" \
+            --ks-pass "pass:$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
+            --key-pass "pass:$ANDROID_RELEASE_KEY_PASSWORD" \
+            --out "dist/channel/${ARTIFACT_PREFIX}-android-signed.apk" \
+            "dist/channel/${ARTIFACT_PREFIX}-android-unsigned.apk"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "dist/channel/${ARTIFACT_PREFIX}-android-signed.apk"
+          sha256sum "dist/channel/${ARTIFACT_PREFIX}-android-signed.apk" >> "dist/channel/${ARTIFACT_PREFIX}-SHA256SUMS.txt"
+          rm -f dist/channel/android-release.jks
+
+      - name: Upload Android channel artifacts
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_prefix }}-android
+          path: dist/channel/*
+          if-no-files-found: error
+
+  linux-appimage:
+    name: Build ${{ matrix.label }} Linux AppImage
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - channel: ptb
+            branch: ptb
+            upper_channel: PTB
+            label: PTB
+            product_name: JelloDog Chat PTB
+            app_id: com.jellodog.chat.ptb
+            artifact_prefix: JelloDogChat-PTB
+          - channel: canary
+            branch: canary
+            upper_channel: CANARY
+            label: Canary
+            product_name: JelloDog Chat Canary
+            app_id: com.jellodog.chat.canary
+            artifact_prefix: JelloDogChat-Canary
+    env:
+      SHOULD_BUILD: ${{ github.event_name == 'workflow_dispatch' && (inputs.channel == 'all' || inputs.channel == matrix.channel) || github.ref_name == matrix.branch || github.ref_type == 'tag' && (contains(github.ref_name, matrix.channel) || contains(github.ref_name, matrix.upper_channel)) }}
+    steps:
+      - name: Check out repository
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        run: npm ci
+
+      - name: Build Linux channel AppImage
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        env:
+          APP_PUBLIC_URL: https://chat.jellodog.com
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL_APP_ID: ${{ matrix.app_id }}
+          CHANNEL_PRODUCT_NAME: ${{ matrix.product_name }}
+        run: |
+          npx electron-builder --linux AppImage \
+            --config.appId="$CHANNEL_APP_ID" \
+            --config.productName="$CHANNEL_PRODUCT_NAME" \
+            --publish never
+
+      - name: Collect Linux artifacts
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        env:
+          ARTIFACT_PREFIX: ${{ matrix.artifact_prefix }}
+        run: |
+          mkdir -p dist/channel
+          appimage="$(find dist -maxdepth 1 -name '*.AppImage' -type f | head -n 1)"
+          if [ -z "$appimage" ]; then
+            echo "Linux AppImage was not produced." >&2
+            exit 1
+          fi
+          cp "$appimage" "dist/channel/${ARTIFACT_PREFIX}-linux.AppImage"
+          sha256sum "dist/channel/${ARTIFACT_PREFIX}-linux.AppImage" > "dist/channel/${ARTIFACT_PREFIX}-linux-SHA256SUMS.txt"
+
+      - name: Upload Linux channel artifacts
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_prefix }}-linux
+          path: dist/channel/*
+          if-no-files-found: error
+
+  publish-prerelease:
+    name: Publish Channel Prerelease
+    runs-on: ubuntu-latest
+    needs:
+      - windows
+      - android
+      - linux-appimage
+    if: ${{ github.ref_type == 'tag' && (contains(github.ref_name, '-ptb') || contains(github.ref_name, '-PTB') || contains(github.ref_name, '-canary') || contains(github.ref_name, '-CANARY')) }}
+
+    steps:
+      - name: Download channel artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: dist/channel-release
+          merge-multiple: true
+
+      - name: Publish GitHub prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: JelloDog Chat ${{ github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: true
+          files: dist/channel-release/*

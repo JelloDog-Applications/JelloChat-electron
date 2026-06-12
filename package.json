@@ -25,11 +25,12 @@
     "build:apk": "npm run cap:sync && npx cap open android"
   },
   "dependencies": {
-    "@capacitor/core": "^7.6.0",
     "@capacitor/android": "^7.4.2",
     "@capacitor/cli": "^7.6.0",
+    "@capacitor/core": "^7.6.0",
     "@fortawesome/fontawesome-free": "^7.2.0",
     "bcryptjs": "^2.4.3",
+    "discord.js": "^14.26.4",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "livekit-client": "^2.15.7",
@@ -52,6 +53,8 @@
       "main.js",
       "preload.js",
       "db.js",
+      "discordBot.js",
+      "discordMigration.js",
       "mailer.js",
       "server.js",
       "docs/**/*",

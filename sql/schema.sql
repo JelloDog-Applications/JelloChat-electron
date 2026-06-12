@@ -107,6 +107,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS servers (
   id SERIAL PRIMARY KEY,
   name VARCHAR(80) NOT NULL,
+  icon_url TEXT,
   owner_user_id INT REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   empty_since TIMESTAMPTZ
@@ -114,6 +115,9 @@ CREATE TABLE IF NOT EXISTS servers (
 
 ALTER TABLE servers
 ADD COLUMN IF NOT EXISTS owner_user_id INT REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE servers
+ADD COLUMN IF NOT EXISTS icon_url TEXT;
 
 ALTER TABLE servers
 ADD COLUMN IF NOT EXISTS empty_since TIMESTAMPTZ;
@@ -135,11 +139,15 @@ CREATE TABLE IF NOT EXISTS server_roles (
   id SERIAL PRIMARY KEY,
   server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   name VARCHAR(80) NOT NULL,
+  color VARCHAR(7) NOT NULL DEFAULT '#99aab5',
   position INT NOT NULL DEFAULT 0,
   permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
   is_default BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE server_roles
+ADD COLUMN IF NOT EXISTS color VARCHAR(7) NOT NULL DEFAULT '#99aab5';
 
 CREATE TABLE IF NOT EXISTS server_member_roles (
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -270,11 +278,110 @@ CREATE TABLE IF NOT EXISTS channels (
   server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   type VARCHAR(10) NOT NULL DEFAULT 'text',
   name VARCHAR(80) NOT NULL,
+  topic TEXT NOT NULL DEFAULT '',
+  slowmode_seconds INT NOT NULL DEFAULT 0,
+  category_id INT,
+  position INT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE channels
 ADD COLUMN IF NOT EXISTS type VARCHAR(10) NOT NULL DEFAULT 'text';
+
+ALTER TABLE channels
+ADD COLUMN IF NOT EXISTS topic TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE channels
+ADD COLUMN IF NOT EXISTS slowmode_seconds INT NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS channel_categories (
+  id SERIAL PRIMARY KEY,
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  name VARCHAR(80) NOT NULL,
+  position INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE channels
+ADD COLUMN IF NOT EXISTS category_id INT REFERENCES channel_categories(id) ON DELETE SET NULL;
+
+ALTER TABLE channels
+ADD COLUMN IF NOT EXISTS position INT NOT NULL DEFAULT 0;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'channels_category_id_fkey'
+  ) THEN
+    ALTER TABLE channels
+    ADD CONSTRAINT channels_category_id_fkey
+    FOREIGN KEY (category_id) REFERENCES channel_categories(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_channel_categories_server_position
+ON channel_categories (server_id, position, id);
+
+CREATE TABLE IF NOT EXISTS channel_permission_overrides (
+  id BIGSERIAL PRIMARY KEY,
+  server_id INT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  scope_type VARCHAR(16) NOT NULL CHECK (scope_type IN ('category', 'channel')),
+  category_id INT REFERENCES channel_categories(id) ON DELETE CASCADE,
+  channel_id INT REFERENCES channels(id) ON DELETE CASCADE,
+  target_type VARCHAR(16) NOT NULL CHECK (target_type IN ('role', 'member')),
+  role_id INT REFERENCES server_roles(id) ON DELETE CASCADE,
+  user_id INT REFERENCES users(id) ON DELETE CASCADE,
+  allow JSONB NOT NULL DEFAULT '{}'::jsonb,
+  deny JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (
+    (scope_type = 'category' AND category_id IS NOT NULL AND channel_id IS NULL)
+    OR (scope_type = 'channel' AND channel_id IS NOT NULL AND category_id IS NULL)
+  ),
+  CHECK (
+    (target_type = 'role' AND role_id IS NOT NULL AND user_id IS NULL)
+    OR (target_type = 'member' AND user_id IS NOT NULL AND role_id IS NULL)
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_permission_overrides_scope_target
+ON channel_permission_overrides (
+  server_id,
+  scope_type,
+  COALESCE(category_id, 0),
+  COALESCE(channel_id, 0),
+  target_type,
+  COALESCE(role_id, 0),
+  COALESCE(user_id, 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_channel_permission_overrides_server_scope
+ON channel_permission_overrides (server_id, scope_type, category_id, channel_id);
+
+CREATE INDEX IF NOT EXISTS idx_channels_server_category_position
+ON channels (server_id, category_id, position, id);
+
+CREATE TABLE IF NOT EXISTS discord_migration_sessions (
+  id BIGSERIAL PRIMARY KEY,
+  code VARCHAR(16) NOT NULL UNIQUE,
+  requested_by_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status VARCHAR(24) NOT NULL DEFAULT 'pending',
+  discord_guild_id TEXT,
+  discord_guild_name TEXT,
+  discord_user_id TEXT,
+  discord_username TEXT,
+  imported_server_id INT REFERENCES servers(id) ON DELETE SET NULL,
+  error_message TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  paired_at TIMESTAMPTZ,
+  imported_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (status IN ('pending', 'paired', 'importing', 'imported', 'failed', 'expired'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_discord_migration_sessions_user_created_at
+ON discord_migration_sessions (requested_by_user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS messages (
   id BIGSERIAL PRIMARY KEY,
@@ -333,6 +440,65 @@ ON dm_messages (
   created_at
 );
 
+CREATE TABLE IF NOT EXISTS user_notifications (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type VARCHAR(40) NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_notifications_user_created_at
+ON user_notifications (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_user_notifications_user_read_at
+ON user_notifications (user_id, read_at);
+
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  dm_messages BOOLEAN NOT NULL DEFAULT TRUE,
+  mentions BOOLEAN NOT NULL DEFAULT TRUE,
+  channel_messages BOOLEAN NOT NULL DEFAULT FALSE,
+  friend_requests BOOLEAN NOT NULL DEFAULT TRUE,
+  calls BOOLEAN NOT NULL DEFAULT TRUE,
+  moderation BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notification_push_tokens (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform VARCHAR(32) NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  device_label TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_push_tokens_user_id
+ON notification_push_tokens (user_id);
+
+CREATE TABLE IF NOT EXISTS channel_read_states (
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  channel_id INT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  last_read_message_id BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, channel_id)
+);
+
+CREATE TABLE IF NOT EXISTS dm_read_states (
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  partner_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_read_message_id BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, partner_user_id),
+  CHECK (user_id <> partner_user_id)
+);
+
 CREATE TABLE IF NOT EXISTS message_attachments (
   id BIGSERIAL PRIMARY KEY,
   message_id BIGINT REFERENCES messages(id) ON DELETE CASCADE,
@@ -342,6 +508,11 @@ CREATE TABLE IF NOT EXISTS message_attachments (
   stored_filename TEXT NOT NULL UNIQUE,
   mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
   file_size BIGINT NOT NULL,
+  original_file_size BIGINT,
+  stored_file_size BIGINT,
+  compression_algorithm TEXT,
+  compression_saved_bytes BIGINT NOT NULL DEFAULT 0,
+  compression_checked_at TIMESTAMPTZ,
   encryption_iv TEXT,
   encryption_auth_tag TEXT,
   expires_at TIMESTAMPTZ,
@@ -361,6 +532,42 @@ ADD COLUMN IF NOT EXISTS encryption_auth_tag TEXT;
 
 ALTER TABLE message_attachments
 ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+
+ALTER TABLE message_attachments
+ADD COLUMN IF NOT EXISTS original_file_size BIGINT;
+
+ALTER TABLE message_attachments
+ADD COLUMN IF NOT EXISTS stored_file_size BIGINT;
+
+ALTER TABLE message_attachments
+ADD COLUMN IF NOT EXISTS compression_algorithm TEXT;
+
+ALTER TABLE message_attachments
+ADD COLUMN IF NOT EXISTS compression_saved_bytes BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE message_attachments
+ADD COLUMN IF NOT EXISTS compression_checked_at TIMESTAMPTZ;
+
+UPDATE message_attachments
+SET original_file_size = file_size
+WHERE original_file_size IS NULL;
+
+UPDATE message_attachments
+SET stored_file_size = file_size
+WHERE stored_file_size IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'message_attachments_compression_algorithm_check'
+  ) THEN
+    ALTER TABLE message_attachments
+    ADD CONSTRAINT message_attachments_compression_algorithm_check
+    CHECK (compression_algorithm IS NULL OR compression_algorithm IN ('brotli'));
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_message_attachments_message_id
 ON message_attachments (message_id);

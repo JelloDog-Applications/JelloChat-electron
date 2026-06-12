@@ -23,6 +23,7 @@ jobs:
   fdroid-android:
     name: Build F-Droid Android APK
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.ref_type != 'tag' || !(contains(github.ref_name, '-ptb') || contains(github.ref_name, '-PTB') || contains(github.ref_name, '-canary') || contains(github.ref_name, '-CANARY')) }}
     env:
       HAS_ANDROID_SIGNING: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 != '' && secrets.ANDROID_RELEASE_KEY_ALIAS != '' && secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD != '' && secrets.ANDROID_RELEASE_KEY_PASSWORD != '' }}
 
@@ -101,6 +102,7 @@ jobs:
   windows-installer:
     name: Build Windows Installer
     runs-on: windows-2025
+    if: ${{ github.event_name != 'push' || github.ref_type != 'tag' || !(contains(github.ref_name, '-ptb') || contains(github.ref_name, '-PTB') || contains(github.ref_name, '-canary') || contains(github.ref_name, '-CANARY')) }}
 
     steps:
       - name: Check out repository
@@ -144,6 +146,7 @@ jobs:
   flatpak:
     name: Build Flatpak
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.ref_type != 'tag' || !(contains(github.ref_name, '-ptb') || contains(github.ref_name, '-PTB') || contains(github.ref_name, '-canary') || contains(github.ref_name, '-CANARY')) }}
 
     steps:
       - name: Check out repository
@@ -200,6 +203,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
+    if: ${{ github.event_name != 'push' || github.ref_type != 'tag' || !(contains(github.ref_name, '-ptb') || contains(github.ref_name, '-PTB') || contains(github.ref_name, '-canary') || contains(github.ref_name, '-CANARY')) }}
     needs:
       - fdroid-android
       - windows-installer
