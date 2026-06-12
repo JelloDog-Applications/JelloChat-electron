@@ -37,28 +37,83 @@ const ui = {
   serverUrlBtn: document.getElementById('server-url-btn'),
   serversList: document.getElementById('servers-list'),
   serverOptionsMenu: document.getElementById('server-options-menu'),
+  serverOptionsCloseBtn: document.getElementById('server-options-close-btn'),
   serverTabGeneral: document.getElementById('server-tab-general'),
   serverTabRoles: document.getElementById('server-tab-roles'),
+  serverTabPermissions: document.getElementById('server-tab-permissions'),
   serverTabBanned: document.getElementById('server-tab-banned'),
+  serverProfilePreviewIcon: document.getElementById('server-profile-preview-icon'),
+  serverProfilePreviewName: document.getElementById('server-profile-preview-name'),
   serverPanelGeneral: document.getElementById('server-panel-general'),
   serverPanelRoles: document.getElementById('server-panel-roles'),
+  serverPanelPermissions: document.getElementById('server-panel-permissions'),
   serverPanelBanned: document.getElementById('server-panel-banned'),
   serverNameInput: document.getElementById('server-name-input'),
+  serverIconInput: document.getElementById('server-icon-input'),
   saveServerNameBtn: document.getElementById('save-server-name-btn'),
   createRoleBtn: document.getElementById('create-role-btn'),
   rolesList: document.getElementById('roles-list'),
   roleNameInput: document.getElementById('role-name-input'),
+  roleColorInput: document.getElementById('role-color-input'),
+  roleColorValue: document.getElementById('role-color-value'),
+  permViewChannels: document.getElementById('perm-view-channels'),
   permManageServer: document.getElementById('perm-manage-server'),
   permManageRoles: document.getElementById('perm-manage-roles'),
   permManageChannels: document.getElementById('perm-manage-channels'),
   permCreateInvites: document.getElementById('perm-create-invites'),
-  permModerateMembers: document.getElementById('perm-moderate-members'),
+  permSendMessages: document.getElementById('perm-send-messages'),
+  permAttachFiles: document.getElementById('perm-attach-files'),
+  permReadMessageHistory: document.getElementById('perm-read-message-history'),
+  permManageMessages: document.getElementById('perm-manage-messages'),
+  permConnectVoice: document.getElementById('perm-connect-voice'),
+  permSpeakVoice: document.getElementById('perm-speak-voice'),
+  permViewMembers: document.getElementById('perm-view-members'),
+  permKickMembers: document.getElementById('perm-kick-members'),
+  permBanMembers: document.getElementById('perm-ban-members'),
+  permViewBans: document.getElementById('perm-view-bans'),
+  permissionScopeSelect: document.getElementById('permission-scope-select'),
+  permissionTargetTypeSelect: document.getElementById('permission-target-type-select'),
+  permissionTargetSelect: document.getElementById('permission-target-select'),
+  permissionOverrideList: document.getElementById('permission-override-list'),
+  permissionOverrideEditor: document.getElementById('permission-override-editor'),
+  savePermissionOverrideBtn: document.getElementById('save-permission-override-btn'),
+  deletePermissionOverrideBtn: document.getElementById('delete-permission-override-btn'),
   saveRoleBtn: document.getElementById('save-role-btn'),
   deleteRoleBtn: document.getElementById('delete-role-btn'),
   roleMembersList: document.getElementById('role-members-list'),
   bannedUsersList: document.getElementById('banned-users-list'),
   leaveServerBtn: document.getElementById('leave-server-btn'),
   channelsList: document.getElementById('channels-list'),
+  channelSettingsModal: document.getElementById('channel-settings-modal'),
+  channelSettingsTitle: document.getElementById('channel-settings-title'),
+  channelSettingsKind: document.getElementById('channel-settings-kind'),
+  channelSettingsOverviewTab: document.getElementById('channel-settings-overview-tab'),
+  channelSettingsPermissionsTab: document.getElementById('channel-settings-permissions-tab'),
+  channelSettingsDeleteTab: document.getElementById('channel-settings-delete-tab'),
+  channelSettingsCloseBtn: document.getElementById('channel-settings-close-btn'),
+  channelSettingsOverviewPanel: document.getElementById('channel-settings-overview-panel'),
+  channelSettingsPermissionsPanel: document.getElementById('channel-settings-permissions-panel'),
+  channelSettingsNameLabel: document.getElementById('channel-settings-name-label'),
+  channelSettingsName: document.getElementById('channel-settings-name'),
+  channelSettingsCategoryLabel: document.getElementById('channel-settings-category-label'),
+  channelSettingsCategory: document.getElementById('channel-settings-category'),
+  channelSettingsChannelExtra: document.getElementById('channel-settings-channel-extra'),
+  channelSettingsTopic: document.getElementById('channel-settings-topic'),
+  channelSettingsSlowmode: document.getElementById('channel-settings-slowmode'),
+  channelSettingsMeta: document.getElementById('channel-settings-meta'),
+  channelSettingsSaveBtn: document.getElementById('channel-settings-save-btn'),
+  channelSettingsPermissionsTitle: document.getElementById('channel-settings-permissions-title'),
+  channelSettingsPermissionsCopy: document.getElementById('channel-settings-permissions-copy'),
+  channelSettingsPrivateTitle: document.getElementById('channel-settings-private-title'),
+  channelSettingsPrivateCopy: document.getElementById('channel-settings-private-copy'),
+  channelSettingsPrivateToggle: document.getElementById('channel-settings-private-toggle'),
+  channelSettingsAccessHeading: document.getElementById('channel-settings-access-heading'),
+  channelSettingsAccessList: document.getElementById('channel-settings-access-list'),
+  channelSettingsPermissionTargetType: document.getElementById('channel-settings-permission-target-type'),
+  channelSettingsPermissionTarget: document.getElementById('channel-settings-permission-target'),
+  channelSettingsPermissionRows: document.getElementById('channel-settings-permission-rows'),
+  channelSettingsPermissionSaveBtn: document.getElementById('channel-settings-permission-save-btn'),
+  channelSettingsPermissionDeleteBtn: document.getElementById('channel-settings-permission-delete-btn'),
   serverTitle: document.getElementById('server-title'),
   channelTitle: document.getElementById('channel-title'),
   friendsHomeBtn: document.getElementById('friends-home-btn'),
@@ -97,11 +152,14 @@ const ui = {
   friendsList: document.getElementById('friends-list'),
   accountAvatar: document.getElementById('account-avatar'),
   userOptionsMenu: document.getElementById('user-options-menu'),
+  userOptionsProfile: document.getElementById('user-options-profile'),
+  userOptionsRoles: document.getElementById('user-options-roles'),
   reportUserBtn: document.getElementById('report-user-btn'),
   kickUserBtn: document.getElementById('kick-user-btn'),
   banUserBtn: document.getElementById('ban-user-btn'),
   messageForm: document.getElementById('message-form'),
   messageInput: document.getElementById('message-input'),
+  mentionSuggestions: document.getElementById('mention-suggestions'),
   attachmentInput: document.getElementById('attachment-input'),
   attachmentBtn: document.getElementById('attachment-btn'),
   attachmentChip: document.getElementById('attachment-chip'),
@@ -116,8 +174,15 @@ const ui = {
   notificationsModal: document.getElementById('notifications-modal'),
   notificationsCloseBtn: document.getElementById('notifications-close-btn'),
   notificationsEnableBtn: document.getElementById('notifications-enable-btn'),
+  notificationsSavePrefsBtn: document.getElementById('notifications-save-prefs-btn'),
   notificationsClearBtn: document.getElementById('notifications-clear-btn'),
   notificationsList: document.getElementById('notifications-list'),
+  notifPrefDm: document.getElementById('notif-pref-dm'),
+  notifPrefMentions: document.getElementById('notif-pref-mentions'),
+  notifPrefChannel: document.getElementById('notif-pref-channel'),
+  notifPrefFriends: document.getElementById('notif-pref-friends'),
+  notifPrefCalls: document.getElementById('notif-pref-calls'),
+  notifPrefModeration: document.getElementById('notif-pref-moderation'),
   adminModal: document.getElementById('admin-modal'),
   adminModalCloseBtn: document.getElementById('admin-modal-close-btn'),
   adminSearchInput: document.getElementById('admin-search-input'),
@@ -127,6 +192,8 @@ const ui = {
   adminAppealFilter: document.getElementById('admin-appeal-filter'),
   adminAppealsList: document.getElementById('admin-appeals-list'),
   adminStorageRefreshBtn: document.getElementById('admin-storage-refresh-btn'),
+  adminStorageBackfillBtn: document.getElementById('admin-storage-backfill-btn'),
+  adminStorageBackfillStatus: document.getElementById('admin-storage-backfill-status'),
   adminStorageConfig: document.getElementById('admin-storage-config'),
   adminStorageStats: document.getElementById('admin-storage-stats'),
   adminCleanupForm: document.getElementById('admin-cleanup-form'),
@@ -148,6 +215,7 @@ const ui = {
   adminUserReportsList: document.getElementById('admin-user-reports-list'),
   joinInviteBtn: document.getElementById('join-invite-btn'),
   createInviteBtn: document.getElementById('create-invite-btn'),
+  createCategoryBtn: document.getElementById('create-category-btn'),
   createChannelBtn: document.getElementById('create-channel-btn'),
   accountUsername: document.getElementById('account-username'),
   accountEmail: document.getElementById('account-email'),
@@ -201,6 +269,40 @@ const ui = {
   screenSourceCancelBtn: document.getElementById('screen-source-cancel-btn')
 };
 
+function moveSettingsDialogsToViewportRoot() {
+  for (const dialog of [ui.serverOptionsMenu, ui.channelSettingsModal]) {
+    if (dialog && dialog.parentElement !== document.body) {
+      document.body.appendChild(dialog);
+    }
+  }
+}
+
+moveSettingsDialogsToViewportRoot();
+
+const SERVER_PERMISSION_DEFINITIONS = [
+  { key: 'view_channels', label: 'View Channels', group: 'General', input: 'permViewChannels' },
+  { key: 'manage_server', label: 'Manage Server', group: 'General', input: 'permManageServer' },
+  { key: 'manage_roles', label: 'Manage Roles', group: 'General', input: 'permManageRoles' },
+  { key: 'manage_channels', label: 'Manage Channels', group: 'General', input: 'permManageChannels' },
+  { key: 'create_invites', label: 'Create Invites', group: 'General', input: 'permCreateInvites' },
+  { key: 'send_messages', label: 'Send Messages', group: 'Text', input: 'permSendMessages' },
+  { key: 'attach_files', label: 'Attach Files', group: 'Text', input: 'permAttachFiles' },
+  { key: 'read_message_history', label: 'Read Message History', group: 'Text', input: 'permReadMessageHistory' },
+  { key: 'manage_messages', label: 'Manage Messages', group: 'Text', input: 'permManageMessages' },
+  { key: 'connect_voice', label: 'Connect', group: 'Voice', input: 'permConnectVoice' },
+  { key: 'speak_voice', label: 'Speak', group: 'Voice', input: 'permSpeakVoice' },
+  { key: 'view_members', label: 'View Members', group: 'Moderation', input: 'permViewMembers' },
+  { key: 'kick_members', label: 'Kick Members', group: 'Moderation', input: 'permKickMembers' },
+  { key: 'ban_members', label: 'Ban Members', group: 'Moderation', input: 'permBanMembers' },
+  { key: 'view_bans', label: 'View Bans', group: 'Moderation', input: 'permViewBans' }
+];
+
+const SERVER_PERMISSION_KEYS = SERVER_PERMISSION_DEFINITIONS.map((permission) => permission.key);
+
+function emptyServerPermissions() {
+  return Object.fromEntries(SERVER_PERMISSION_KEYS.map((key) => [key, false]));
+}
+
 const API_BASE_KEY = 'jellochat_api_base';
 const API_BASES_KEY = 'jellochat_api_bases';
 const DEFAULT_SERVER_BASE = 'https://chat.jellodog.com';
@@ -208,6 +310,7 @@ const DEFAULT_SERVER_BASE = 'https://chat.jellodog.com';
 const state = {
   user: null,
   servers: [],
+  channelCategories: [],
   channels: [],
   selectedServerId: null,
   selectedChannelId: null,
@@ -230,16 +333,19 @@ const state = {
   selectedModerationUserId: null,
   serverOptionsTab: 'general',
   bannedUsers: [],
-  serverPermissions: {
-    manage_server: false,
-    manage_roles: false,
-    manage_channels: false,
-    create_invites: false,
-    moderate_members: false
-  },
+  serverPermissions: emptyServerPermissions(),
   serverRoles: [],
   serverRoleMembers: [],
+  permissionOverrideState: null,
+  selectedPermissionOverrideId: null,
   selectedRoleId: null,
+  channelDrag: null,
+  channelDragSuppressClick: false,
+  channelSettingsTarget: null,
+  channelSettingsTab: 'overview',
+  channelSettingsPermissionState: null,
+  selectedChannelSettingsOverrideId: null,
+  pendingPermissionScope: null,
   activeVoiceChannelId: null,
   voiceRoom: null,
   voiceAudioEls: new Map(),
@@ -271,6 +377,28 @@ const state = {
   adminUserDetails: null,
   adminViewedServer: null,
   notifications: [],
+  notificationPreferences: {
+    dm_messages: true,
+    mentions: true,
+    channel_messages: false,
+    friend_requests: true,
+    calls: true,
+    moderation: true
+  },
+  unread: {
+    channels: {},
+    dms: {},
+    notifications: 0
+  },
+  mentionPicker: {
+    open: false,
+    activeIndex: 0,
+    triggerStart: -1,
+    triggerEnd: -1,
+    items: [],
+    candidates: [],
+    serverId: null
+  },
   passkeys: [],
   passkeysSupported: false
 };
@@ -342,6 +470,191 @@ function syncVoicePanelVisibility() {
 function syncDmCallButton() {
   const canCall = Boolean(ui.dmCallBtn && state.selectedDmUser);
   ui.dmCallBtn?.classList.toggle('hidden', !canCall);
+}
+
+function resetMentionCandidates() {
+  state.mentionPicker.candidates = [];
+  state.mentionPicker.serverId = null;
+}
+
+function hideMentionSuggestions() {
+  state.mentionPicker.open = false;
+  state.mentionPicker.items = [];
+  state.mentionPicker.activeIndex = 0;
+  state.mentionPicker.triggerStart = -1;
+  state.mentionPicker.triggerEnd = -1;
+  ui.mentionSuggestions?.classList.add('hidden');
+  if (ui.mentionSuggestions) {
+    ui.mentionSuggestions.innerHTML = '';
+  }
+}
+
+function getMentionTrigger(input) {
+  const caret = input.selectionStart ?? input.value.length;
+  const beforeCaret = input.value.slice(0, caret);
+  const match = beforeCaret.match(/(^|\s)@([^\s@]{0,40})$/);
+  if (!match) {
+    return null;
+  }
+  const triggerStart = beforeCaret.length - match[2].length - 1;
+  return {
+    triggerStart,
+    triggerEnd: caret,
+    query: match[2].toLowerCase()
+  };
+}
+
+function normalizeMentionText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function candidateMatchesQuery(candidate, query) {
+  if (!query) {
+    return true;
+  }
+  const haystack = `${candidate.name} ${candidate.username || ''}`.toLowerCase();
+  return haystack.includes(query);
+}
+
+function makeMentionCandidatesFromRolesState(result) {
+  const members = (result?.members || [])
+    .filter((member) => Number(member.id) !== Number(state.currentUserId) && !member.platform_banned_at)
+    .map((member) => ({
+      type: 'member',
+      id: Number(member.id),
+      name: normalizeMentionText(member.username),
+      username: normalizeMentionText(member.username),
+      color: '#99aab5',
+      online: Boolean(member.online)
+    }));
+  const roles = (result?.roles || [])
+    .filter((role) => normalizeMentionText(role.name) && !role.is_default)
+    .map((role) => ({
+      type: 'role',
+      id: Number(role.id),
+      name: normalizeMentionText(role.name),
+      color: role.color || '#99aab5'
+    }));
+  return [...members, ...roles];
+}
+
+async function ensureMentionCandidates() {
+  if (!state.selectedServerId || state.selectedDmUser || isAdminGhostServer()) {
+    return [];
+  }
+  if (state.mentionPicker.serverId === state.selectedServerId && state.mentionPicker.candidates.length) {
+    return state.mentionPicker.candidates;
+  }
+  let candidates = [];
+  if (window.api?.roles?.getState) {
+    const result = await window.api.roles.getState({ serverId: state.selectedServerId });
+    if (result?.ok) {
+      candidates = makeMentionCandidatesFromRolesState(result);
+    }
+  }
+  if (!candidates.length) {
+    candidates = (state.onlineUsers || [])
+      .filter((member) => Number(member.id) !== Number(state.currentUserId) && !member.platform_banned_at)
+      .map((member) => ({
+        type: 'member',
+        id: Number(member.id),
+        name: normalizeMentionText(member.username),
+        username: normalizeMentionText(member.username),
+        color: '#99aab5',
+        online: Boolean(member.online)
+      }));
+  }
+  state.mentionPicker.serverId = state.selectedServerId;
+  state.mentionPicker.candidates = candidates;
+  return candidates;
+}
+
+function renderMentionSuggestions() {
+  if (!ui.mentionSuggestions) {
+    return;
+  }
+  ui.mentionSuggestions.innerHTML = '';
+  if (!state.mentionPicker.open || !state.mentionPicker.items.length) {
+    ui.mentionSuggestions.classList.add('hidden');
+    return;
+  }
+  state.mentionPicker.items.forEach((item, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mention-suggestion-item';
+    button.classList.toggle('active', index === state.mentionPicker.activeIndex);
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', index === state.mentionPicker.activeIndex ? 'true' : 'false');
+    const avatar = document.createElement('span');
+    avatar.className = `mention-suggestion-avatar ${item.type}`;
+    avatar.style.setProperty('--mention-color', item.color || '#99aab5');
+    avatar.textContent = item.type === 'role' ? '@' : item.name.slice(0, 1).toUpperCase();
+    const label = document.createElement('span');
+    label.className = 'mention-suggestion-label';
+    label.textContent = item.name;
+    const meta = document.createElement('span');
+    meta.className = 'mention-suggestion-meta';
+    meta.textContent = item.type === 'role' ? 'Role' : (item.online ? 'Online' : 'Member');
+    button.append(avatar, label, meta);
+    button.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      applyMentionSuggestion(item);
+    });
+    ui.mentionSuggestions.appendChild(button);
+  });
+  ui.mentionSuggestions.classList.remove('hidden');
+}
+
+async function updateMentionSuggestions() {
+  if (!ui.messageInput || document.activeElement !== ui.messageInput) {
+    hideMentionSuggestions();
+    return;
+  }
+  const trigger = getMentionTrigger(ui.messageInput);
+  const serverId = state.selectedServerId;
+  if (!trigger) {
+    hideMentionSuggestions();
+    return;
+  }
+  const candidates = await ensureMentionCandidates();
+  const currentTrigger = getMentionTrigger(ui.messageInput);
+  if (
+    !currentTrigger ||
+    serverId !== state.selectedServerId ||
+    currentTrigger.triggerStart !== trigger.triggerStart ||
+    currentTrigger.triggerEnd !== trigger.triggerEnd ||
+    currentTrigger.query !== trigger.query
+  ) {
+    return;
+  }
+  const items = candidates
+    .filter((candidate) => candidate.name && candidateMatchesQuery(candidate, trigger.query))
+    .slice(0, 8);
+  if (!items.length) {
+    hideMentionSuggestions();
+    return;
+  }
+  state.mentionPicker.open = true;
+  state.mentionPicker.triggerStart = trigger.triggerStart;
+  state.mentionPicker.triggerEnd = trigger.triggerEnd;
+  state.mentionPicker.items = items;
+  state.mentionPicker.activeIndex = Math.min(state.mentionPicker.activeIndex, items.length - 1);
+  renderMentionSuggestions();
+}
+
+function applyMentionSuggestion(item) {
+  if (!ui.messageInput || state.mentionPicker.triggerStart < 0) {
+    return;
+  }
+  const input = ui.messageInput;
+  const before = input.value.slice(0, state.mentionPicker.triggerStart);
+  const after = input.value.slice(input.selectionStart ?? state.mentionPicker.triggerEnd);
+  const mention = `@${item.name} `;
+  input.value = `${before}${mention}${after}`;
+  const nextCaret = before.length + mention.length;
+  input.focus();
+  input.setSelectionRange(nextCaret, nextCaret);
+  hideMentionSuggestions();
 }
 
 function setFriendsHomeOpen(open) {
@@ -429,6 +742,30 @@ function createAvatarElement(user, className = 'avatar', fallbackLabel) {
   avatar.className = className;
   setAvatarContent(avatar, user, fallbackLabel);
   return avatar;
+}
+
+function setServerIconContent(container, server) {
+  if (!container) {
+    return;
+  }
+  const label = server?.name || 'Server';
+  const initials = getServerInitials(label);
+  const iconUrl = String(server?.icon_url || server?.iconUrl || '').trim();
+  container.textContent = '';
+  container.setAttribute('aria-label', `${label} server icon`);
+  if (iconUrl) {
+    const img = document.createElement('img');
+    img.src = iconUrl;
+    img.alt = `${label} server icon`;
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => {
+      container.textContent = initials;
+    }, { once: true });
+    container.appendChild(img);
+    return;
+  }
+  container.textContent = initials;
 }
 
 function isParticipantMuted(participant) {
@@ -1204,11 +1541,13 @@ async function loadPasskeys() {
 
 async function completeSignedInState(result) {
   state.user = result.user;
+  state.currentUserId = result.user?.id || null;
   renderAccountPanel();
   setAuthMessage('');
   await openChat();
   await enforceDobIfMissing();
   await maybePromptForAvatar();
+  await loadNotificationState();
   await loadServers();
   await loadFriends();
   await handlePendingInviteLink();
@@ -1385,6 +1724,144 @@ function openNotificationsModal() {
   animateShowOverlay(ui.notificationsModal);
 }
 
+function normalizeUnreadSummary(unread = {}) {
+  const channels = {};
+  const dms = {};
+  for (const item of unread.channels || []) {
+    channels[Number(item.channel_id)] = {
+      count: Number(item.count || 0),
+      mentions: Number(item.mentions || 0)
+    };
+  }
+  for (const item of unread.dms || []) {
+    dms[Number(item.partner_user_id)] = Number(item.count || 0);
+  }
+  return {
+    channels,
+    dms,
+    notifications: Number(unread.notifications || 0)
+  };
+}
+
+function applyUnreadSummary(unread) {
+  state.unread = normalizeUnreadSummary(unread);
+  renderUnreadBadges();
+}
+
+function getNotificationPreferencesFromInputs() {
+  return {
+    dm_messages: Boolean(ui.notifPrefDm?.checked),
+    mentions: Boolean(ui.notifPrefMentions?.checked),
+    channel_messages: Boolean(ui.notifPrefChannel?.checked),
+    friend_requests: Boolean(ui.notifPrefFriends?.checked),
+    calls: Boolean(ui.notifPrefCalls?.checked),
+    moderation: Boolean(ui.notifPrefModeration?.checked)
+  };
+}
+
+function syncNotificationPreferenceInputs() {
+  const prefs = state.notificationPreferences || {};
+  if (ui.notifPrefDm) ui.notifPrefDm.checked = prefs.dm_messages !== false;
+  if (ui.notifPrefMentions) ui.notifPrefMentions.checked = prefs.mentions !== false;
+  if (ui.notifPrefChannel) ui.notifPrefChannel.checked = Boolean(prefs.channel_messages);
+  if (ui.notifPrefFriends) ui.notifPrefFriends.checked = prefs.friend_requests !== false;
+  if (ui.notifPrefCalls) ui.notifPrefCalls.checked = prefs.calls !== false;
+  if (ui.notifPrefModeration) ui.notifPrefModeration.checked = prefs.moderation !== false;
+}
+
+function makeUnreadBadge(count) {
+  const normalized = typeof count === 'object' && count !== null
+    ? Number(count.mentions || count.count || 0)
+    : Number(count || 0);
+  if (normalized <= 0) {
+    return null;
+  }
+  const badge = document.createElement('span');
+  badge.className = 'unread-badge';
+  badge.textContent = normalized > 99 ? '99+' : String(normalized);
+  return badge;
+}
+
+function makeChannelUnreadIndicator(unreadInfo) {
+  const count = typeof unreadInfo === 'object' && unreadInfo !== null
+    ? Number(unreadInfo.count || 0)
+    : Number(unreadInfo || 0);
+  const mentions = typeof unreadInfo === 'object' && unreadInfo !== null
+    ? Number(unreadInfo.mentions || 0)
+    : 0;
+  if (mentions > 0) {
+    const badge = document.createElement('span');
+    badge.className = 'unread-badge mention-count';
+    badge.textContent = mentions > 99 ? '99+' : String(mentions);
+    return badge;
+  }
+  if (count > 0) {
+    const marker = document.createElement('span');
+    marker.className = 'unread-badge message-marker';
+    marker.setAttribute('aria-label', `${count} unread message${count === 1 ? '' : 's'}`);
+    return marker;
+  }
+  return null;
+}
+
+function renderUnreadBadges() {
+  const notificationCount = Number(state.unread?.notifications || 0);
+  ui.notificationsBtn?.classList.toggle('has-unread', notificationCount > 0);
+  ui.notificationsBtn?.setAttribute('data-count', notificationCount > 99 ? '99+' : String(notificationCount || ''));
+  if (ui.channelsList?.children.length) {
+    renderChannels();
+  }
+  if (ui.friendsList?.children.length) {
+    renderFriends();
+  }
+  renderFriendsHome();
+}
+
+async function refreshUnreadState() {
+  if (!window.api?.notifications?.getUnread || !state.user) {
+    return;
+  }
+  const result = await window.api.notifications.getUnread();
+  if (result?.ok) {
+    applyUnreadSummary(result.unread);
+  }
+}
+
+async function loadNotificationState() {
+  if (!window.api?.notifications?.list) {
+    return;
+  }
+  const result = await window.api.notifications.list();
+  if (!result?.ok) {
+    return;
+  }
+  state.notifications = result.notifications || [];
+  state.notificationPreferences = result.preferences || state.notificationPreferences;
+  applyUnreadSummary(result.unread);
+  syncNotificationPreferenceInputs();
+  renderNotifications();
+}
+
+async function markActiveChannelRead(channelId) {
+  if (!window.api?.notifications?.markChannelRead || !channelId || isAdminGhostServer()) {
+    return;
+  }
+  const result = await window.api.notifications.markChannelRead({ channelId });
+  if (result?.ok) {
+    applyUnreadSummary(result.unread);
+  }
+}
+
+async function markActiveDmRead(partnerUserId) {
+  if (!window.api?.notifications?.markDmRead || !partnerUserId) {
+    return;
+  }
+  const result = await window.api.notifications.markDmRead({ partnerUserId });
+  if (result?.ok) {
+    applyUnreadSummary(result.unread);
+  }
+}
+
 function closeScreenSourceModal(selectedSource = null) {
   animateHideOverlay(ui.screenSourceModal);
   if (ui.screenSourceGrid) {
@@ -1438,15 +1915,23 @@ function chooseScreenSource(sources) {
   });
 }
 
-function pushNotificationItem(title, body) {
-  state.notifications.unshift({
+function pushNotificationItem(title, body, options = {}) {
+  const item = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: options.type || 'local',
     title: String(title || 'Notification'),
     body: String(body || ''),
+    data: options.data || {},
+    read_at: options.read_at || null,
     createdAt: new Date().toISOString()
-  });
+  };
+  state.notifications.unshift(item);
   state.notifications = state.notifications.slice(0, 50);
   renderNotifications();
+  if (!item.read_at) {
+    state.unread.notifications = Number(state.unread.notifications || 0) + 1;
+    renderUnreadBadges();
+  }
 }
 
 async function sendBrowserNotification(title, body) {
@@ -1485,7 +1970,7 @@ function renderNotifications() {
 
   for (const item of state.notifications) {
     const row = document.createElement('div');
-    row.className = 'notification-item';
+    row.className = `notification-item ${item.read_at ? '' : 'unread'}`.trim();
 
     const title = document.createElement('div');
     title.className = 'notification-title';
@@ -1496,9 +1981,19 @@ function renderNotifications() {
 
     const meta = document.createElement('div');
     meta.className = 'notification-meta';
-    meta.textContent = new Date(item.createdAt).toLocaleString();
+    meta.textContent = new Date(item.created_at || item.createdAt).toLocaleString();
 
     row.append(title, body, meta);
+    if (!item.read_at && Number(item.id) && window.api?.notifications?.markRead) {
+      row.addEventListener('click', async () => {
+        const result = await window.api.notifications.markRead({ notificationId: item.id });
+        if (result?.ok) {
+          item.read_at = new Date().toISOString();
+          applyUnreadSummary(result.unread);
+          renderNotifications();
+        }
+      });
+    }
     ui.notificationsList.appendChild(row);
   }
 }
@@ -1523,6 +2018,43 @@ function escapeHtmlText(value) {
     .replace(/'/g, '&#39;');
 }
 
+function normalizeMentionName(value) {
+  return String(value || '').split('#')[0].trim().toLowerCase();
+}
+
+function getCurrentUserMentionNames() {
+  const names = new Set();
+  const username = normalizeMentionName(state.user?.username);
+  if (username) {
+    names.add(username);
+  }
+  if (state.selectedServerId) {
+    const self = (state.onlineUsers || []).find((member) => Number(member.id) === Number(state.currentUserId));
+    for (const roleName of self?.role_names || []) {
+      const normalized = normalizeMentionName(roleName);
+      if (normalized) {
+        names.add(normalized);
+      }
+    }
+  }
+  return names;
+}
+
+function messageMentionsCurrentUser(value) {
+  const names = getCurrentUserMentionNames();
+  if (!names.size) {
+    return false;
+  }
+  const mentionPattern = /(^|\s)@([^\s@.,!?;:)\]}]+(?:\s+[^\s@.,!?;:)\]}]+)*)(?=$|\s|[.,!?;:)\]}])/gi;
+  let match;
+  while ((match = mentionPattern.exec(String(value || ''))) !== null) {
+    if (names.has(normalizeMentionName(match[2]))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function normalizeChatUrl(rawUrl) {
   const value = String(rawUrl || '').trim();
   if (!value) {
@@ -1540,9 +2072,36 @@ function normalizeChatUrl(rawUrl) {
   }
 }
 
+function appendMentionAwareText(container, text, highlightNames) {
+  const mentionPattern = /(^|\s)@([^\s@.,!?;:)\]}]+(?:\s+[^\s@.,!?;:)\]}]+)*)(?=$|\s|[.,!?;:)\]}])/gi;
+  let lastIndex = 0;
+  let match;
+  while ((match = mentionPattern.exec(text)) !== null) {
+    const mentionText = match[0];
+    const leadingWhitespace = match[1] || '';
+    const mentionName = match[2] || '';
+    const mentionStart = match.index + leadingWhitespace.length;
+    if (mentionStart > lastIndex) {
+      container.appendChild(document.createTextNode(text.slice(lastIndex, mentionStart)));
+    }
+    const span = document.createElement('span');
+    span.className = 'message-mention';
+    if (highlightNames?.has(normalizeMentionName(mentionName))) {
+      span.classList.add('is-self');
+    }
+    span.textContent = `@${mentionName}`;
+    container.appendChild(span);
+    lastIndex = match.index + mentionText.length;
+  }
+  if (lastIndex < text.length) {
+    container.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
+}
+
 function appendLinkedMessageText(container, value) {
   const text = String(value || '');
   const urlPattern = /((?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<]*)?)/gi;
+  const highlightNames = getCurrentUserMentionNames();
   let lastIndex = 0;
   let match;
 
@@ -1551,7 +2110,7 @@ function appendLinkedMessageText(container, value) {
     const start = match.index;
     const leadingText = text.slice(lastIndex, start);
     if (leadingText) {
-      container.appendChild(document.createTextNode(leadingText));
+      appendMentionAwareText(container, leadingText, highlightNames);
     }
 
     const trailingPunctuation = rawMatch.match(/[.,!?;:)\]}]+$/)?.[0] || '';
@@ -1576,7 +2135,7 @@ function appendLinkedMessageText(container, value) {
 
   const tail = text.slice(lastIndex);
   if (tail) {
-    container.appendChild(document.createTextNode(tail));
+    appendMentionAwareText(container, tail, highlightNames);
   }
 }
 
@@ -1900,6 +2459,7 @@ async function openAdminGhostServer(serverId) {
 
   state.adminViewedServer = {
     server: result.server,
+    categories: result.categories || [],
     channels: result.channels || [],
     members: result.members || [],
     messages: result.messages || []
@@ -2302,6 +2862,7 @@ function renderAdminStorage(data) {
     updateQuotaBar(event.target.value);
   });
   renderAdminStorageItem(ui.adminStorageConfig, 'Encryption', config.encryptionEnabled ? 'AES-256-GCM enabled' : 'Disabled');
+  renderAdminStorageItem(ui.adminStorageConfig, 'Compression', config.compressionEnabled ? `${config.compressionAlgorithm || 'brotli'} auto when useful` : 'Disabled');
   renderAdminStorageItem(ui.adminStorageConfig, 'Custom Key', config.encryptionKeyConfigured ? 'Configured' : 'Using fallback key');
   renderAdminStorageEditableItem(ui.adminStorageConfig, 'Cleanup Interval Minutes', 'cleanup-interval-minutes-input', config.cleanupIntervalMinutes ?? 60, { min: 5, max: 10080 });
   renderAdminStorageEditableItem(ui.adminStorageConfig, 'Empty Server Cleanup Days', 'cleanup-empty-server-days-input', config.emptyServerCleanupDays ?? 7, { min: 0, max: 3650 });
@@ -2309,7 +2870,13 @@ function renderAdminStorage(data) {
   renderAdminStorageItem(ui.adminStorageConfig, 'Blocked Types', (config.blockedExtensions || []).join(', '));
 
   renderAdminStorageItem(ui.adminStorageStats, 'Active Attachments', `${stats.active_attachments || 0}`);
-  renderAdminStorageItem(ui.adminStorageStats, 'Active Size', formatFileSize(stats.active_bytes || 0));
+  renderAdminStorageItem(ui.adminStorageStats, 'Active Stored Size', formatFileSize(stats.active_bytes || 0));
+  renderAdminStorageItem(ui.adminStorageStats, 'Active Original Size', formatFileSize(stats.active_original_bytes || stats.active_bytes || 0));
+  renderAdminStorageItem(ui.adminStorageStats, 'Active Compression Saved', formatFileSize(stats.active_compression_saved_bytes || 0));
+  const activeOriginalBytes = Number(stats.active_original_bytes || stats.active_bytes || 0);
+  const activeStoredBytes = Number(stats.active_bytes || 0);
+  const compressionRatio = activeOriginalBytes > 0 ? Math.round((1 - (activeStoredBytes / activeOriginalBytes)) * 100) : 0;
+  renderAdminStorageItem(ui.adminStorageStats, 'Compression Ratio', `${Math.max(0, compressionRatio)}% saved`);
   if (config.storageQuotaMb > 0) {
     const quotaBytes = Number(config.storageQuotaMb || 0) * 1024 * 1024;
     const activeBytes = Number(stats.active_bytes || 0);
@@ -2319,7 +2886,11 @@ function renderAdminStorage(data) {
     renderAdminStorageItem(ui.adminStorageStats, 'Quota Used', `${formatFileSize(stats.active_bytes || 0)} / Unlimited`);
   }
   renderAdminStorageItem(ui.adminStorageStats, 'Total Stored Records', `${stats.total_attachments || 0}`);
-  renderAdminStorageItem(ui.adminStorageStats, 'Total Original Size', formatFileSize(stats.total_bytes || 0));
+  renderAdminStorageItem(ui.adminStorageStats, 'Total Original Size', formatFileSize(stats.total_original_bytes || stats.total_bytes || 0));
+  renderAdminStorageItem(ui.adminStorageStats, 'Total Stored Size', formatFileSize(stats.total_stored_bytes || stats.total_bytes || 0));
+  renderAdminStorageItem(ui.adminStorageStats, 'Total Compression Saved', formatFileSize(stats.compression_saved_bytes || 0));
+  renderAdminStorageItem(ui.adminStorageStats, 'Compressed Attachments', `${stats.compressed_attachments || 0}`);
+  renderAdminStorageItem(ui.adminStorageStats, 'Compression Pending', `${stats.compression_pending_attachments || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Expired Waiting Cleanup', `${stats.expired_attachments || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Expiring Within 7 Days', `${stats.expiring_soon || 0}`);
   renderAdminStorageItem(ui.adminStorageStats, 'Banned Accounts Retained', `${stats.banned_accounts_retained || 0}`);
@@ -2365,6 +2936,35 @@ async function saveAdminCleanupSettings() {
   await showMessageDialog('Storage Settings Saved', 'Your storage settings were updated.', {
     okLabel: 'Done'
   });
+}
+
+async function runAdminAttachmentCompressionBackfill() {
+  if (!window.api.admin?.runAttachmentCompressionBackfill) {
+    await showWarningDialog('Attachment compression backfill is not available in this build.');
+    return;
+  }
+  if (ui.adminStorageBackfillBtn) {
+    ui.adminStorageBackfillBtn.disabled = true;
+  }
+  if (ui.adminStorageBackfillStatus) {
+    ui.adminStorageBackfillStatus.textContent = 'Compressing old attachments...';
+  }
+  const result = await window.api.admin.runAttachmentCompressionBackfill({ limit: 25 });
+  if (ui.adminStorageBackfillBtn) {
+    ui.adminStorageBackfillBtn.disabled = false;
+  }
+  if (!result.ok) {
+    if (ui.adminStorageBackfillStatus) {
+      ui.adminStorageBackfillStatus.textContent = '';
+    }
+    await showWarningDialog(result.message);
+    return;
+  }
+  renderAdminStorage(result);
+  const summary = result.summary || {};
+  if (ui.adminStorageBackfillStatus) {
+    ui.adminStorageBackfillStatus.textContent = `Backfill scanned ${summary.scanned || 0}, compressed ${summary.compressed || 0}, skipped ${summary.skipped || 0}, failed ${summary.failed || 0}, saved ${formatFileSize(summary.bytesSaved || 0)}.`;
+  }
 }
 
 function setAdminView(viewName) {
@@ -3253,6 +3853,196 @@ async function showMessageDialog(title, message, options = {}) {
   return result;
 }
 
+async function showDiscordMigrationDialog({ inviteUrl = '', code = '' } = {}) {
+  const command = code ? `/jello-pair ${code}` : '/jello-pair';
+
+  if (dialogState.resolver) {
+    dialogState.resolver(null);
+    dialogState.resolver = null;
+  }
+
+  ui.appDialogTitle.textContent = 'Discord Migration';
+  ui.appDialogMessage.textContent = '';
+  ui.appDialogOkBtn.textContent = 'Done';
+  ui.appDialogCancelBtn.classList.add('hidden');
+  ui.appDialogInput.classList.add('hidden');
+  ui.appDialogInput.value = '';
+
+  const body = document.createElement('div');
+  body.className = 'migration-dialog';
+
+  const statusSection = document.createElement('div');
+  statusSection.className = 'migration-status-row';
+  const statusPill = document.createElement('span');
+  statusPill.className = 'migration-status-pill pending';
+  statusPill.textContent = 'Waiting';
+  const statusText = document.createElement('span');
+  statusText.className = 'migration-status-text';
+  statusText.textContent = 'Waiting for the Discord bot to pair with this code.';
+  statusSection.append(statusPill, statusText);
+
+  const inviteSection = document.createElement('div');
+  inviteSection.className = 'migration-dialog-section';
+
+  const inviteTitle = document.createElement('strong');
+  inviteTitle.textContent = 'Invite the Discord bot';
+  inviteSection.appendChild(inviteTitle);
+
+  if (inviteUrl) {
+    const inviteButton = document.createElement('button');
+    inviteButton.type = 'button';
+    inviteButton.className = 'migration-invite-btn';
+    setIconButtonContent(inviteButton, 'fa-brands fa-discord', 'Invite Bot');
+    inviteButton.addEventListener('click', () => {
+      window.open(inviteUrl, '_blank', 'noopener,noreferrer');
+    });
+    inviteSection.appendChild(inviteButton);
+  } else {
+    const missingInvite = document.createElement('p');
+    missingInvite.textContent = 'Discord bot invite is not configured yet. Set DISCORD_BOT_CLIENT_ID.';
+    inviteSection.appendChild(missingInvite);
+  }
+
+  const codeSection = document.createElement('div');
+  codeSection.className = 'migration-dialog-section';
+
+  const codeTitle = document.createElement('strong');
+  codeTitle.textContent = 'Pair this migration';
+  codeSection.appendChild(codeTitle);
+
+  const codeHelp = document.createElement('p');
+  codeHelp.textContent = 'Run this slash command in the Discord server. The bot will send a Start JelloChat Migration button.';
+  codeSection.appendChild(codeHelp);
+
+  const codeBox = document.createElement('div');
+  codeBox.className = 'migration-code-box';
+
+  const codeInput = document.createElement('input');
+  codeInput.type = 'text';
+  codeInput.readOnly = true;
+  codeInput.value = command;
+  codeInput.setAttribute('aria-label', 'Discord migration pair command');
+  codeInput.addEventListener('focus', () => {
+    codeInput.select();
+  });
+  codeInput.addEventListener('click', () => {
+    codeInput.select();
+  });
+
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.className = 'migration-copy-btn';
+  setIconButtonContent(copyButton, 'fa-solid fa-copy', 'Copy');
+  copyButton.addEventListener('click', async () => {
+    if (!navigator.clipboard?.writeText) {
+      codeInput.focus();
+      codeInput.select();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(command);
+      setIconButtonContent(copyButton, 'fa-solid fa-check', 'Copied');
+      window.setTimeout(() => setIconButtonContent(copyButton, 'fa-solid fa-copy', 'Copy'), 1400);
+    } catch (_error) {
+      codeInput.focus();
+      codeInput.select();
+    }
+  });
+
+  codeBox.append(codeInput, copyButton);
+  codeSection.appendChild(codeBox);
+
+  const scopeNote = document.createElement('p');
+  scopeNote.className = 'migration-scope-note';
+  scopeNote.textContent = 'Only categories and text/voice channels are imported.';
+  codeSection.appendChild(scopeNote);
+
+  body.append(statusSection, inviteSection, codeSection);
+  ui.appDialogMessage.appendChild(body);
+
+  animateShowOverlay(ui.appDialog);
+  if (inviteUrl) {
+    ui.appDialogMessage.querySelector('.migration-invite-btn')?.focus();
+  } else {
+    codeInput.focus();
+  }
+
+  return new Promise((resolve) => {
+    const resolveDialog = resolve;
+    dialogState.resolver = resolveDialog;
+    if (!code || !window.api?.chat?.getDiscordMigrationStatus) {
+      return;
+    }
+
+    let isPolling = false;
+    const updateStatus = async () => {
+      if (dialogState.resolver !== resolveDialog || isPolling) {
+        return;
+      }
+      isPolling = true;
+      try {
+        const result = await window.api.chat.getDiscordMigrationStatus(code);
+        if (!result.ok) {
+          statusPill.className = 'migration-status-pill failed';
+          statusPill.textContent = 'Error';
+          statusText.textContent = result.message || 'Could not load migration status.';
+          return;
+        }
+
+        const session = result.session || {};
+        const guildName = session.discordGuildName || 'Discord server';
+        if (session.status === 'paired') {
+          statusPill.className = 'migration-status-pill linked';
+          statusPill.textContent = 'Linked';
+          statusText.textContent = `${guildName} is linked. Click Start JelloChat Migration in Discord.`;
+        } else if (session.status === 'importing') {
+          statusPill.className = 'migration-status-pill importing';
+          statusPill.textContent = 'Migrating';
+          statusText.textContent = `Importing categories and channels from ${guildName}.`;
+        } else if (session.status === 'imported') {
+          statusPill.className = 'migration-status-pill linked';
+          statusPill.textContent = 'Done';
+          statusText.textContent = `Migration complete. Opening ${guildName} in JelloChat.`;
+          window.clearInterval(pollTimer);
+          if (session.importedServerId) {
+            state.selectedServerId = Number(session.importedServerId);
+            await loadServers(false);
+          }
+          if (dialogState.resolver === resolveDialog) {
+            dialogState.resolver = null;
+            closeAppDialog();
+            resolveDialog(true);
+          }
+        } else if (session.status === 'failed') {
+          statusPill.className = 'migration-status-pill failed';
+          statusPill.textContent = 'Failed';
+          statusText.textContent = session.errorMessage || 'Migration failed.';
+          window.clearInterval(pollTimer);
+        } else if (session.status === 'expired') {
+          statusPill.className = 'migration-status-pill failed';
+          statusPill.textContent = 'Expired';
+          statusText.textContent = 'This pairing code expired. Start a new migration to get a fresh code.';
+          window.clearInterval(pollTimer);
+        }
+      } catch (_error) {
+        statusPill.className = 'migration-status-pill failed';
+        statusPill.textContent = 'Offline';
+        statusText.textContent = 'Waiting to reconnect to migration status.';
+      } finally {
+        isPolling = false;
+      }
+    };
+    const pollTimer = window.setInterval(() => {
+      if (dialogState.resolver !== resolveDialog) {
+        window.clearInterval(pollTimer);
+        return;
+      }
+      updateStatus();
+    }, 1500);
+    updateStatus();
+  });
+}
+
 function isRateLimitMessage(message) {
   const text = String(message || '').toLowerCase();
   return text.includes('too quickly') || text.includes('rate limit') || text.includes('slow down');
@@ -3606,6 +4396,7 @@ async function performLogout(serverLogout = true) {
 
   state.user = null;
   state.servers = [];
+  state.channelCategories = [];
   state.channels = [];
   state.selectedServerId = null;
   state.selectedChannelId = null;
@@ -3631,6 +4422,19 @@ async function performLogout(serverLogout = true) {
   state.selectedAdminUserId = null;
   state.adminUserDetails = null;
   state.notifications = [];
+  state.notificationPreferences = {
+    dm_messages: true,
+    mentions: true,
+    channel_messages: false,
+    friend_requests: true,
+    calls: true,
+    moderation: true
+  };
+  state.unread = {
+    channels: {},
+    dms: {},
+    notifications: 0
+  };
   state.passkeys = [];
   state.passkeysSupported = false;
 
@@ -3658,6 +4462,7 @@ function updateChannelCreateButton() {
   const canCreateChannel = Boolean(state.serverPermissions.manage_channels && state.selectedServerId);
   const canCreateInvite = Boolean(state.serverPermissions.create_invites && state.selectedServerId);
   ui.createChannelBtn.style.display = canCreateChannel ? 'inline-flex' : 'none';
+  ui.createCategoryBtn.style.display = canCreateChannel ? 'inline-flex' : 'none';
   ui.createInviteBtn.style.display = canCreateInvite ? 'inline-flex' : 'none';
 }
 
@@ -3777,48 +4582,240 @@ function closeServerOptions() {
   ui.serverOptionsMenu.classList.add('hidden');
 }
 
+function getServerInitials(name) {
+  const text = String(name || 'JC').trim();
+  if (!text) {
+    return 'JC';
+  }
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  }
+  return text.slice(0, 2).toUpperCase();
+}
+
+function normalizeRoleColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : '#99aab5';
+}
+
 function setServerOptionsTab(tabName) {
   state.serverOptionsTab = tabName;
   const generalActive = tabName === 'general';
   const rolesActive = tabName === 'roles';
+  const permissionsActive = tabName === 'permissions';
   ui.serverTabGeneral.classList.toggle('active', generalActive);
   ui.serverTabRoles.classList.toggle('active', rolesActive);
+  ui.serverTabPermissions?.classList.toggle('active', permissionsActive);
   ui.serverTabBanned.classList.toggle('active', tabName === 'banned');
   ui.serverPanelGeneral.classList.toggle('hidden', !generalActive);
   ui.serverPanelRoles.classList.toggle('hidden', !rolesActive);
+  ui.serverPanelPermissions?.classList.toggle('hidden', !permissionsActive);
   ui.serverPanelBanned.classList.toggle('hidden', tabName !== 'banned');
+  if (permissionsActive) {
+    loadPermissionOverridesState().catch((error) => showWarningDialog(error.message || 'Failed to load channel permissions.'));
+  }
 }
 
 function getRoleEditorPermissions() {
-  return {
-    manage_server: ui.permManageServer.checked,
-    manage_roles: ui.permManageRoles.checked,
-    manage_channels: ui.permManageChannels.checked,
-    create_invites: ui.permCreateInvites.checked,
-    moderate_members: ui.permModerateMembers.checked
-  };
+  return Object.fromEntries(SERVER_PERMISSION_DEFINITIONS.map((permission) => [
+    permission.key,
+    Boolean(ui[permission.input]?.checked)
+  ]));
 }
 
 function setRoleEditor(role) {
   const permissions = role?.permissions || {};
+  const color = normalizeRoleColor(role?.color);
   ui.roleNameInput.value = role?.name || '';
-  ui.permManageServer.checked = Boolean(permissions.manage_server);
-  ui.permManageRoles.checked = Boolean(permissions.manage_roles);
-  ui.permManageChannels.checked = Boolean(permissions.manage_channels);
-  ui.permCreateInvites.checked = Boolean(permissions.create_invites);
-  ui.permModerateMembers.checked = Boolean(permissions.moderate_members);
+  if (ui.roleColorInput) {
+    ui.roleColorInput.value = color;
+  }
+  if (ui.roleColorValue) {
+    ui.roleColorValue.textContent = color;
+  }
+  for (const permission of SERVER_PERMISSION_DEFINITIONS) {
+    if (ui[permission.input]) {
+      ui[permission.input].checked = Boolean(permissions[permission.key]);
+    }
+  }
 
   const canManage = Boolean(state.serverPermissions.manage_roles);
   ui.createRoleBtn.disabled = !canManage;
   const isDefault = Boolean(role?.is_default);
   ui.roleNameInput.disabled = !canManage || isDefault;
-  ui.permManageServer.disabled = !canManage;
-  ui.permManageRoles.disabled = !canManage;
-  ui.permManageChannels.disabled = !canManage;
-  ui.permCreateInvites.disabled = !canManage;
-  ui.permModerateMembers.disabled = !canManage;
+  if (ui.roleColorInput) {
+    ui.roleColorInput.disabled = !canManage || !role;
+  }
+  for (const permission of SERVER_PERMISSION_DEFINITIONS) {
+    if (ui[permission.input]) {
+      ui[permission.input].disabled = !canManage;
+    }
+  }
   ui.saveRoleBtn.disabled = !canManage || !role;
   ui.deleteRoleBtn.disabled = !canManage || !role || isDefault;
+}
+
+function getPermissionStateForKey(key) {
+  const selected = state.permissionOverrideState?.overrides?.find((override) => override.id === state.selectedPermissionOverrideId);
+  if (selected?.allow?.[key]) {
+    return 'allow';
+  }
+  if (selected?.deny?.[key]) {
+    return 'deny';
+  }
+  return 'inherit';
+}
+
+function setPermissionStateForKey(key, value) {
+  const selected = state.permissionOverrideState?.overrides?.find((override) => override.id === state.selectedPermissionOverrideId);
+  if (!selected) {
+    return;
+  }
+  selected.allow = selected.allow || {};
+  selected.deny = selected.deny || {};
+  selected.allow[key] = value === 'allow';
+  selected.deny[key] = value === 'deny';
+  renderPermissionOverrideEditor();
+}
+
+function getCurrentPermissionScope() {
+  const [scopeType, rawId] = String(ui.permissionScopeSelect?.value || '').split(':');
+  return { scopeType, scopeId: Number(rawId) };
+}
+
+function getPermissionOverrideLabel(override) {
+  const data = state.permissionOverrideState;
+  const scope = override.scope_type === 'category'
+    ? data?.categories?.find((item) => item.id === override.category_id)
+    : data?.channels?.find((item) => item.id === override.channel_id);
+  const target = override.target_type === 'role'
+    ? data?.roles?.find((item) => item.id === override.role_id)
+    : data?.members?.find((item) => item.id === override.user_id);
+  return `${override.scope_type === 'category' ? 'Category' : 'Channel'}: ${scope?.name || 'Unknown'} -> ${override.target_type === 'role' ? 'Role' : 'Member'}: ${target?.name || target?.username || 'Unknown'}`;
+}
+
+function syncPermissionTargetOptions() {
+  const targetType = ui.permissionTargetTypeSelect?.value || 'role';
+  const targets = targetType === 'role' ? (state.permissionOverrideState?.roles || []) : (state.permissionOverrideState?.members || []);
+  ui.permissionTargetSelect.innerHTML = '';
+  for (const target of targets) {
+    const option = document.createElement('option');
+    option.value = String(target.id);
+    option.textContent = target.name || target.username || `#${target.id}`;
+    ui.permissionTargetSelect.appendChild(option);
+  }
+}
+
+function renderPermissionOverrideEditor() {
+  if (!ui.permissionOverrideEditor) {
+    return;
+  }
+  ui.permissionOverrideEditor.innerHTML = '';
+  let selected = state.permissionOverrideState?.overrides?.find((override) => override.id === state.selectedPermissionOverrideId);
+  if (!selected) {
+    const scope = getCurrentPermissionScope();
+    selected = {
+      id: 'draft',
+      scope_type: scope.scopeType,
+      category_id: scope.scopeType === 'category' ? scope.scopeId : null,
+      channel_id: scope.scopeType === 'channel' ? scope.scopeId : null,
+      target_type: ui.permissionTargetTypeSelect?.value || 'role',
+      role_id: ui.permissionTargetTypeSelect?.value === 'role' ? Number(ui.permissionTargetSelect?.value) : null,
+      user_id: ui.permissionTargetTypeSelect?.value === 'member' ? Number(ui.permissionTargetSelect?.value) : null,
+      allow: {},
+      deny: {}
+    };
+    state.permissionOverrideState.overrides.push(selected);
+    state.selectedPermissionOverrideId = selected.id;
+  }
+  ui.deletePermissionOverrideBtn.disabled = selected.id === 'draft';
+
+  for (const group of [...new Set(SERVER_PERMISSION_DEFINITIONS.map((permission) => permission.group))]) {
+    const groupEl = document.createElement('div');
+    groupEl.className = 'permission-state-group';
+    const title = document.createElement('h3');
+    title.textContent = group;
+    groupEl.appendChild(title);
+    for (const permission of SERVER_PERMISSION_DEFINITIONS.filter((item) => item.group === group)) {
+      const row = document.createElement('div');
+      row.className = 'permission-state-row';
+      const label = document.createElement('span');
+      label.textContent = permission.label;
+      row.appendChild(label);
+      for (const value of ['inherit', 'allow', 'deny']) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'permission-state-btn';
+        button.classList.toggle('active', getPermissionStateForKey(permission.key) === value);
+        button.textContent = value[0].toUpperCase() + value.slice(1);
+        button.addEventListener('click', () => setPermissionStateForKey(permission.key, value));
+        row.appendChild(button);
+      }
+      groupEl.appendChild(row);
+    }
+    ui.permissionOverrideEditor.appendChild(groupEl);
+  }
+}
+
+function renderPermissionOverrides() {
+  const data = state.permissionOverrideState;
+  if (!data || !ui.permissionScopeSelect) {
+    return;
+  }
+  ui.permissionScopeSelect.innerHTML = '';
+  for (const category of data.categories || []) {
+    const option = document.createElement('option');
+    option.value = `category:${category.id}`;
+    option.textContent = `Category: ${category.name}`;
+    ui.permissionScopeSelect.appendChild(option);
+  }
+  for (const channel of data.channels || []) {
+    const option = document.createElement('option');
+    option.value = `channel:${channel.id}`;
+    option.textContent = `${channel.type === 'voice' ? 'Voice' : 'Text'}: ${channel.name}`;
+    ui.permissionScopeSelect.appendChild(option);
+  }
+  syncPermissionTargetOptions();
+
+  ui.permissionOverrideList.innerHTML = '';
+  for (const override of data.overrides || []) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'permission-override-item';
+    button.classList.toggle('active', override.id === state.selectedPermissionOverrideId);
+    button.textContent = getPermissionOverrideLabel(override);
+    button.addEventListener('click', () => {
+      state.selectedPermissionOverrideId = override.id;
+      if (ui.permissionTargetTypeSelect) {
+        ui.permissionTargetTypeSelect.value = override.target_type;
+        syncPermissionTargetOptions();
+        ui.permissionTargetSelect.value = String(override.target_type === 'role' ? override.role_id : override.user_id);
+      }
+      if (ui.permissionScopeSelect) {
+        ui.permissionScopeSelect.value = `${override.scope_type}:${override.scope_type === 'category' ? override.category_id : override.channel_id}`;
+      }
+      renderPermissionOverrides();
+      renderPermissionOverrideEditor();
+    });
+    ui.permissionOverrideList.appendChild(button);
+  }
+  renderPermissionOverrideEditor();
+}
+
+async function loadPermissionOverridesState() {
+  if (!state.serverOptionsServerId || !window.api.permissions?.getOverrides) {
+    return;
+  }
+  const result = await window.api.permissions.getOverrides({ serverId: state.serverOptionsServerId });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  state.permissionOverrideState = result;
+  state.selectedPermissionOverrideId = result.overrides?.[0]?.id || null;
+  renderPermissionOverrides();
+  applyPendingPermissionScope();
 }
 
 function renderRoleMembers() {
@@ -3852,6 +4849,7 @@ function renderRoleMembers() {
         return;
       }
       await loadRolesState();
+      await refreshSelectedServerPresence();
     });
 
     row.append(label, toggle);
@@ -3864,7 +4862,12 @@ function renderRoles() {
   for (const role of state.serverRoles) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = role.name;
+    const colorDot = document.createElement('span');
+    colorDot.className = 'role-color-dot';
+    colorDot.style.backgroundColor = normalizeRoleColor(role.color);
+    const label = document.createElement('span');
+    label.textContent = role.name;
+    button.append(colorDot, label);
     button.className = role.id === state.selectedRoleId ? 'active' : '';
     button.addEventListener('click', () => {
       state.selectedRoleId = role.id;
@@ -3898,7 +4901,16 @@ async function loadRolesState() {
   if (!state.selectedRoleId || !state.serverRoles.some((role) => role.id === state.selectedRoleId)) {
     state.selectedRoleId = state.serverRoles[0]?.id || null;
   }
+  if (state.serverOptionsServerId === state.selectedServerId) {
+    resetMentionCandidates();
+  }
   renderRoles();
+}
+
+async function refreshSelectedServerPresence() {
+  if (state.selectedServerId) {
+    await loadServerPresence(state.selectedServerId);
+  }
 }
 
 function renderBannedUsers() {
@@ -3959,10 +4971,624 @@ async function loadBannedUsers() {
   renderBannedUsers();
 }
 
+function closeChannelSettings() {
+  state.channelSettingsTarget = null;
+  state.channelSettingsTab = 'overview';
+  state.channelSettingsPermissionState = null;
+  state.selectedChannelSettingsOverrideId = null;
+  ui.channelSettingsModal?.classList.add('hidden');
+}
+
+function populateChannelSettingsCategorySelect(selectedCategoryId = null) {
+  if (!ui.channelSettingsCategory) {
+    return;
+  }
+  ui.channelSettingsCategory.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'No Category';
+  ui.channelSettingsCategory.appendChild(none);
+  for (const category of orderedCategories()) {
+    const option = document.createElement('option');
+    option.value = String(category.id);
+    option.textContent = category.name;
+    ui.channelSettingsCategory.appendChild(option);
+  }
+  ui.channelSettingsCategory.value = selectedCategoryId ? String(selectedCategoryId) : '';
+}
+
+function openChannelSettings(kind, id) {
+  if (!state.serverPermissions.manage_channels || isAdminGhostServer()) {
+    return;
+  }
+  const isCategory = kind === 'category';
+  const target = isCategory
+    ? state.channelCategories.find((category) => Number(category.id) === Number(id))
+    : state.channels.find((channel) => Number(channel.id) === Number(id));
+  if (!target) {
+    return;
+  }
+
+  closeUserOptions();
+  state.channelSettingsTarget = { kind, id: Number(id) };
+  state.channelSettingsPermissionState = null;
+  state.selectedChannelSettingsOverrideId = null;
+  ui.channelSettingsTitle.textContent = 'Overview';
+  if (ui.channelSettingsKind) {
+    ui.channelSettingsKind.textContent = isCategory ? `${target.name} Category` : `${target.name} Channel`;
+  }
+  if (ui.channelSettingsNameLabel) {
+    ui.channelSettingsNameLabel.textContent = isCategory ? 'Category Name' : 'Channel Name';
+  }
+  setChannelSettingsTab('overview');
+  if (ui.channelSettingsDeleteTab) {
+    ui.channelSettingsDeleteTab.textContent = isCategory ? 'Delete Category' : 'Delete Channel';
+  }
+  ui.channelSettingsName.value = target.name || '';
+  ui.channelSettingsMeta.textContent = isCategory
+    ? 'Deleting a category moves its channels to the top level.'
+    : `${String(target.type || 'text').toUpperCase()} channel settings`;
+  ui.channelSettingsChannelExtra?.classList.toggle('hidden', isCategory);
+  ui.channelSettingsCategoryLabel?.classList.toggle('hidden', isCategory);
+  ui.channelSettingsCategory?.classList.toggle('hidden', isCategory);
+  if (!isCategory) {
+    populateChannelSettingsCategorySelect(target.category_id);
+    if (ui.channelSettingsTopic) {
+      ui.channelSettingsTopic.value = target.topic || '';
+    }
+    if (ui.channelSettingsSlowmode) {
+      ui.channelSettingsSlowmode.value = String(target.slowmode_seconds || 0);
+    }
+  }
+  ui.channelSettingsModal?.classList.remove('hidden');
+  requestAnimationFrame(() => ui.channelSettingsName?.focus());
+}
+
+function getChannelSettingsPermissionScope() {
+  const target = state.channelSettingsTarget;
+  if (!target) {
+    return null;
+  }
+  return {
+    scopeType: target.kind,
+    scopeId: target.id
+  };
+}
+
+function getChannelSettingsTargetObject() {
+  const target = state.channelSettingsTarget;
+  if (!target) {
+    return null;
+  }
+  return target.kind === 'category'
+    ? state.channelCategories.find((category) => Number(category.id) === Number(target.id))
+    : state.channels.find((channel) => Number(channel.id) === Number(target.id));
+}
+
+function setChannelSettingsTab(tab) {
+  state.channelSettingsTab = tab;
+  ui.channelSettingsOverviewTab?.classList.toggle('active', tab === 'overview');
+  ui.channelSettingsPermissionsTab?.classList.toggle('active', tab === 'permissions');
+  ui.channelSettingsDeleteTab?.classList.remove('active');
+  ui.channelSettingsOverviewPanel?.classList.toggle('hidden', tab !== 'overview');
+  ui.channelSettingsPermissionsPanel?.classList.toggle('hidden', tab !== 'permissions');
+  if (tab === 'overview') {
+    requestAnimationFrame(() => ui.channelSettingsName?.focus());
+  }
+}
+
+function channelSettingsOverrideMatchesScope(override, scope = getChannelSettingsPermissionScope()) {
+  if (!override || !scope || override.scope_type !== scope.scopeType) {
+    return false;
+  }
+  const overrideScopeId = scope.scopeType === 'category' ? override.category_id : override.channel_id;
+  return Number(overrideScopeId) === Number(scope.scopeId);
+}
+
+function channelSettingsOverrideMatchesTarget(override, targetType, targetId) {
+  if (!override || override.target_type !== targetType) {
+    return false;
+  }
+  const overrideTargetId = targetType === 'role' ? override.role_id : override.user_id;
+  return Number(overrideTargetId) === Number(targetId);
+}
+
+function getChannelSettingsDefaultRole() {
+  return (state.channelSettingsPermissionState?.roles || []).find((role) => role.is_default)
+    || (state.channelSettingsPermissionState?.roles || [])[0]
+    || null;
+}
+
+function getChannelSettingsTargetName(targetType, targetId) {
+  const data = state.channelSettingsPermissionState;
+  const target = targetType === 'role'
+    ? (data?.roles || []).find((role) => Number(role.id) === Number(targetId))
+    : (data?.members || []).find((member) => Number(member.id) === Number(targetId));
+  return target?.name || target?.username || `#${targetId}`;
+}
+
+function syncChannelSettingsPermissionTargets() {
+  if (!ui.channelSettingsPermissionTarget || !ui.channelSettingsPermissionTargetType) {
+    return;
+  }
+  const targetType = ui.channelSettingsPermissionTargetType.value || 'role';
+  const targets = targetType === 'role'
+    ? (state.channelSettingsPermissionState?.roles || [])
+    : (state.channelSettingsPermissionState?.members || []);
+  const previousValue = ui.channelSettingsPermissionTarget.value;
+  ui.channelSettingsPermissionTarget.innerHTML = '';
+  for (const target of targets) {
+    const option = document.createElement('option');
+    option.value = String(target.id);
+    option.textContent = target.name || target.username || `#${target.id}`;
+    ui.channelSettingsPermissionTarget.appendChild(option);
+  }
+  if ([...ui.channelSettingsPermissionTarget.options].some((option) => option.value === previousValue)) {
+    ui.channelSettingsPermissionTarget.value = previousValue;
+  }
+  ui.channelSettingsPermissionTarget.disabled = targets.length === 0;
+}
+
+function getSelectedChannelSettingsOverride() {
+  const data = state.channelSettingsPermissionState;
+  const scope = getChannelSettingsPermissionScope();
+  if (!data || !scope) {
+    return null;
+  }
+  let selected = (data.overrides || []).find((override) => override.id === state.selectedChannelSettingsOverrideId);
+  if (!selected || !channelSettingsOverrideMatchesScope(selected, scope)) {
+    const targetType = ui.channelSettingsPermissionTargetType?.value || 'role';
+    const targetId = Number(ui.channelSettingsPermissionTarget?.value);
+    selected = (data.overrides || []).find((override) => (
+      channelSettingsOverrideMatchesScope(override, scope)
+      && channelSettingsOverrideMatchesTarget(override, targetType, targetId)
+    ));
+  }
+  if (selected) {
+    state.selectedChannelSettingsOverrideId = selected.id;
+    return selected;
+  }
+
+  const targetType = ui.channelSettingsPermissionTargetType?.value || 'role';
+  const targetId = Number(ui.channelSettingsPermissionTarget?.value);
+  if (!targetId) {
+    return null;
+  }
+  const draft = {
+    id: 'channel-draft',
+    scope_type: scope.scopeType,
+    category_id: scope.scopeType === 'category' ? scope.scopeId : null,
+    channel_id: scope.scopeType === 'channel' ? scope.scopeId : null,
+    target_type: targetType,
+    role_id: targetType === 'role' ? targetId : null,
+    user_id: targetType === 'member' ? targetId : null,
+    allow: {},
+    deny: {}
+  };
+  data.overrides = (data.overrides || []).filter((override) => override.id !== 'channel-draft');
+  data.overrides.push(draft);
+  state.selectedChannelSettingsOverrideId = draft.id;
+  return draft;
+}
+
+function getChannelSettingsPermissionValue(key) {
+  const selected = getSelectedChannelSettingsOverride();
+  if (selected?.allow?.[key]) {
+    return 'allow';
+  }
+  if (selected?.deny?.[key]) {
+    return 'deny';
+  }
+  return 'inherit';
+}
+
+function setChannelSettingsPermissionValue(key, value) {
+  const selected = getSelectedChannelSettingsOverride();
+  if (!selected) {
+    return;
+  }
+  selected.allow = selected.allow || {};
+  selected.deny = selected.deny || {};
+  selected.allow[key] = value === 'allow';
+  selected.deny[key] = value === 'deny';
+  renderChannelSettingsPermissionRows();
+}
+
+function renderChannelSettingsAccessList() {
+  if (!ui.channelSettingsAccessList) {
+    return;
+  }
+  const data = state.channelSettingsPermissionState;
+  const scopedOverrides = (data?.overrides || []).filter((override) => (
+    override.id !== 'channel-draft' && channelSettingsOverrideMatchesScope(override)
+  ));
+  ui.channelSettingsAccessList.innerHTML = '';
+  if (!scopedOverrides.length) {
+    const empty = document.createElement('div');
+    empty.className = 'channel-access-empty';
+    empty.textContent = 'No custom role or member overrides yet.';
+    ui.channelSettingsAccessList.appendChild(empty);
+    return;
+  }
+  for (const override of scopedOverrides) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'channel-access-row';
+    row.classList.toggle('active', override.id === state.selectedChannelSettingsOverrideId);
+    const name = getChannelSettingsTargetName(override.target_type, override.target_type === 'role' ? override.role_id : override.user_id);
+    const allowCount = Object.values(override.allow || {}).filter(Boolean).length;
+    const denyCount = Object.values(override.deny || {}).filter(Boolean).length;
+    row.innerHTML = `<span><i class="fa-solid ${override.target_type === 'role' ? 'fa-user-shield' : 'fa-user'}" aria-hidden="true"></i>${escapeHtmlText(name)}</span><small>${allowCount} allow, ${denyCount} deny</small>`;
+    row.addEventListener('click', () => {
+      state.selectedChannelSettingsOverrideId = override.id;
+      if (ui.channelSettingsPermissionTargetType) {
+        ui.channelSettingsPermissionTargetType.value = override.target_type;
+      }
+      syncChannelSettingsPermissionTargets();
+      if (ui.channelSettingsPermissionTarget) {
+        ui.channelSettingsPermissionTarget.value = String(override.target_type === 'role' ? override.role_id : override.user_id);
+      }
+      renderChannelSettingsPermissions();
+    });
+    ui.channelSettingsAccessList.appendChild(row);
+  }
+}
+
+function renderChannelSettingsPermissionRows() {
+  if (!ui.channelSettingsPermissionRows) {
+    return;
+  }
+  const selected = getSelectedChannelSettingsOverride();
+  ui.channelSettingsPermissionRows.innerHTML = '';
+  if (!selected) {
+    const empty = document.createElement('div');
+    empty.className = 'channel-access-empty';
+    empty.textContent = 'Choose a role or member to edit permissions.';
+    ui.channelSettingsPermissionRows.appendChild(empty);
+    return;
+  }
+  const groups = [...new Set(SERVER_PERMISSION_DEFINITIONS.map((permission) => permission.group))];
+  for (const group of groups) {
+    const groupEl = document.createElement('div');
+    groupEl.className = 'channel-permission-group';
+    const title = document.createElement('h4');
+    title.textContent = `${group} Permissions`;
+    groupEl.appendChild(title);
+    for (const permission of SERVER_PERMISSION_DEFINITIONS.filter((item) => item.group === group)) {
+      const row = document.createElement('div');
+      row.className = 'channel-permission-row';
+      const label = document.createElement('div');
+      label.innerHTML = `<strong>${escapeHtmlText(permission.label)}</strong><span>${escapeHtmlText(getPermissionHelpText(permission.key))}</span>`;
+      row.appendChild(label);
+      const actions = document.createElement('div');
+      actions.className = 'channel-permission-actions';
+      for (const [value, icon, titleText] of [['deny', 'fa-xmark', 'Deny'], ['inherit', 'fa-slash', 'Inherit'], ['allow', 'fa-check', 'Allow']]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `channel-permission-state ${value}`;
+        button.classList.toggle('active', getChannelSettingsPermissionValue(permission.key) === value);
+        button.title = titleText;
+        button.setAttribute('aria-label', `${titleText} ${permission.label}`);
+        button.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i>`;
+        button.addEventListener('click', () => setChannelSettingsPermissionValue(permission.key, value));
+        actions.appendChild(button);
+      }
+      row.appendChild(actions);
+      groupEl.appendChild(row);
+    }
+    ui.channelSettingsPermissionRows.appendChild(groupEl);
+  }
+  if (ui.channelSettingsPermissionDeleteBtn) {
+    ui.channelSettingsPermissionDeleteBtn.disabled = selected.id === 'channel-draft';
+  }
+}
+
+function getPermissionHelpText(key) {
+  const help = {
+    view_channels: 'Allows members to see this category or channel.',
+    manage_server: 'Allows server-wide setup changes.',
+    manage_roles: 'Allows role management.',
+    manage_channels: 'Allows channel and category changes.',
+    create_invites: 'Allows members to create invites.',
+    send_messages: 'Allows sending messages in text channels.',
+    attach_files: 'Allows uploading files.',
+    read_message_history: 'Allows reading previous messages.',
+    manage_messages: 'Allows deleting other members messages.',
+    connect_voice: 'Allows joining voice channels.',
+    speak_voice: 'Allows speaking in voice channels.',
+    view_members: 'Allows viewing member lists and presence.',
+    kick_members: 'Allows kicking members.',
+    ban_members: 'Allows banning and unbanning members.',
+    view_bans: 'Allows viewing server bans.'
+  };
+  return help[key] || 'Controls this permission for the selected target.';
+}
+
+function renderChannelSettingsPermissions() {
+  const target = getChannelSettingsTargetObject();
+  const isCategory = state.channelSettingsTarget?.kind === 'category';
+  if (ui.channelSettingsPermissionsTitle) {
+    ui.channelSettingsPermissionsTitle.textContent = isCategory ? 'Category Settings' : 'Channel Settings';
+  }
+  if (ui.channelSettingsPermissionsCopy) {
+    ui.channelSettingsPermissionsCopy.textContent = `Use permissions to customize who can do what in ${target?.name || 'this item'}.`;
+  }
+  if (ui.channelSettingsPrivateTitle) {
+    ui.channelSettingsPrivateTitle.textContent = isCategory ? 'Private Category' : 'Private Channel';
+  }
+  if (ui.channelSettingsPrivateCopy) {
+    ui.channelSettingsPrivateCopy.textContent = isCategory
+      ? 'Only selected members and roles will be able to view this category. Channels inside it will match this setting.'
+      : 'Only selected members and roles will be able to view this channel.';
+  }
+  if (ui.channelSettingsAccessHeading) {
+    ui.channelSettingsAccessHeading.textContent = isCategory ? 'Who can access this category?' : 'Who can access this channel?';
+  }
+  syncChannelSettingsPermissionTargets();
+  const defaultRole = getChannelSettingsDefaultRole();
+  const everyoneOverride = (state.channelSettingsPermissionState?.overrides || []).find((override) => (
+    defaultRole
+    && channelSettingsOverrideMatchesScope(override)
+    && channelSettingsOverrideMatchesTarget(override, 'role', defaultRole.id)
+  ));
+  if (ui.channelSettingsPrivateToggle) {
+    ui.channelSettingsPrivateToggle.checked = Boolean(everyoneOverride?.deny?.view_channels);
+    ui.channelSettingsPrivateToggle.disabled = !defaultRole;
+  }
+  renderChannelSettingsAccessList();
+  renderChannelSettingsPermissionRows();
+}
+
+async function loadChannelSettingsPermissions() {
+  if (!state.selectedServerId || !window.api.permissions?.getOverrides) {
+    return;
+  }
+  const result = await window.api.permissions.getOverrides({ serverId: state.selectedServerId });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  state.channelSettingsPermissionState = result;
+  state.channelSettingsPermissionState.overrides = (result.overrides || []).filter((override) => override.id !== 'channel-draft');
+  const scopedOverride = state.channelSettingsPermissionState.overrides.find((override) => channelSettingsOverrideMatchesScope(override));
+  state.selectedChannelSettingsOverrideId = scopedOverride?.id || null;
+  if (ui.channelSettingsPermissionTargetType) {
+    ui.channelSettingsPermissionTargetType.value = scopedOverride?.target_type || 'role';
+  }
+  syncChannelSettingsPermissionTargets();
+  if (scopedOverride && ui.channelSettingsPermissionTarget) {
+    ui.channelSettingsPermissionTarget.value = String(scopedOverride.target_type === 'role' ? scopedOverride.role_id : scopedOverride.user_id);
+  }
+  renderChannelSettingsPermissions();
+}
+
+async function saveChannelSettingsPermissionOverride() {
+  const selected = getSelectedChannelSettingsOverride();
+  const scope = getChannelSettingsPermissionScope();
+  const targetType = ui.channelSettingsPermissionTargetType?.value || 'role';
+  const targetId = Number(ui.channelSettingsPermissionTarget?.value);
+  if (!state.selectedServerId || !selected || !scope || !targetId) {
+    return;
+  }
+  const result = await window.api.permissions.saveOverride({
+    serverId: state.selectedServerId,
+    scopeType: scope.scopeType,
+    scopeId: scope.scopeId,
+    targetType,
+    targetId,
+    allow: selected.allow || {},
+    deny: selected.deny || {}
+  });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  await loadChannelSettingsPermissions();
+  await loadChannels(state.selectedServerId, false);
+}
+
+async function deleteChannelSettingsPermissionOverride() {
+  const selected = getSelectedChannelSettingsOverride();
+  if (!state.selectedServerId || !selected || selected.id === 'channel-draft') {
+    return;
+  }
+  const confirmed = await showConfirmDialog('Remove Override', 'Remove this channel permission override?', 'Remove', 'Cancel');
+  if (!confirmed) {
+    return;
+  }
+  const result = await window.api.permissions.deleteOverride({
+    serverId: state.selectedServerId,
+    overrideId: selected.id
+  });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  state.selectedChannelSettingsOverrideId = null;
+  await loadChannelSettingsPermissions();
+  await loadChannels(state.selectedServerId, false);
+}
+
+async function saveChannelSettingsPrivateToggle() {
+  const defaultRole = getChannelSettingsDefaultRole();
+  const scope = getChannelSettingsPermissionScope();
+  if (!defaultRole || !scope || !state.selectedServerId) {
+    return;
+  }
+  const saveDefaultViewOverride = async ({ scopeType, scopeId }) => {
+    let override = (state.channelSettingsPermissionState?.overrides || []).find((item) => (
+      item.scope_type === scopeType
+      && Number(scopeType === 'category' ? item.category_id : item.channel_id) === Number(scopeId)
+      && channelSettingsOverrideMatchesTarget(item, 'role', defaultRole.id)
+    ));
+    if (!override) {
+      override = {
+        allow: {},
+        deny: {}
+      };
+    }
+    override.allow = { ...(override.allow || {}), view_channels: false };
+    override.deny = { ...(override.deny || {}), view_channels: Boolean(ui.channelSettingsPrivateToggle?.checked) };
+    return window.api.permissions.saveOverride({
+      serverId: state.selectedServerId,
+      scopeType,
+      scopeId,
+      targetType: 'role',
+      targetId: defaultRole.id,
+      allow: override.allow,
+      deny: override.deny
+    });
+  };
+
+  const result = await saveDefaultViewOverride(scope);
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+
+  if (scope.scopeType === 'category') {
+    const childChannels = (state.channelSettingsPermissionState?.channels || [])
+      .filter((channel) => Number(channel.category_id) === Number(scope.scopeId));
+    for (const channel of childChannels) {
+      const childResult = await saveDefaultViewOverride({ scopeType: 'channel', scopeId: channel.id });
+      if (!childResult.ok) {
+        await showWarningDialog(childResult.message);
+        return;
+      }
+    }
+  }
+
+  await loadChannelSettingsPermissions();
+  await loadChannels(state.selectedServerId, false);
+}
+
+function applyPendingPermissionScope() {
+  if (!state.pendingPermissionScope || !state.permissionOverrideState || !ui.permissionScopeSelect) {
+    return;
+  }
+  const value = `${state.pendingPermissionScope.scopeType}:${state.pendingPermissionScope.scopeId}`;
+  if ([...ui.permissionScopeSelect.options].some((option) => option.value === value)) {
+    ui.permissionScopeSelect.value = value;
+    state.permissionOverrideState.overrides = (state.permissionOverrideState.overrides || []).filter((override) => override.id !== 'draft');
+    const existing = state.permissionOverrideState.overrides.find((override) => (
+      override.scope_type === state.pendingPermissionScope.scopeType
+      && Number(state.pendingPermissionScope.scopeType === 'category' ? override.category_id : override.channel_id) === Number(state.pendingPermissionScope.scopeId)
+    ));
+    state.selectedPermissionOverrideId = existing?.id || null;
+    renderPermissionOverrides();
+  }
+  state.pendingPermissionScope = null;
+}
+
+async function saveChannelSettings() {
+  const target = state.channelSettingsTarget;
+  if (!target) {
+    return;
+  }
+  const name = ui.channelSettingsName.value.trim();
+  if (!name) {
+    await showWarningDialog('Name is required.');
+    return;
+  }
+  const result = target.kind === 'category'
+    ? await window.api.chat.updateCategory({ categoryId: target.id, name })
+    : await window.api.chat.updateChannel({
+      channelId: target.id,
+      name,
+      topic: ui.channelSettingsTopic?.value || '',
+      slowmodeSeconds: Number(ui.channelSettingsSlowmode?.value || 0),
+      categoryId: ui.channelSettingsCategory?.value ? Number(ui.channelSettingsCategory.value) : null
+    });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  closeChannelSettings();
+  await loadChannels(state.selectedServerId, false);
+}
+
+async function deleteChannelSettingsTarget() {
+  const target = state.channelSettingsTarget;
+  if (!target) {
+    return;
+  }
+  const isCategory = target.kind === 'category';
+  const confirmed = await showConfirmDialog(
+    isCategory ? 'Delete Category' : 'Delete Channel',
+    isCategory ? 'Delete this category? Channels inside it will move to the top level.' : 'Delete this channel and its messages?',
+    'Delete',
+    'Cancel'
+  );
+  if (!confirmed) {
+    return;
+  }
+  const result = isCategory
+    ? await window.api.chat.deleteCategory({ categoryId: target.id })
+    : await window.api.chat.deleteChannel({ channelId: target.id });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  if (!isCategory && state.selectedChannelId === target.id) {
+    state.selectedChannelId = null;
+  }
+  closeChannelSettings();
+  await loadChannels(state.selectedServerId, true);
+}
+
 function closeUserOptions() {
   state.selectedModerationUserId = null;
   ui.userOptionsMenu.classList.remove('open');
   ui.userOptionsMenu.classList.add('hidden');
+}
+
+function renderUserOptionsDetails(user) {
+  if (ui.userOptionsProfile) {
+    ui.userOptionsProfile.innerHTML = '';
+    if (user) {
+      const avatar = createAvatarElement(user, 'avatar');
+      const meta = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = user.username || 'User';
+      const status = document.createElement('span');
+      status.textContent = user.online ? 'Online' : 'Offline';
+      meta.append(name, status);
+      ui.userOptionsProfile.append(avatar, meta);
+    }
+  }
+
+  if (!ui.userOptionsRoles) {
+    return;
+  }
+  ui.userOptionsRoles.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'user-options-section-title';
+  title.textContent = 'Roles';
+  ui.userOptionsRoles.appendChild(title);
+  const roleDetails = Array.isArray(user?.role_details)
+    ? user.role_details.filter((role) => role?.name)
+    : (user?.role_names || user?.roles || []).filter(Boolean).map((name) => ({ name, color: '#99aab5' }));
+  if (!roleDetails.length) {
+    const empty = document.createElement('span');
+    empty.className = 'user-options-empty-role';
+    empty.textContent = 'No roles';
+    ui.userOptionsRoles.appendChild(empty);
+    return;
+  }
+  const chips = document.createElement('div');
+  chips.className = 'user-options-role-chips';
+  roleDetails.forEach((role) => {
+    const chip = document.createElement('span');
+    chip.className = 'user-options-role-chip';
+    const dot = document.createElement('span');
+    dot.className = 'role-color-dot';
+    dot.style.backgroundColor = normalizeRoleColor(role.color);
+    const name = document.createElement('span');
+    name.textContent = role.name;
+    chip.append(dot, name);
+    chips.appendChild(chip);
+  });
+  ui.userOptionsRoles.appendChild(chips);
 }
 
 function openServerOptions(serverId, buttonElement) {
@@ -3971,17 +5597,19 @@ function openServerOptions(serverId, buttonElement) {
   setServerOptionsTab('general');
   const selected = state.servers.find((s) => s.id === serverId);
   ui.serverNameInput.value = selected?.name || '';
+  if (ui.serverIconInput) {
+    ui.serverIconInput.value = selected?.icon_url || '';
+  }
+  if (ui.serverProfilePreviewName) {
+    ui.serverProfilePreviewName.textContent = selected?.name || 'Server';
+  }
+  setServerIconContent(ui.serverProfilePreviewIcon, selected);
   ui.serverNameInput.disabled = !state.serverPermissions.manage_server;
+  if (ui.serverIconInput) {
+    ui.serverIconInput.disabled = !state.serverPermissions.manage_server;
+  }
   ui.saveServerNameBtn.disabled = !state.serverPermissions.manage_server;
   loadRolesState();
-  const buttonRect = buttonElement.getBoundingClientRect();
-  const menuWidth = Math.min(420, Math.max(260, window.innerWidth - 24));
-  const menuHeight = Math.min(520, Math.max(240, window.innerHeight - 24));
-  const top = Math.min(Math.max(12, buttonRect.top), Math.max(12, window.innerHeight - menuHeight - 12));
-  const left = Math.min(Math.max(12, buttonRect.right + 8), Math.max(12, window.innerWidth - menuWidth - 12));
-
-  ui.serverOptionsMenu.style.top = `${top}px`;
-  ui.serverOptionsMenu.style.left = `${left}px`;
   ui.serverOptionsMenu.classList.remove('hidden');
   requestAnimationFrame(() => {
     ui.serverOptionsMenu.classList.add('open');
@@ -3990,14 +5618,16 @@ function openServerOptions(serverId, buttonElement) {
 
 function openUserOptions(userId, buttonElement) {
   state.selectedModerationUserId = userId;
+  const user = state.onlineUsers.find((item) => item.id === userId) || null;
+  renderUserOptionsDetails(user);
   ui.reportUserBtn?.classList.remove('hidden');
-  ui.kickUserBtn?.classList.toggle('hidden', !state.serverPermissions.moderate_members);
-  ui.banUserBtn?.classList.toggle('hidden', !state.serverPermissions.moderate_members);
+  ui.kickUserBtn?.classList.toggle('hidden', !state.serverPermissions.kick_members);
+  ui.banUserBtn?.classList.toggle('hidden', !state.serverPermissions.ban_members);
   const presenceColumnRect = ui.onlineUsersList.closest('.presence-column').getBoundingClientRect();
   const buttonRect = buttonElement.getBoundingClientRect();
 
   const top = buttonRect.top - presenceColumnRect.top;
-  const left = buttonRect.left - presenceColumnRect.left - 160;
+  const left = buttonRect.left - presenceColumnRect.left - 248;
 
   ui.userOptionsMenu.style.top = `${Math.max(8, top)}px`;
   ui.userOptionsMenu.style.left = `${Math.max(8, left)}px`;
@@ -4331,7 +5961,9 @@ async function ensureRealtime(token) {
 
     if (payload.type === 'server-banned') {
       const message = payload.message || 'You were removed from a server.';
-      notifyUser(payload.title || 'Removed From Server', message);
+      if (!payload.notification) {
+        notifyUser(payload.title || 'Removed From Server', message);
+      }
       await loadServers(false);
       if (state.selectedServerId === payload.serverId) {
         await loadServers(false);
@@ -4340,11 +5972,20 @@ async function ensureRealtime(token) {
       return;
     }
 
-    if (payload.type === 'server-created' || payload.type === 'server-membership-changed') {
+    if (payload.type === 'notification-created' && payload.notification) {
+      state.notifications.unshift(payload.notification);
+      state.notifications = state.notifications.slice(0, 100);
+      renderNotifications();
+      await refreshUnreadState();
+      sendBrowserNotification(payload.notification.title, payload.notification.body).catch(() => {});
+      return;
+    }
+
+    if (payload.type === 'server-created' || payload.type === 'server-updated' || payload.type === 'server-membership-changed') {
       await loadServers(false);
     }
 
-    if (payload.type === 'channel-created' && state.selectedServerId === payload.serverId) {
+    if ((payload.type === 'channel-created' || payload.type === 'channel-layout-updated') && state.selectedServerId === payload.serverId) {
       await loadChannels(state.selectedServerId, false);
     }
 
@@ -4354,25 +5995,31 @@ async function ensureRealtime(token) {
     }
 
     if (payload.type === 'friends-changed' || payload.type === 'friend-requests-changed') {
-      if (payload.type === 'friend-requests-changed') {
+      if (payload.type === 'friend-requests-changed' && !payload.notification) {
         notifyUser('Friend Request Update', 'You have a new or updated friend request.');
       }
+      await refreshUnreadState();
       await loadFriends();
     }
 
     if (payload.type === 'dm-message-created') {
-      if (payload.fromUserId && payload.fromUserId !== state.currentUserId) {
+      if (payload.fromUserId && payload.fromUserId !== state.currentUserId && !payload.notification) {
         const friend = state.friends.find((entry) => entry.id === payload.fromUserId);
         notifyUser('Direct Message', `${friend?.username || 'Someone'} sent you a DM.`);
       }
       if (state.selectedDmUser && (payload.fromUserId === state.selectedDmUser.id || payload.fromUserId === state.currentUserId)) {
         await loadDmMessages(state.selectedDmUser.id, state.selectedDmUser.username);
+      } else {
+        await refreshUnreadState();
       }
     }
 
     if (payload.type === 'dm-call-started' && payload.fromUserId && payload.fromUserId !== state.currentUserId) {
       const callerName = payload.fromUsername || 'Someone';
-      notifyUser('Incoming Call', `${callerName} is calling you.`);
+      if (!payload.notification) {
+        notifyUser('Incoming Call', `${callerName} is calling you.`);
+      }
+      await refreshUnreadState();
       const accepted = await showConfirmDialog(
         'Incoming Personal Call',
         `${callerName} is calling you. Join now?`,
@@ -4394,9 +6041,8 @@ async function ensureRealtime(token) {
       state.selectedChannelId === payload.channelId
     ) {
       await loadMessages(state.selectedChannelId);
-    }
-    if (payload.type === 'message-created' && payload.message?.user_id !== state.currentUserId && state.selectedChannelId !== payload.channelId) {
-      notifyUser('New Channel Message', `${payload.message?.username || 'Someone'} sent a message in another channel.`);
+    } else if (payload.type === 'message-created') {
+      await refreshUnreadState();
     }
   };
 
@@ -4411,6 +6057,9 @@ function renderMessages(messages) {
   for (const msg of messages) {
     const wrapper = document.createElement('div');
     wrapper.className = `msg ${msg.user_id === state.currentUserId ? 'me' : ''}`;
+    if (msg.user_id !== state.currentUserId && messageMentionsCurrentUser(msg.content)) {
+      wrapper.classList.add('mentioned-me');
+    }
     const row = document.createElement('div');
     row.className = 'msg-row';
     const avatar = createAvatarElement(msg);
@@ -4506,6 +6155,7 @@ async function loadMessages(channelId) {
 
   state.currentUserId = response.currentUserId;
   renderMessages(response.messages);
+  await markActiveChannelRead(channelId);
   subscribeToSelectedChannel();
 }
 
@@ -4527,63 +6177,351 @@ async function loadDmMessages(partnerUserId, partnerUsername) {
   ui.channelTitle.textContent = `@ ${state.selectedDmUser.username}`;
   syncDmCallButton();
   renderMessages(response.messages || []);
+  await markActiveDmRead(partnerUserId);
   syncVoicePanelVisibility();
+}
+
+function orderedCategories() {
+  return [...(state.channelCategories || [])].sort((a, b) => (Number(a.position) || 0) - (Number(b.position) || 0) || a.id - b.id);
+}
+
+function orderedChannels(categoryId = null) {
+  const normalized = categoryId ? Number(categoryId) : null;
+  return [...(state.channels || [])]
+    .filter((channel) => (channel.category_id ? Number(channel.category_id) : null) === normalized)
+    .sort((a, b) => (Number(a.position) || 0) - (Number(b.position) || 0) || a.id - b.id);
+}
+
+function normalizeChannelCategoryId(categoryId) {
+  return categoryId ? Number(categoryId) : null;
+}
+
+async function saveChannelLayout() {
+  if (!state.selectedServerId || !state.serverPermissions.manage_channels || isAdminGhostServer()) {
+    return;
+  }
+  const categories = orderedCategories().map((category, position) => ({ id: category.id, position }));
+  const channels = [];
+  for (const categoryId of [null, ...categories.map((category) => category.id)]) {
+    orderedChannels(categoryId).forEach((channel, position) => {
+      channels.push({ id: channel.id, categoryId, position });
+    });
+  }
+  const result = await window.api.chat.updateChannelLayout({ serverId: state.selectedServerId, categories, channels });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+  }
+}
+
+function canDragChannelLayout() {
+  return Boolean(state.serverPermissions.manage_channels) && !isAdminGhostServer();
+}
+
+function setDragPayload(event, payload) {
+  state.channelDrag = payload;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('application/x-jellochat-channel-layout', JSON.stringify(payload));
+}
+
+function getDragPayload(event) {
+  if (state.channelDrag) {
+    return state.channelDrag;
+  }
+  try {
+    const raw = event.dataTransfer.getData('application/x-jellochat-channel-layout');
+    return raw ? JSON.parse(raw) : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function setCategoryPositions(categories) {
+  state.channelCategories = categories.map((category, position) => ({ ...category, position }));
+}
+
+function setChannelBucketPositions(targetCategoryId, bucketChannels, updates) {
+  bucketChannels.forEach((channel, position) => {
+    updates.set(Number(channel.id), {
+      category_id: normalizeChannelCategoryId(targetCategoryId),
+      position
+    });
+  });
+}
+
+function applyChannelUpdates(updates) {
+  state.channels = state.channels.map((channel) => {
+    const next = updates.get(Number(channel.id));
+    if (!next) {
+      return channel;
+    }
+    return {
+      ...channel,
+      category_id: next.category_id,
+      position: next.position
+    };
+  });
+}
+
+async function reorderCategory(categoryId, targetCategoryId, placement = 'before') {
+  const sourceId = Number(categoryId);
+  const targetId = Number(targetCategoryId);
+  if (!sourceId || !targetId || sourceId === targetId) {
+    return;
+  }
+  const categories = orderedCategories();
+  const moving = categories.find((category) => Number(category.id) === sourceId);
+  if (!moving) {
+    return;
+  }
+  const withoutMoving = categories.filter((category) => Number(category.id) !== sourceId);
+  const targetIndex = withoutMoving.findIndex((category) => Number(category.id) === targetId);
+  if (targetIndex < 0) {
+    return;
+  }
+  withoutMoving.splice(placement === 'after' ? targetIndex + 1 : targetIndex, 0, moving);
+  setCategoryPositions(withoutMoving);
+  renderChannels();
+  await saveChannelLayout();
+}
+
+async function moveChannelToCategory(channelId, targetCategoryId, targetChannelId = null, placement = 'before') {
+  const movingId = Number(channelId);
+  const normalizedTargetCategoryId = normalizeChannelCategoryId(targetCategoryId);
+  const movingChannel = state.channels.find((channel) => Number(channel.id) === movingId);
+  if (!movingChannel) {
+    return;
+  }
+  const updates = new Map();
+  const sourceCategoryId = normalizeChannelCategoryId(movingChannel.category_id);
+  const sourceChannels = orderedChannels(sourceCategoryId).filter((channel) => Number(channel.id) !== movingId);
+  setChannelBucketPositions(sourceCategoryId, sourceChannels, updates);
+
+  let targetChannels = orderedChannels(normalizedTargetCategoryId).filter((channel) => Number(channel.id) !== movingId);
+  if (targetChannelId) {
+    const targetId = Number(targetChannelId);
+    const targetIndex = targetChannels.findIndex((channel) => Number(channel.id) === targetId);
+    if (targetIndex < 0) {
+      return;
+    }
+    targetChannels.splice(placement === 'after' ? targetIndex + 1 : targetIndex, 0, movingChannel);
+  } else {
+    targetChannels = [...targetChannels, movingChannel];
+  }
+  setChannelBucketPositions(normalizedTargetCategoryId, targetChannels, updates);
+  applyChannelUpdates(updates);
+  renderChannels();
+  await saveChannelLayout();
+}
+
+function getDropPlacement(event, element) {
+  const rect = element.getBoundingClientRect();
+  return event.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
+}
+
+function wireChannelDropTarget(element, { categoryId, channelId = null }) {
+  if (!canDragChannelLayout()) {
+    return;
+  }
+  element.addEventListener('dragover', (event) => {
+    const payload = getDragPayload(event);
+    if (!payload || payload.type !== 'channel') {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    element.classList.add('channel-drop-target');
+  });
+  element.addEventListener('dragleave', () => {
+    element.classList.remove('channel-drop-target', 'channel-drop-after');
+  });
+  element.addEventListener('drop', async (event) => {
+    const payload = getDragPayload(event);
+    if (!payload || payload.type !== 'channel') {
+      return;
+    }
+    event.preventDefault();
+    element.classList.remove('channel-drop-target', 'channel-drop-after');
+    const placement = channelId ? getDropPlacement(event, element) : 'after';
+    await moveChannelToCategory(payload.id, categoryId, channelId, placement);
+  });
+  if (channelId) {
+    element.addEventListener('dragover', (event) => {
+      element.classList.toggle('channel-drop-after', getDropPlacement(event, element) === 'after');
+    });
+  }
+}
+
+function wireCategoryDropTarget(element, categoryId) {
+  if (!canDragChannelLayout()) {
+    return;
+  }
+  element.addEventListener('dragover', (event) => {
+    const payload = getDragPayload(event);
+    if (!payload) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    element.classList.add('channel-drop-target');
+  });
+  element.addEventListener('dragleave', () => {
+    element.classList.remove('channel-drop-target', 'channel-drop-after');
+  });
+  element.addEventListener('drop', async (event) => {
+    const payload = getDragPayload(event);
+    if (!payload) {
+      return;
+    }
+    event.preventDefault();
+    element.classList.remove('channel-drop-target', 'channel-drop-after');
+    if (payload.type === 'category') {
+      await reorderCategory(payload.id, categoryId, getDropPlacement(event, element));
+      return;
+    }
+    if (payload.type === 'channel') {
+      await moveChannelToCategory(payload.id, categoryId);
+    }
+  });
+  element.addEventListener('dragover', (event) => {
+    const payload = getDragPayload(event);
+    if (payload?.type === 'category') {
+      element.classList.toggle('channel-drop-after', getDropPlacement(event, element) === 'after');
+    }
+  });
+}
+
+function renderChannelRow(channel, categoryId) {
+  const channelType = String(channel.type || 'text').toLowerCase();
+  const item = document.createElement('li');
+  item.className = 'channel-list-item';
+  const button = document.createElement('button');
+  button.draggable = canDragChannelLayout();
+  if (button.draggable) {
+    button.classList.add('channel-draggable');
+    button.addEventListener('dragstart', (event) => {
+      setDragPayload(event, { type: 'channel', id: Number(channel.id) });
+      state.channelDragSuppressClick = true;
+      button.classList.add('channel-dragging');
+    });
+    button.addEventListener('dragend', () => {
+      state.channelDrag = null;
+      button.classList.remove('channel-dragging');
+      ui.channelsList.querySelectorAll('.channel-drop-target, .channel-drop-after')
+        .forEach((element) => element.classList.remove('channel-drop-target', 'channel-drop-after'));
+      setTimeout(() => {
+        state.channelDragSuppressClick = false;
+      }, 0);
+    });
+    wireChannelDropTarget(button, { categoryId, channelId: channel.id });
+  }
+  const label = document.createElement('span');
+  label.className = 'channel-list-label';
+  label.textContent = channelType === 'voice' ? `VC ${channel.name}` : `# ${channel.name}`;
+  button.appendChild(label);
+  const unreadBadge = makeChannelUnreadIndicator(state.unread?.channels?.[Number(channel.id)]);
+  if (unreadBadge) {
+    button.appendChild(unreadBadge);
+  }
+  if (channel.id === state.selectedChannelId) {
+    button.classList.add('active');
+  }
+  button.addEventListener('click', async () => {
+    if (state.channelDrag || state.channelDragSuppressClick) {
+      state.channelDragSuppressClick = false;
+      return;
+    }
+    closeFriendsHome();
+    state.selectedChannelId = channel.id;
+    state.selectedDmUser = null;
+    syncDmCallButton();
+    renderChannels();
+    if (channelType === 'voice') {
+      state.subscribedChannelId = null;
+      if (!isAdminGhostServer()) {
+        await joinVoiceChannel(channel);
+      }
+      await loadMessages(channel.id);
+    } else {
+      ui.channelTitle.textContent = isAdminGhostServer() ? `# ${channel.name} - Admin View` : `# ${channel.name}`;
+      await loadMessages(channel.id);
+    }
+    if (window.innerWidth <= 700) {
+      closeMobileDrawers();
+    }
+    syncVoicePanelVisibility();
+  });
+  button.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    openChannelSettings('channel', channel.id);
+  });
+  item.appendChild(button);
+  ui.channelsList.appendChild(item);
 }
 
 function renderChannels() {
   ui.channelsList.innerHTML = '';
-  for (const channel of state.channels) {
-    const channelType = String(channel.type || 'text').toLowerCase();
-    const item = document.createElement('li');
-    const button = document.createElement('button');
-    const label = channelType === 'voice' ? `VC ${channel.name}` : `# ${channel.name}`;
-    button.textContent = label;
-    if (channel.id === state.selectedChannelId) {
-      button.classList.add('active');
-    }
-
-    button.addEventListener('click', async () => {
-      closeFriendsHome();
-      state.selectedChannelId = channel.id;
-      state.selectedDmUser = null;
-      syncDmCallButton();
-      renderChannels();
-      if (channelType === 'voice') {
-        state.subscribedChannelId = null;
-        if (!isAdminGhostServer()) {
-          await joinVoiceChannel(channel);
-        }
-        await loadMessages(channel.id);
-      } else {
-        ui.channelTitle.textContent = isAdminGhostServer() ? `# ${channel.name} - Admin View` : `# ${channel.name}`;
-        await loadMessages(channel.id);
-      }
-      if (window.innerWidth <= 700) {
-        closeMobileDrawers();
-      }
-      syncVoicePanelVisibility();
-    });
-
-    item.appendChild(button);
-    ui.channelsList.appendChild(item);
+  const rootChannels = orderedChannels(null);
+  if (canDragChannelLayout()) {
+    const rootDrop = document.createElement('li');
+    rootDrop.className = 'channel-root-drop-zone';
+    rootDrop.textContent = rootChannels.length ? 'Drop here to move to top level' : 'Drop channels here';
+    wireChannelDropTarget(rootDrop, { categoryId: null });
+    ui.channelsList.appendChild(rootDrop);
   }
+  rootChannels.forEach((channel) => renderChannelRow(channel, null));
+  const categories = orderedCategories();
+  categories.forEach((category) => {
+    const item = document.createElement('li');
+    item.className = 'channel-category-item';
+    const header = document.createElement('div');
+    header.className = 'channel-category-header';
+    header.draggable = canDragChannelLayout();
+    if (header.draggable) {
+      header.classList.add('channel-draggable');
+      header.addEventListener('dragstart', (event) => {
+        setDragPayload(event, { type: 'category', id: Number(category.id) });
+        state.channelDragSuppressClick = true;
+        header.classList.add('channel-dragging');
+      });
+      header.addEventListener('dragend', () => {
+        state.channelDrag = null;
+        header.classList.remove('channel-dragging');
+        ui.channelsList.querySelectorAll('.channel-drop-target, .channel-drop-after')
+          .forEach((element) => element.classList.remove('channel-drop-target', 'channel-drop-after'));
+        setTimeout(() => {
+          state.channelDragSuppressClick = false;
+        }, 0);
+      });
+      wireCategoryDropTarget(header, category.id);
+    }
+    const label = document.createElement('span');
+    label.textContent = category.name;
+    header.appendChild(label);
+    header.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      openChannelSettings('category', category.id);
+    });
+    item.appendChild(header);
+    ui.channelsList.appendChild(item);
+    const categoryChannels = orderedChannels(category.id);
+    categoryChannels.forEach((channel) => renderChannelRow(channel, category.id));
+  });
 }
 
 async function loadChannels(serverId, resetSelection = true) {
+  if (state.mentionPicker.serverId !== serverId) {
+    resetMentionCandidates();
+    hideMentionSuggestions();
+  }
   if (isAdminGhostServer(serverId)) {
     const previousSelected = state.selectedChannelId;
+    state.channelCategories = state.adminViewedServer.categories || [];
     state.channels = (state.adminViewedServer.channels || []).map((channel) => ({
       ...channel,
       type: String(channel.type || 'text').toLowerCase()
     }));
     state.canCreateChannels = false;
-    state.serverPermissions = {
-      manage_server: false,
-      manage_roles: false,
-      manage_channels: false,
-      create_invites: false,
-      moderate_members: false
-    };
+    state.serverPermissions = emptyServerPermissions();
     updateChannelCreateButton();
     if (resetSelection) {
       state.selectedChannelId = pickDefaultChannelId(state.channels);
@@ -4611,18 +6549,13 @@ async function loadChannels(serverId, resetSelection = true) {
   if (!response.ok) {
     await showWarningDialog(response.message);
     state.canCreateChannels = false;
-    state.serverPermissions = {
-      manage_server: false,
-      manage_roles: false,
-      manage_channels: false,
-      create_invites: false,
-      moderate_members: false
-    };
+    state.serverPermissions = emptyServerPermissions();
     updateChannelCreateButton();
     return;
   }
 
   const previousSelected = state.selectedChannelId;
+  state.channelCategories = response.categories || [];
   state.channels = (response.channels || []).map((channel) => ({
     ...channel,
     type: String(channel.type || 'text').toLowerCase()
@@ -4727,7 +6660,7 @@ function renderServers() {
   for (const server of state.servers) {
     const item = document.createElement('li');
     const button = document.createElement('button');
-    button.textContent = server.name.slice(0, 2).toUpperCase();
+    setServerIconContent(button, server);
     button.title = server.adminView ? `${server.name} (Admin View)` : server.name;
     if (server.adminView) {
       button.classList.add('admin-ghost-server');
@@ -4774,13 +6707,7 @@ async function loadServers(resetSelection = true) {
     ui.channelsList.innerHTML = '';
     ui.messagesList.innerHTML = '';
     state.canCreateChannels = false;
-    state.serverPermissions = {
-      manage_server: false,
-      manage_roles: false,
-      manage_channels: false,
-      create_invites: false,
-      moderate_members: false
-    };
+    state.serverPermissions = emptyServerPermissions();
     updateChannelCreateButton();
     await loadServerPresence(null);
   }
@@ -4864,6 +6791,10 @@ function renderFriends() {
     label.textContent = friend.username;
     button.classList.add('list-user-button');
     button.append(status, avatar, label);
+    const unreadBadge = makeUnreadBadge(state.unread?.dms?.[Number(friend.id)]);
+    if (unreadBadge) {
+      button.appendChild(unreadBadge);
+    }
     button.addEventListener('click', async () => {
       await loadDmMessages(friend.id, friend.username);
       if (window.innerWidth <= 700) {
@@ -5001,7 +6932,8 @@ function renderFriendsHome() {
     name.textContent = friend.username || 'Unknown';
     const sub = document.createElement('div');
     sub.className = 'friends-row-subtitle';
-    sub.textContent = friend.pending ? 'Incoming friend request' : friend.online ? 'Online' : 'Offline';
+    const unreadCount = state.unread?.dms?.[Number(friend.id)] || 0;
+    sub.textContent = friend.pending ? 'Incoming friend request' : unreadCount ? `${unreadCount} unread` : friend.online ? 'Online' : 'Offline';
     meta.append(name, sub);
 
     const actions = document.createElement('div');
@@ -5057,6 +6989,10 @@ function renderFriendsHome() {
       actions.append(message, call);
     }
     row.append(avatarWrap, meta, actions);
+    const unreadBadge = !friend.pending ? makeUnreadBadge(unreadCount) : null;
+    if (unreadBadge) {
+      row.appendChild(unreadBadge);
+    }
     ui.friendsHomeList.appendChild(row);
   }
   renderActiveNow();
@@ -5094,13 +7030,7 @@ async function loadServerPresence(serverId) {
     state.onlineUsers = (state.adminViewedServer.members || [])
       .filter((member) => member.id !== state.currentUserId && !member.platform_banned_at)
       .map((member) => ({ ...member, online: false }));
-    state.serverPermissions = {
-      manage_server: false,
-      manage_roles: false,
-      manage_channels: false,
-      create_invites: false,
-      moderate_members: false
-    };
+    state.serverPermissions = emptyServerPermissions();
     updateChannelCreateButton();
     renderOnlineUsers();
     return;
@@ -5207,17 +7137,153 @@ ui.verifyTokenBtn.addEventListener('click', async () => {
   const result = await window.api.auth.verifyEmail({ token });
   setAuthMessage(result.message || (result.ok ? 'Email verified successfully.' : 'Failed to verify email.'), !result.ok);
 });
+
+ui.messageInput?.addEventListener('input', () => {
+  updateMentionSuggestions().catch(() => hideMentionSuggestions());
+});
+
+ui.messageInput?.addEventListener('click', () => {
+  updateMentionSuggestions().catch(() => hideMentionSuggestions());
+});
+
+ui.messageInput?.addEventListener('blur', () => {
+  setTimeout(() => {
+    if (!ui.mentionSuggestions?.matches(':hover')) {
+      hideMentionSuggestions();
+    }
+  }, 120);
+});
+
+ui.messageInput?.addEventListener('keydown', (event) => {
+  if (!state.mentionPicker.open || !state.mentionPicker.items.length) {
+    return;
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    state.mentionPicker.activeIndex = (state.mentionPicker.activeIndex + 1) % state.mentionPicker.items.length;
+    renderMentionSuggestions();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    state.mentionPicker.activeIndex = (state.mentionPicker.activeIndex - 1 + state.mentionPicker.items.length) % state.mentionPicker.items.length;
+    renderMentionSuggestions();
+  } else if (event.key === 'Enter' || event.key === 'Tab') {
+    event.preventDefault();
+    applyMentionSuggestion(state.mentionPicker.items[state.mentionPicker.activeIndex]);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    hideMentionSuggestions();
+  }
+});
+
+document.addEventListener('mousedown', (event) => {
+  if (!ui.mentionSuggestions || ui.mentionSuggestions.classList.contains('hidden')) {
+    return;
+  }
+  if (event.target === ui.messageInput || ui.mentionSuggestions.contains(event.target)) {
+    return;
+  }
+  hideMentionSuggestions();
+});
+
 ui.serverTabGeneral.addEventListener('click', () => setServerOptionsTab('general'));
 ui.serverTabRoles.addEventListener('click', async () => {
   setServerOptionsTab('roles');
   await loadRolesState();
 });
+ui.serverTabPermissions?.addEventListener('click', () => setServerOptionsTab('permissions'));
 ui.serverTabBanned.addEventListener('click', async () => {
   setServerOptionsTab('banned');
   await loadBannedUsers();
 });
+ui.serverOptionsCloseBtn?.addEventListener('click', closeServerOptions);
+ui.serverNameInput?.addEventListener('input', () => {
+  const name = ui.serverNameInput.value.trim() || 'Server';
+  if (ui.serverProfilePreviewName) {
+    ui.serverProfilePreviewName.textContent = name;
+  }
+  setServerIconContent(ui.serverProfilePreviewIcon, { name, icon_url: ui.serverIconInput?.value || '' });
+});
+ui.serverIconInput?.addEventListener('input', () => {
+  const name = ui.serverNameInput.value.trim() || 'Server';
+  setServerIconContent(ui.serverProfilePreviewIcon, { name, icon_url: ui.serverIconInput.value.trim() });
+});
+ui.roleColorInput?.addEventListener('input', () => {
+  const color = normalizeRoleColor(ui.roleColorInput.value);
+  ui.roleColorInput.value = color;
+  if (ui.roleColorValue) {
+    ui.roleColorValue.textContent = color;
+  }
+});
+ui.permissionTargetTypeSelect?.addEventListener('change', () => {
+  if (!state.permissionOverrideState) {
+    return;
+  }
+  state.permissionOverrideState.overrides = (state.permissionOverrideState?.overrides || []).filter((override) => override.id !== 'draft');
+  state.selectedPermissionOverrideId = null;
+  syncPermissionTargetOptions();
+  renderPermissionOverrides();
+});
+ui.permissionTargetSelect?.addEventListener('change', () => {
+  if (!state.permissionOverrideState) {
+    return;
+  }
+  state.permissionOverrideState.overrides = (state.permissionOverrideState?.overrides || []).filter((override) => override.id !== 'draft');
+  state.selectedPermissionOverrideId = null;
+  renderPermissionOverrides();
+});
+ui.permissionScopeSelect?.addEventListener('change', () => {
+  if (!state.permissionOverrideState) {
+    return;
+  }
+  state.permissionOverrideState.overrides = (state.permissionOverrideState?.overrides || []).filter((override) => override.id !== 'draft');
+  state.selectedPermissionOverrideId = null;
+  renderPermissionOverrides();
+});
 ui.notificationsBtn?.addEventListener('click', openNotificationsModal);
 ui.notificationsCloseBtn?.addEventListener('click', closeNotificationsModal);
+ui.channelSettingsCloseBtn?.addEventListener('click', closeChannelSettings);
+ui.channelSettingsModal?.addEventListener('click', (event) => {
+  if (event.target === ui.channelSettingsModal) {
+    closeChannelSettings();
+  }
+});
+ui.channelSettingsSaveBtn?.addEventListener('click', saveChannelSettings);
+ui.channelSettingsOverviewTab?.addEventListener('click', () => {
+  setChannelSettingsTab('overview');
+});
+ui.channelSettingsPermissionsTab?.addEventListener('click', async () => {
+  const scope = getChannelSettingsPermissionScope();
+  if (!scope || !state.selectedServerId) {
+    return;
+  }
+  setChannelSettingsTab('permissions');
+  if (!state.channelSettingsPermissionState) {
+    await loadChannelSettingsPermissions();
+  } else {
+    renderChannelSettingsPermissions();
+  }
+});
+ui.channelSettingsDeleteTab?.addEventListener('click', deleteChannelSettingsTarget);
+ui.channelSettingsPermissionTargetType?.addEventListener('change', () => {
+  if (!state.channelSettingsPermissionState) {
+    return;
+  }
+  state.channelSettingsPermissionState.overrides = (state.channelSettingsPermissionState.overrides || []).filter((override) => override.id !== 'channel-draft');
+  state.selectedChannelSettingsOverrideId = null;
+  syncChannelSettingsPermissionTargets();
+  renderChannelSettingsPermissions();
+});
+ui.channelSettingsPermissionTarget?.addEventListener('change', () => {
+  if (!state.channelSettingsPermissionState) {
+    return;
+  }
+  state.channelSettingsPermissionState.overrides = (state.channelSettingsPermissionState.overrides || []).filter((override) => override.id !== 'channel-draft');
+  state.selectedChannelSettingsOverrideId = null;
+  renderChannelSettingsPermissions();
+});
+ui.channelSettingsPermissionSaveBtn?.addEventListener('click', saveChannelSettingsPermissionOverride);
+ui.channelSettingsPermissionDeleteBtn?.addEventListener('click', deleteChannelSettingsPermissionOverride);
+ui.channelSettingsPrivateToggle?.addEventListener('change', saveChannelSettingsPrivateToggle);
 ui.notificationsModal?.addEventListener('click', (event) => {
   if (event.target === ui.notificationsModal) {
     closeNotificationsModal();
@@ -5239,8 +7305,33 @@ ui.notificationsEnableBtn?.addEventListener('click', async () => {
     await showWarningDialog('Could not enable browser notifications.', 'Notifications');
   }
 });
-ui.notificationsClearBtn?.addEventListener('click', () => {
+ui.notificationsSavePrefsBtn?.addEventListener('click', async () => {
+  if (!window.api?.notifications?.savePreferences) {
+    return;
+  }
+  const result = await window.api.notifications.savePreferences(getNotificationPreferencesFromInputs());
+  if (!result?.ok) {
+    await showWarningDialog(result?.message || 'Failed to save notification preferences.', 'Notifications');
+    return;
+  }
+  state.notificationPreferences = result.preferences || state.notificationPreferences;
+  syncNotificationPreferenceInputs();
+  await showMessageDialog('Notifications', 'Notification preferences saved.');
+});
+
+ui.notificationsClearBtn?.addEventListener('click', async () => {
+  if (window.api?.notifications?.markAllRead) {
+    const result = await window.api.notifications.markAllRead();
+    if (result?.ok) {
+      state.notifications = state.notifications.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() }));
+      applyUnreadSummary(result.unread);
+      renderNotifications();
+      return;
+    }
+  }
   state.notifications = [];
+  state.unread.notifications = 0;
+  renderUnreadBadges();
   renderNotifications();
 });
 ui.friendsHomeBtn?.addEventListener('click', async () => {
@@ -5285,14 +7376,6 @@ document.addEventListener('click', (event) => {
     if (!clickedInsideMicSettings) {
       ui.vcPanel.classList.remove('mic-settings-open');
       ui.vcMicSettingsBtn?.setAttribute('aria-expanded', 'false');
-    }
-  }
-
-  if (!ui.serverOptionsMenu.classList.contains('hidden')) {
-    const isInside = ui.serverOptionsMenu.contains(event.target);
-    const clickedServerButton = ui.serversList.contains(event.target);
-    if (!isInside && !clickedServerButton) {
-      closeServerOptions();
     }
   }
 
@@ -5416,7 +7499,7 @@ ui.saveServerNameBtn.addEventListener('click', async () => {
     return;
   }
 
-  const result = await window.api.chat.renameServer({ serverId, name });
+  const result = await window.api.chat.renameServer({ serverId, name, iconUrl: ui.serverIconInput?.value.trim() || '' });
   if (!result.ok) {
     await showWarningDialog(result.message);
     return;
@@ -5434,12 +7517,17 @@ ui.createRoleBtn.addEventListener('click', async () => {
   if (!name) {
     return;
   }
-  const result = await window.api.roles.create({ serverId: state.serverOptionsServerId, name });
+  const result = await window.api.roles.create({
+    serverId: state.serverOptionsServerId,
+    name,
+    color: ui.roleColorInput?.value || '#99aab5'
+  });
   if (!result.ok) {
     await showWarningDialog(result.message);
     return;
   }
   await loadRolesState();
+  await refreshSelectedServerPresence();
 });
 
 ui.saveRoleBtn.addEventListener('click', async () => {
@@ -5450,6 +7538,7 @@ ui.saveRoleBtn.addEventListener('click', async () => {
     serverId: state.serverOptionsServerId,
     roleId: state.selectedRoleId,
     name: ui.roleNameInput.value.trim(),
+    color: ui.roleColorInput?.value || '#99aab5',
     permissions: getRoleEditorPermissions()
   });
   if (!result.ok) {
@@ -5457,6 +7546,7 @@ ui.saveRoleBtn.addEventListener('click', async () => {
     return;
   }
   await loadRolesState();
+  await refreshSelectedServerPresence();
 });
 
 ui.deleteRoleBtn.addEventListener('click', async () => {
@@ -5476,6 +7566,55 @@ ui.deleteRoleBtn.addEventListener('click', async () => {
     return;
   }
   await loadRolesState();
+  await refreshSelectedServerPresence();
+});
+
+ui.savePermissionOverrideBtn?.addEventListener('click', async () => {
+  if (!state.serverOptionsServerId || !state.permissionOverrideState) {
+    return;
+  }
+  const selected = state.permissionOverrideState.overrides.find((override) => override.id === state.selectedPermissionOverrideId);
+  if (!selected) {
+    return;
+  }
+  const scope = getCurrentPermissionScope();
+  const targetType = ui.permissionTargetTypeSelect?.value || 'role';
+  const targetId = Number(ui.permissionTargetSelect?.value);
+  const result = await window.api.permissions.saveOverride({
+    serverId: state.serverOptionsServerId,
+    scopeType: scope.scopeType,
+    scopeId: scope.scopeId,
+    targetType,
+    targetId,
+    allow: selected.allow || {},
+    deny: selected.deny || {}
+  });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  await loadPermissionOverridesState();
+  await loadChannels(state.serverOptionsServerId);
+});
+
+ui.deletePermissionOverrideBtn?.addEventListener('click', async () => {
+  if (!state.serverOptionsServerId || !state.selectedPermissionOverrideId || state.selectedPermissionOverrideId === 'draft') {
+    return;
+  }
+  const confirmed = await showConfirmDialog('Delete Override', 'Delete this channel permission override?', 'Delete', 'Cancel');
+  if (!confirmed) {
+    return;
+  }
+  const result = await window.api.permissions.deleteOverride({
+    serverId: state.serverOptionsServerId,
+    overrideId: state.selectedPermissionOverrideId
+  });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  await loadPermissionOverridesState();
+  await loadChannels(state.serverOptionsServerId);
 });
 
 ui.reportUserBtn?.addEventListener('click', async () => {
@@ -5660,6 +7799,8 @@ ui.adminAppealFilter?.addEventListener('change', async () => {
 ui.adminStorageRefreshBtn?.addEventListener('click', async () => {
   await loadAdminStorage();
 });
+
+ui.adminStorageBackfillBtn?.addEventListener('click', runAdminAttachmentCompressionBackfill);
 
 ui.adminCleanupForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -5858,6 +7999,23 @@ ui.dmCallBtn?.addEventListener('click', async () => {
 });
 
 ui.createServerBtn.addEventListener('click', async () => {
+  const migrate = await showConfirmDialog(
+    'New Server',
+    'Create a blank JelloChat server or migrate a Discord server skeleton?',
+    'Migrate',
+    'Blank'
+  );
+  if (migrate) {
+    const result = await window.api.chat.startDiscordMigration();
+    if (!result.ok) {
+      await showWarningDialog(result.message);
+      return;
+    }
+    const code = result.session?.code || '';
+    await showDiscordMigrationDialog({ inviteUrl: result.inviteUrl || '', code });
+    return;
+  }
+
   const name = await showPromptDialog('Create Server', 'Server name:');
   if (!name) {
     return;
@@ -5870,6 +8028,27 @@ ui.createServerBtn.addEventListener('click', async () => {
   }
 
   await loadServers(false);
+});
+
+ui.createCategoryBtn?.addEventListener('click', async () => {
+  if (!state.selectedServerId) {
+    await showWarningDialog('Select a server first.');
+    return;
+  }
+  if (!state.serverPermissions.manage_channels) {
+    await showWarningDialog('You do not have permission to create categories.');
+    return;
+  }
+  const name = await showPromptDialog('Create Category', 'Category name:');
+  if (!name) {
+    return;
+  }
+  const result = await window.api.chat.createCategory({ serverId: state.selectedServerId, name });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  await loadChannels(state.selectedServerId, false);
 });
 
 async function promptAddFriend() {
@@ -6387,6 +8566,7 @@ ui.messageForm.addEventListener('submit', async (event) => {
     }
 
     ui.messageInput.value = '';
+    hideMentionSuggestions();
     clearSelectedAttachment();
     await loadDmMessages(state.selectedDmUser.id, state.selectedDmUser.username);
     return;
@@ -6408,6 +8588,7 @@ ui.messageForm.addEventListener('submit', async (event) => {
   }
 
   ui.messageInput.value = '';
+  hideMentionSuggestions();
   clearSelectedAttachment();
 });
 
@@ -6419,8 +8600,17 @@ window.addEventListener('resize', () => {
   if (window.innerWidth > 700) {
     closeMobileDrawers();
   }
-  closeServerOptions();
   closeUserOptions();
+});
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !ui.channelSettingsModal?.classList.contains('hidden')) {
+    closeChannelSettings();
+    return;
+  }
+  if (event.key === 'Escape' && !ui.serverOptionsMenu.classList.contains('hidden')) {
+    closeServerOptions();
+  }
 });
 
 updateChannelCreateButton();
@@ -6428,6 +8618,7 @@ updateMobileDrawers();
 installMobileSwipeDrawers();
 closeServerOptions();
 closeUserOptions();
+closeChannelSettings();
 closeAccountSettingsMenu();
 syncDmCallButton();
 renderAccountPanel();
