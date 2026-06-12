@@ -269,6 +269,16 @@ const ui = {
   screenSourceCancelBtn: document.getElementById('screen-source-cancel-btn')
 };
 
+function moveSettingsDialogsToViewportRoot() {
+  for (const dialog of [ui.serverOptionsMenu, ui.channelSettingsModal]) {
+    if (dialog && dialog.parentElement !== document.body) {
+      document.body.appendChild(dialog);
+    }
+  }
+}
+
+moveSettingsDialogsToViewportRoot();
+
 const SERVER_PERMISSION_DEFINITIONS = [
   { key: 'view_channels', label: 'View Channels', group: 'General', input: 'permViewChannels' },
   { key: 'manage_server', label: 'Manage Server', group: 'General', input: 'permManageServer' },
