@@ -13,9 +13,17 @@ const {
   getDiscordMigrationStatus
 } = require('./discordMigration');
 
+function resolveWritableAppPath(configuredPath, fallbackRelativePath) {
+  if (configuredPath) {
+    return path.resolve(configuredPath);
+  }
+  const baseDir = app.isPackaged ? app.getPath('userData') : __dirname;
+  return path.join(baseDir, fallbackRelativePath);
+}
+
 const WS_PORT = Number(process.env.WS_PORT || 3131);
 const DEFAULT_PUBLIC_URL = 'https://chat.jellodog.com';
-const ATTACHMENTS_DIR = path.resolve(__dirname, process.env.ATTACHMENTS_DIR || 'uploads/attachments');
+const ATTACHMENTS_DIR = resolveWritableAppPath(process.env.ATTACHMENTS_DIR, path.join('uploads', 'attachments'));
 const ATTACHMENT_MAX_MB = Math.max(1, Number(process.env.ATTACHMENT_MAX_MB || 10));
 const ATTACHMENT_EXPIRE_DAYS = Math.max(1, Number(process.env.ATTACHMENT_EXPIRE_DAYS || 30));
 const ATTACHMENT_MAX_UPLOADS_PER_DAY = Math.max(1, Number(process.env.ATTACHMENT_MAX_UPLOADS_PER_DAY || 50));
