@@ -225,6 +225,8 @@
     chat: {
       getServers: () => request('GET', '/api/chat/servers'),
       createServer: (payload) => request('POST', '/api/chat/servers', payload),
+      startDiscordMigration: () => request('POST', '/api/chat/servers/discord-migration'),
+      getDiscordMigrationStatus: (code) => request('GET', `/api/chat/servers/discord-migration/${encodeURIComponent(code)}`),
       leaveServer: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/leave`),
       kickMember: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/kick`, payload),
       banMember: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/ban`, payload),
@@ -235,7 +237,13 @@
       joinByInvite: (payload) => request('POST', '/api/chat/invites/join', payload),
       getServerPresence: (serverId) => request('GET', `/api/chat/servers/${serverId}/presence`),
       getChannels: (serverId) => request('GET', `/api/chat/servers/${serverId}/channels`),
+      createCategory: (payload) => request('POST', '/api/chat/categories', payload),
       createChannel: (payload) => request('POST', '/api/chat/channels', payload),
+      updateCategory: (payload) => request('POST', `/api/chat/categories/${payload.categoryId}`, payload),
+      deleteCategory: (payload) => request('DELETE', `/api/chat/categories/${payload.categoryId}`),
+      updateChannel: (payload) => request('POST', `/api/chat/channels/${payload.channelId}`, payload),
+      deleteChannel: (payload) => request('DELETE', `/api/chat/channels/${payload.channelId}`),
+      updateChannelLayout: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/channel-layout`, payload),
       getMessages: (channelId) => request('GET', `/api/chat/channels/${channelId}/messages`),
       sendMessage: (payload) => request('POST', '/api/chat/messages', payload),
       updateMessage: (payload) => request('PATCH', `/api/chat/messages/${payload.messageId}`, payload),
@@ -251,6 +259,16 @@
       getToken: (payload) => request('POST', '/api/vc/token', payload),
       getParticipants: (payload) => request('POST', '/api/vc/participants', payload)
     },
+    notifications: {
+      list: () => request('GET', '/api/notifications'),
+      markRead: (payload) => request('PATCH', `/api/notifications/${payload.notificationId}/read`),
+      markAllRead: () => request('POST', '/api/notifications/read-all'),
+      getUnread: () => request('GET', '/api/unreads'),
+      markChannelRead: (payload) => request('POST', `/api/unreads/channels/${payload.channelId}/read`),
+      markDmRead: (payload) => request('POST', `/api/unreads/dms/${payload.partnerUserId}/read`),
+      savePreferences: (payload) => request('POST', '/api/notifications/preferences', payload),
+      registerPushToken: (payload) => request('POST', '/api/notifications/push-tokens', payload)
+    },
     roles: {
       getState: (payload) => request('GET', `/api/chat/servers/${payload.serverId}/roles`),
       create: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/roles`, payload),
@@ -258,12 +276,18 @@
       delete: (payload) => request('DELETE', `/api/chat/servers/${payload.serverId}/roles/${payload.roleId}`),
       setMemberRole: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/roles/${payload.roleId}/members`, payload)
     },
+    permissions: {
+      getOverrides: (payload) => request('GET', `/api/chat/servers/${payload.serverId}/permission-overrides`),
+      saveOverride: (payload) => request('POST', `/api/chat/servers/${payload.serverId}/permission-overrides`, payload),
+      deleteOverride: (payload) => request('DELETE', `/api/chat/servers/${payload.serverId}/permission-overrides/${payload.overrideId}`)
+    },
     admin: {
       listUsers: (payload) => request('POST', '/api/admin/users/search', payload),
       listReports: (payload = {}) => request('GET', `/api/admin/reports?status=${encodeURIComponent(payload.status || 'open')}`),
       updateReport: (payload) => request('POST', `/api/admin/reports/${payload.reportId}`, payload),
       getStorageConfig: () => request('GET', '/api/admin/storage'),
       updateCleanupSettings: (payload) => request('POST', '/api/admin/storage/cleanup', payload),
+      runAttachmentCompressionBackfill: (payload = {}) => request('POST', '/api/admin/storage/compression-backfill', payload),
       listBanAppeals: (payload = {}) => request('GET', `/api/admin/ban-appeals?status=${encodeURIComponent(payload.status || 'open')}`),
       updateBanAppeal: (payload) => request('POST', `/api/admin/ban-appeals/${payload.appealId}`, payload),
       listServers: (payload = {}) => request('GET', `/api/admin/servers?query=${encodeURIComponent(payload.query || '')}`),

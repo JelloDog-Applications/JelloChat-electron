@@ -134,32 +134,87 @@
             <h2>Servers</h2>
           </div>
           <ul id="servers-list" class="list"></ul>
-          <div id="server-options-menu" class="server-options-menu hidden">
+          <div id="server-options-menu" class="server-options-menu hidden" role="dialog" aria-modal="true" aria-labelledby="server-settings-title">
             <div class="server-options-tabs">
-              <button id="server-tab-general" class="server-tab active" type="button">General</button>
+              <div class="server-settings-nav-title">Server Settings</div>
+              <button id="server-tab-general" class="server-tab active" type="button">Server Profile</button>
+              <div class="server-settings-nav-section">People</div>
               <button id="server-tab-roles" class="server-tab" type="button">Roles</button>
-              <button id="server-tab-banned" class="server-tab" type="button">Banned</button>
+              <button id="server-tab-permissions" class="server-tab" type="button">Channel Permissions</button>
+              <div class="server-settings-nav-section">Moderation</div>
+              <button id="server-tab-banned" class="server-tab" type="button">Bans</button>
             </div>
             <div class="server-options-content">
               <section id="server-panel-general" class="server-panel">
-                <label for="server-name-input">Server Name</label>
-                <input id="server-name-input" type="text" maxlength="80" />
-                <button id="save-server-name-btn" type="button">Save Name</button>
-                <button id="leave-server-btn" type="button">Leave Server</button>
+                <div class="server-settings-heading">
+                  <h2 id="server-settings-title">Server Profile</h2>
+                  <p>Control how this server appears in JelloChat and invites.</p>
+                </div>
+                <div class="server-profile-grid">
+                  <div class="server-profile-form">
+                    <label for="server-name-input">Name</label>
+                    <input id="server-name-input" type="text" maxlength="80" />
+                    <label for="server-icon-input">Icon URL</label>
+                    <input id="server-icon-input" type="url" maxlength="1000" placeholder="https://example.com/server-icon.png" />
+                    <div class="server-settings-actions">
+                      <button id="save-server-name-btn" type="button">Save Changes</button>
+                      <button id="leave-server-btn" type="button">Leave Server</button>
+                    </div>
+                  </div>
+                  <aside class="server-profile-preview">
+                    <div class="server-profile-preview-banner"></div>
+                    <div class="server-profile-preview-body">
+                      <div id="server-profile-preview-icon" class="server-profile-preview-icon">JC</div>
+                      <strong id="server-profile-preview-name">Server</strong>
+                      <span>JelloChat server</span>
+                    </div>
+                  </aside>
+                </div>
               </section>
               <section id="server-panel-roles" class="server-panel hidden">
+                <div class="server-settings-heading">
+                  <h2>Roles</h2>
+                  <p>Manage server permissions and assign roles to members.</p>
+                </div>
                 <div class="roles-toolbar">
                   <button id="create-role-btn" type="button">Create Role</button>
                 </div>
                 <div id="roles-list" class="roles-list"></div>
                 <label for="role-name-input">Role Name</label>
                 <input id="role-name-input" type="text" maxlength="80" />
+                <label for="role-color-input">Role Color</label>
+                <div class="role-color-editor">
+                  <input id="role-color-input" type="color" value="#99aab5" />
+                  <span id="role-color-value">#99aab5</span>
+                </div>
                 <div id="role-permissions" class="role-permissions">
-                  <label><input id="perm-manage-server" type="checkbox" /> Manage Server</label>
-                  <label><input id="perm-manage-roles" type="checkbox" /> Manage Roles</label>
-                  <label><input id="perm-manage-channels" type="checkbox" /> Manage Channels</label>
-                  <label><input id="perm-create-invites" type="checkbox" /> Create Invites</label>
-                  <label><input id="perm-moderate-members" type="checkbox" /> Moderate Members</label>
+                  <div class="permission-group">
+                    <h3>General</h3>
+                    <label><input id="perm-view-channels" type="checkbox" /> View Channels</label>
+                    <label><input id="perm-manage-server" type="checkbox" /> Manage Server</label>
+                    <label><input id="perm-manage-roles" type="checkbox" /> Manage Roles</label>
+                    <label><input id="perm-manage-channels" type="checkbox" /> Manage Channels</label>
+                    <label><input id="perm-create-invites" type="checkbox" /> Create Invites</label>
+                  </div>
+                  <div class="permission-group">
+                    <h3>Text</h3>
+                    <label><input id="perm-send-messages" type="checkbox" /> Send Messages</label>
+                    <label><input id="perm-attach-files" type="checkbox" /> Attach Files</label>
+                    <label><input id="perm-read-message-history" type="checkbox" /> Read Message History</label>
+                    <label><input id="perm-manage-messages" type="checkbox" /> Manage Messages</label>
+                  </div>
+                  <div class="permission-group">
+                    <h3>Voice</h3>
+                    <label><input id="perm-connect-voice" type="checkbox" /> Connect</label>
+                    <label><input id="perm-speak-voice" type="checkbox" /> Speak</label>
+                  </div>
+                  <div class="permission-group">
+                    <h3>Moderation</h3>
+                    <label><input id="perm-view-members" type="checkbox" /> View Members</label>
+                    <label><input id="perm-kick-members" type="checkbox" /> Kick Members</label>
+                    <label><input id="perm-ban-members" type="checkbox" /> Ban Members</label>
+                    <label><input id="perm-view-bans" type="checkbox" /> View Bans</label>
+                  </div>
                 </div>
                 <div class="roles-toolbar">
                   <button id="save-role-btn" type="button">Save Role</button>
@@ -167,10 +222,44 @@
                 </div>
                 <div id="role-members-list" class="role-members-list"></div>
               </section>
+              <section id="server-panel-permissions" class="server-panel hidden">
+                <div class="server-settings-heading">
+                  <h2>Channel Permissions</h2>
+                  <p>Set category and channel overrides for roles or individual members.</p>
+                </div>
+                <div class="permission-editor">
+                  <div class="permission-editor-controls">
+                    <label for="permission-scope-select">Category or Channel</label>
+                    <select id="permission-scope-select"></select>
+                    <label for="permission-target-type-select">Override Type</label>
+                    <select id="permission-target-type-select">
+                      <option value="role">Role</option>
+                      <option value="member">Member</option>
+                    </select>
+                    <label for="permission-target-select">Role or Member</label>
+                    <select id="permission-target-select"></select>
+                    <div class="server-settings-actions">
+                      <button id="save-permission-override-btn" type="button">Save Override</button>
+                      <button id="delete-permission-override-btn" type="button">Delete Override</button>
+                    </div>
+                  </div>
+                  <div class="permission-editor-main">
+                    <div id="permission-override-list" class="permission-override-list"></div>
+                    <div id="permission-override-editor" class="permission-override-editor"></div>
+                  </div>
+                </div>
+              </section>
               <section id="server-panel-banned" class="server-panel hidden">
+                <div class="server-settings-heading">
+                  <h2>Bans</h2>
+                  <p>Review banned users and restore access when needed.</p>
+                </div>
                 <div id="banned-users-list" class="banned-users-list"></div>
               </section>
             </div>
+            <button id="server-options-close-btn" class="server-options-close-btn" type="button" aria-label="Close server settings">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i><span>ESC</span>
+            </button>
           </div>
           <button id="join-invite-btn" class="create-server-btn secondary-btn" type="button"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>Join by Invite</span></button>
           <button id="create-server-btn" class="create-server-btn" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Create Server</span></button>
@@ -181,6 +270,7 @@
             <h2 id="server-title">Channels</h2>
             <div class="channel-actions">
               <button id="create-invite-btn" class="icon-btn" type="button" title="Create invite" aria-label="Create invite"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></button>
+              <button id="create-category-btn" class="icon-btn" type="button" title="Create category" aria-label="Create category"><i class="fa-solid fa-folder-plus" aria-hidden="true"></i></button>
               <button id="create-channel-btn" class="icon-btn" type="button" title="Create channel" aria-label="Create channel"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
             </div>
           </div>
@@ -190,6 +280,82 @@
             </button>
           </div>
           <ul id="channels-list" class="list"></ul>
+          <div id="channel-settings-modal" class="channel-settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="channel-settings-title">
+            <aside class="channel-settings-sidebar">
+              <div id="channel-settings-kind" class="channel-settings-kind">Channel Settings</div>
+              <button id="channel-settings-overview-tab" class="channel-settings-tab active" type="button">Overview</button>
+              <button id="channel-settings-permissions-tab" class="channel-settings-tab" type="button">Permissions</button>
+              <button id="channel-settings-delete-tab" class="channel-settings-tab danger" type="button">Delete Channel</button>
+            </aside>
+            <section class="channel-settings-content">
+              <div class="channel-settings-close-wrap">
+                <button id="channel-settings-close-btn" class="channel-settings-close-btn" type="button" title="Close" aria-label="Close channel settings">
+                  <i class="fa-solid fa-xmark" aria-hidden="true"></i><span>ESC</span>
+                </button>
+              </div>
+              <div id="channel-settings-overview-panel" class="channel-settings-panel">
+                <h2 id="channel-settings-title">Overview</h2>
+                <label id="channel-settings-name-label" for="channel-settings-name">Channel Name</label>
+                <input id="channel-settings-name" type="text" maxlength="80" />
+                <label id="channel-settings-category-label" for="channel-settings-category">Category</label>
+                <select id="channel-settings-category"></select>
+                <div id="channel-settings-channel-extra" class="channel-settings-extra">
+                  <label for="channel-settings-topic">Channel Topic</label>
+                  <textarea id="channel-settings-topic" rows="6" maxlength="1024" placeholder="Let everyone know how to use this channel!"></textarea>
+                  <label for="channel-settings-slowmode">Slowmode</label>
+                  <select id="channel-settings-slowmode">
+                    <option value="0">Off</option>
+                    <option value="5">5 seconds</option>
+                    <option value="10">10 seconds</option>
+                    <option value="30">30 seconds</option>
+                    <option value="60">1 minute</option>
+                  </select>
+                </div>
+                <p id="channel-settings-meta" class="settings-muted"></p>
+                <div class="channel-settings-actions">
+                  <button id="channel-settings-save-btn" type="button">Save Changes</button>
+                </div>
+              </div>
+              <div id="channel-settings-permissions-panel" class="channel-settings-panel channel-settings-permissions-panel hidden">
+                <h2 id="channel-settings-permissions-title">Category Settings</h2>
+                <p id="channel-settings-permissions-copy" class="settings-muted">Use permissions to customize who can do what here.</p>
+                <section class="channel-private-card">
+                  <div class="channel-private-copy">
+                    <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                    <div>
+                      <strong id="channel-settings-private-title">Private Category</strong>
+                      <p id="channel-settings-private-copy">Only selected members and roles will be able to view this category. Channels inside it will match this setting.</p>
+                    </div>
+                  </div>
+                  <label class="channel-settings-switch" for="channel-settings-private-toggle">
+                    <input id="channel-settings-private-toggle" type="checkbox" />
+                    <span aria-hidden="true"></span>
+                  </label>
+                </section>
+                <section class="channel-access-card">
+                  <div class="channel-access-header">
+                    <strong id="channel-settings-access-heading">Who can access this category?</strong>
+                    <div class="channel-permission-targets">
+                      <select id="channel-settings-permission-target-type" aria-label="Permission target type">
+                        <option value="role">Role</option>
+                        <option value="member">Member</option>
+                      </select>
+                      <select id="channel-settings-permission-target" aria-label="Permission target"></select>
+                    </div>
+                  </div>
+                  <div id="channel-settings-access-list" class="channel-access-list"></div>
+                </section>
+                <section class="channel-advanced-permissions">
+                  <h3>Advanced permissions</h3>
+                  <div id="channel-settings-permission-rows" class="channel-settings-permission-rows"></div>
+                  <div class="channel-settings-actions">
+                    <button id="channel-settings-permission-delete-btn" class="secondary-btn" type="button">Remove Override</button>
+                    <button id="channel-settings-permission-save-btn" type="button">Save Permissions</button>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </div>
         </aside>
 
         <section class="messages-column">
@@ -275,6 +441,7 @@
             <input id="attachment-input" class="attachment-input" type="file" />
             <button id="attachment-btn" class="attachment-btn" type="button" title="Attach file" aria-label="Attach file"><i class="fa-solid fa-paperclip" aria-hidden="true"></i></button>
             <input id="message-input" type="text" placeholder="Message #channel" autocomplete="off" />
+            <div id="mention-suggestions" class="mention-suggestions hidden" role="listbox" aria-label="Mention suggestions"></div>
             <div id="attachment-chip" class="attachment-chip hidden"></div>
             <button type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Send</span></button>
           </form>
@@ -285,6 +452,8 @@
             <button id="notifications-btn" class="create-server-btn secondary-btn" type="button"><i class="fa-solid fa-bell" aria-hidden="true"></i><span>Notifications</span></button>
           </div>
           <div id="user-options-menu" class="user-options-menu hidden">
+            <div id="user-options-profile" class="user-options-profile"></div>
+            <div id="user-options-roles" class="user-options-roles"></div>
             <button id="report-user-btn" type="button">Report User</button>
             <button id="kick-user-btn" type="button">Kick User</button>
             <button id="ban-user-btn" type="button">Ban User</button>
@@ -297,7 +466,16 @@
               </div>
               <div class="roles-toolbar">
                 <button id="notifications-enable-btn" type="button">Enable Browser Notifications</button>
+                <button id="notifications-save-prefs-btn" type="button">Save Preferences</button>
                 <button id="notifications-clear-btn" type="button">Clear</button>
+              </div>
+              <div class="notification-preferences">
+                <label><input id="notif-pref-dm" type="checkbox" /> DMs</label>
+                <label><input id="notif-pref-mentions" type="checkbox" /> Mentions</label>
+                <label><input id="notif-pref-channel" type="checkbox" /> All Channel Messages</label>
+                <label><input id="notif-pref-friends" type="checkbox" /> Friend Requests</label>
+                <label><input id="notif-pref-calls" type="checkbox" /> Calls</label>
+                <label><input id="notif-pref-moderation" type="checkbox" /> Moderation</label>
               </div>
               <div id="notifications-list" class="notifications-list"></div>
             </div>
@@ -503,12 +681,16 @@
                   <div class="admin-storage-panel">
                     <div class="admin-reports-header">
                       <h4>Attachment Storage</h4>
-                      <button id="admin-storage-refresh-btn" type="button">Refresh</button>
+                      <div class="admin-storage-actions">
+                        <button id="admin-storage-backfill-btn" type="button">Compress Old Attachments</button>
+                        <button id="admin-storage-refresh-btn" type="button">Refresh</button>
+                      </div>
                     </div>
                     <div id="admin-storage-config" class="admin-storage-grid"></div>
                     <form id="admin-cleanup-form" class="admin-cleanup-form">
                       <button id="admin-cleanup-save-btn" type="submit">Save Storage Settings</button>
                     </form>
+                    <p id="admin-storage-backfill-status" class="settings-muted"></p>
                     <div id="admin-storage-stats" class="admin-storage-grid"></div>
                   </div>
                 </section>
