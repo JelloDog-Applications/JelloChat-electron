@@ -317,6 +317,7 @@ const state = {
   selectedDmUser: null,
   currentUserId: null,
   selectedAttachment: null,
+  isSendingMessage: false,
   ws: null,
   wsConfig: null,
   subscribedChannelId: null,
@@ -665,6 +666,26 @@ function setFriendsHomeOpen(open) {
   ui.messageForm?.classList.toggle('hidden', state.isFriendsHomeOpen);
   ui.vcPanel?.classList.toggle('friends-view-suppressed', state.isFriendsHomeOpen);
   ui.friendsHomeBtn?.classList.toggle('active', state.isFriendsHomeOpen);
+}
+
+function setComposerSending(sending) {
+  state.isSendingMessage = Boolean(sending);
+  ui.messageForm?.classList.toggle('is-sending', state.isSendingMessage);
+  ui.messageForm?.setAttribute('aria-busy', state.isSendingMessage ? 'true' : 'false');
+  if (ui.messageInput) {
+    ui.messageInput.disabled = state.isSendingMessage;
+  }
+  if (ui.attachmentBtn) {
+    ui.attachmentBtn.disabled = state.isSendingMessage;
+  }
+  const submitButton = ui.messageForm?.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = state.isSendingMessage;
+    const label = submitButton.querySelector('span');
+    if (label) {
+      label.textContent = state.isSendingMessage ? 'Sending' : 'Send';
+    }
+  }
 }
 
 function closeFriendsHome() {
@@ -6054,6 +6075,22 @@ async function ensureRealtime(token) {
 
 function renderMessages(messages) {
   ui.messagesList.innerHTML = '';
+  if (!messages?.length) {
+    const empty = document.createElement('div');
+    empty.className = 'messages-empty-state';
+    const icon = document.createElement('i');
+    icon.className = state.selectedDmUser ? 'fa-solid fa-comment-dots' : 'fa-solid fa-hashtag';
+    icon.setAttribute('aria-hidden', 'true');
+    const title = document.createElement('strong');
+    title.textContent = state.selectedDmUser ? `Start your chat with ${state.selectedDmUser.username}` : 'No messages yet';
+    const copy = document.createElement('span');
+    copy.textContent = state.selectedDmUser
+      ? 'Send a message or start a call when you are ready.'
+      : 'Be the first to send something here.';
+    empty.append(icon, title, copy);
+    ui.messagesList.appendChild(empty);
+    return;
+  }
   for (const msg of messages) {
     const wrapper = document.createElement('div');
     wrapper.className = `msg ${msg.user_id === state.currentUserId ? 'me' : ''}`;
@@ -6138,6 +6175,21 @@ function renderMessages(messages) {
   }
 
   ui.messagesList.scrollTop = ui.messagesList.scrollHeight;
+}
+
+function renderNoChannelState(message = 'Pick a text channel to start chatting.') {
+  ui.messagesList.innerHTML = '';
+  const empty = document.createElement('div');
+  empty.className = 'messages-empty-state no-channel-state';
+  const icon = document.createElement('i');
+  icon.className = 'fa-solid fa-comments';
+  icon.setAttribute('aria-hidden', 'true');
+  const title = document.createElement('strong');
+  title.textContent = 'No channel selected';
+  const copy = document.createElement('span');
+  copy.textContent = message;
+  empty.append(icon, title, copy);
+  ui.messagesList.appendChild(empty);
 }
 
 async function loadMessages(channelId) {
@@ -6538,7 +6590,7 @@ async function loadChannels(serverId, resetSelection = true) {
       ui.channelTitle.textContent = selected ? `# ${selected.name} - Admin View` : 'Select a channel';
     } else {
       ui.channelTitle.textContent = 'No channels available';
-      ui.messagesList.innerHTML = '';
+      renderNoChannelState('This server does not have any visible channels yet.');
       state.subscribedChannelId = null;
     }
     syncVoicePanelVisibility();
@@ -6587,7 +6639,7 @@ async function loadChannels(serverId, resetSelection = true) {
     }
   } else {
     ui.channelTitle.textContent = 'No channels available';
-    ui.messagesList.innerHTML = '';
+    renderNoChannelState('This server does not have any visible channels yet.');
     state.subscribedChannelId = null;
   }
   syncVoicePanelVisibility();
@@ -8543,6 +8595,9 @@ ui.registerForm.addEventListener('submit', async (event) => {
 
 ui.messageForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (state.isSendingMessage) {
+    return;
+  }
 
   const content = ui.messageInput.value.trim();
   if (!content && !state.selectedAttachment) {
@@ -8555,20 +8610,25 @@ ui.messageForm.addEventListener('submit', async (event) => {
   }
 
   if (state.selectedDmUser) {
-    const payload = await buildMessagePayload({ partnerUserId: state.selectedDmUser.id }, content);
-    if (!payload) {
-      return;
-    }
-    const dmResult = await window.api.dm.sendMessage(payload);
-    if (!dmResult.ok) {
-      await showSendBlockedDialog(dmResult.message);
-      return;
-    }
+    setComposerSending(true);
+    try {
+      const payload = await buildMessagePayload({ partnerUserId: state.selectedDmUser.id }, content);
+      if (!payload) {
+        return;
+      }
+      const dmResult = await window.api.dm.sendMessage(payload);
+      if (!dmResult.ok) {
+        await showSendBlockedDialog(dmResult.message);
+        return;
+      }
 
-    ui.messageInput.value = '';
-    hideMentionSuggestions();
-    clearSelectedAttachment();
-    await loadDmMessages(state.selectedDmUser.id, state.selectedDmUser.username);
+      ui.messageInput.value = '';
+      hideMentionSuggestions();
+      clearSelectedAttachment();
+      await loadDmMessages(state.selectedDmUser.id, state.selectedDmUser.username);
+    } finally {
+      setComposerSending(false);
+    }
     return;
   }
 
@@ -8576,20 +8636,25 @@ ui.messageForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  const payload = await buildMessagePayload({ channelId: state.selectedChannelId }, content);
-  if (!payload) {
-    return;
-  }
-  const result = await window.api.chat.sendMessage(payload);
+  setComposerSending(true);
+  try {
+    const payload = await buildMessagePayload({ channelId: state.selectedChannelId }, content);
+    if (!payload) {
+      return;
+    }
+    const result = await window.api.chat.sendMessage(payload);
 
-  if (!result.ok) {
-    await showSendBlockedDialog(result.message);
-    return;
-  }
+    if (!result.ok) {
+      await showSendBlockedDialog(result.message);
+      return;
+    }
 
-  ui.messageInput.value = '';
-  hideMentionSuggestions();
-  clearSelectedAttachment();
+    ui.messageInput.value = '';
+    hideMentionSuggestions();
+    clearSelectedAttachment();
+  } finally {
+    setComposerSending(false);
+  }
 });
 
 ui.logoutBtn.addEventListener('click', async () => {
