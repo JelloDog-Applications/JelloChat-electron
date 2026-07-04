@@ -15,6 +15,7 @@ const {
   createDiscordMigrationSession,
   getDiscordMigrationStatus
 } = require('./discordMigration');
+const { isAllowedOrigin } = require('./origin-utils');
 
 const WEB_PORT = Number(process.env.WEB_PORT || 3000);
 const AUTH_SESSION_DAYS = Math.max(1, Number(process.env.AUTH_SESSION_DAYS || 30));
@@ -69,19 +70,14 @@ function getAllowedCorsOrigins() {
   return new Set([...DEFAULT_ALLOWED_APP_ORIGINS, ...configured]);
 }
 
-function isAllowedLoopbackOrigin(origin) {
-  try {
-    const parsed = new URL(origin);
-    const hostname = parsed.hostname.toLowerCase();
-    return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(hostname)
-      && ['http:', 'https:'].includes(parsed.protocol);
-  } catch (_error) {
+function isAllowedCorsOrigin(origin) {
+  if (!origin) {
     return false;
   }
-}
-
-function isAllowedCorsOrigin(origin) {
-  return getAllowedCorsOrigins().has(origin) || isAllowedLoopbackOrigin(origin);
+  if (getAllowedCorsOrigins().has(origin)) {
+    return true;
+  }
+  return isAllowedOrigin(origin);
 }
 
 app.use((req, res, next) => {

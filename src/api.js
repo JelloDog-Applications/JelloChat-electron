@@ -39,7 +39,7 @@
   }
 
   function isLoopbackHost(hostname) {
-    return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(String(hostname || '').toLowerCase());
+    return ['localhost', '127.0.0.1', '::1', '[::1]', 'localhost.localdomain'].includes(String(hostname || '').toLowerCase());
   }
 
   function isPrivateNetworkHost(hostname) {
@@ -58,7 +58,7 @@
       const second = Number(match[1]);
       return second >= 16 && second <= 31;
     }
-    return false;
+    return host.endsWith('.local') || host.endsWith('.internal') || host.endsWith('.lan') || host.endsWith('.home.arpa');
   }
 
   function isAllowedApiBase(url) {

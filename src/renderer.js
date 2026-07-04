@@ -8303,7 +8303,7 @@ async function showPrivacyPolicyDialog() {
 }
 
 function isLoopbackHost(hostname) {
-  return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(String(hostname || '').toLowerCase());
+  return ['localhost', '127.0.0.1', '::1', '[::1]', 'localhost.localdomain'].includes(String(hostname || '').toLowerCase());
 }
 
 function isLocalAppShell() {
@@ -8334,7 +8334,7 @@ function normalizeRemoteBase(value) {
 
 function isPrivateNetworkHost(hostname) {
   const host = String(hostname || '').toLowerCase();
-  if (['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
+  if (['localhost', '127.0.0.1', '::1', '[::1]', 'localhost.localdomain'].includes(host)) {
     return true;
   }
   if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
@@ -8348,7 +8348,7 @@ function isPrivateNetworkHost(hostname) {
     const second = Number(match[1]);
     return second >= 16 && second <= 31;
   }
-  return false;
+  return host.endsWith('.local') || host.endsWith('.internal') || host.endsWith('.lan') || host.endsWith('.home.arpa');
 }
 
 function isAllowedServerBase(value) {
