@@ -14,9 +14,9 @@ Binaries:
   https://github.com/JelloDog-Applications/JelloChat-electron/releases/download/v%v/JelloDogChat-fdroid-signed.apk
 
 Builds:
-  - versionName: 1.1.11
-    versionCode: 11
-    commit: adf1f172c203353cc0341a14edbf45edb4d1c408
+  - versionName: 1.2.1
+    versionCode: 12
+    commit: f435216e1efb3cec10ecef182b9acd50b2058576
     subdir: android/app
     sudo:
       - apt-get update
