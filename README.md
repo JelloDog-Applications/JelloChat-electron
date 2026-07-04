@@ -25,6 +25,8 @@ A simple Discord-like desktop app built with Electron and PostgreSQL.
 
 ## Setup
 
+For a full public-server setup guide, see [docs/SERVER_SETUP.md](./docs/SERVER_SETUP.md).
+
 1. Install PostgreSQL and create a database named `jellochat`.
 2. Run the schema script:
 

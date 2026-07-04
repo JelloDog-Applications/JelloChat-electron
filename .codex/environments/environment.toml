@@ -9,3 +9,11 @@ script = ""
 name = "Build Windows"
 icon = "tool"
 command = "npm run build:win"
+
+[[actions]]
+name = "debug andriod build"
+icon = "debug"
+command = '''
+npm install
+npm.cmd run install:android-debug
+'''

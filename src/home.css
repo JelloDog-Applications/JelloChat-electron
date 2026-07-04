@@ -18,7 +18,9 @@
 
 body {
   margin: 0;
+  max-width: 100%;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     linear-gradient(rgba(115, 167, 255, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(87, 215, 164, 0.05) 1px, transparent 1px),
@@ -570,40 +572,107 @@ h1 {
 
 @media (max-width: 840px) {
   .site-header {
-    align-items: flex-start;
+    align-items: stretch;
     flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px;
   }
 
   nav {
     width: 100%;
-    justify-content: space-between;
+    max-width: calc(100vw - 32px);
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  nav a {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+    max-width: 100%;
+    min-height: 36px;
+    padding: 8px 10px;
+    font-size: 0.88rem;
+    text-align: center;
+  }
+
+  .nav-action {
+    margin-left: 0;
   }
 
   .hero {
     grid-template-columns: 1fr;
     min-height: auto;
+    padding: 32px 16px;
+    overflow: hidden;
+  }
+
+  .hero-copy {
+    max-width: 100%;
+    width: min(100%, calc(100vw - 32px));
+    min-width: 0;
   }
 
   h1 {
-    font-size: 4.2rem;
+    font-size: clamp(3rem, 14vw, 4.2rem);
   }
 
   .hero-copy p {
+    max-width: 100%;
     font-size: 1.12rem;
+    overflow-wrap: normal;
   }
 
   .app-preview {
+    width: 100%;
+    max-width: calc(100vw - 32px);
+    min-width: 0;
     min-height: 420px;
   }
 
   .feature-band {
     grid-template-columns: 1fr;
+    padding: 0 16px 42px;
+  }
+
+  .hero-kicker,
+  .site-header,
+  h1,
+  .hero-copy p,
+  .hero-actions,
+  .download-options,
+  .signal-row,
+  .live-stats,
+  .source-callout,
+  .app-preview,
+  .feature-band article {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
 
 @media (max-width: 460px) {
+  .brand {
+    min-width: 0;
+  }
+
+  .brand span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   h1 {
     font-size: 3.1rem;
+  }
+
+  .hero-actions a,
+  .download-options a,
+  .live-stats,
+  .source-callout {
+    width: 100%;
   }
 }
 

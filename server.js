@@ -4,11 +4,17 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const multer = require('multer');
+const zlib = require('zlib');
 const { WebSocketServer } = require('ws');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const fs = require('fs');
 const db = require('./db');
 const { sendMail } = require('./mailer');
+const { startDiscordMigrationBot } = require('./discordBot');
+const {
+  createDiscordMigrationSession,
+  getDiscordMigrationStatus
+} = require('./discordMigration');
 
 const WEB_PORT = Number(process.env.WEB_PORT || 3000);
 const AUTH_SESSION_DAYS = Math.max(1, Number(process.env.AUTH_SESSION_DAYS || 30));
@@ -25,6 +31,11 @@ const ATTACHMENT_ENCRYPTION_KEY = crypto
   .createHash('sha256')
   .update(String(process.env.ATTACHMENT_ENCRYPTION_KEY || process.env.AUTH_SECRET || 'jellochat-dev-attachment-key'))
   .digest();
+const ATTACHMENT_BROTLI_OPTIONS = {
+  params: {
+    [zlib.constants.BROTLI_PARAM_QUALITY]: 5
+  }
+};
 const IP_REPUTATION_BLOCK_THRESHOLD = Number(process.env.IP_REPUTATION_BLOCK_THRESHOLD || 8);
 const IP_REPUTATION_BLOCK_MINUTES = Number(process.env.IP_REPUTATION_BLOCK_MINUTES || 30);
 const IP_REPUTATION_DECAY_HOURS = Number(process.env.IP_REPUTATION_DECAY_HOURS || 6);
@@ -182,24 +193,21 @@ function removeUploadedFile(file) {
   fs.promises.unlink(file.path).catch(() => {});
 }
 
-async function encryptAttachmentFile(filePath) {
+function encryptAttachmentBuffer(buffer) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', ATTACHMENT_ENCRYPTION_KEY, iv);
-  const plaintext = await fs.promises.readFile(filePath);
-  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const encrypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
   const authTag = cipher.getAuthTag();
-  await fs.promises.writeFile(filePath, encrypted);
   return {
+    data: encrypted,
     iv: iv.toString('base64'),
     authTag: authTag.toString('base64')
   };
 }
 
-async function readAttachmentFile(attachment) {
-  const filePath = path.join(ATTACHMENTS_DIR, attachment.stored_filename);
-  const data = await fs.promises.readFile(filePath);
+function decryptAttachmentBuffer(buffer, attachment) {
   if (!attachment.encryption_iv || !attachment.encryption_auth_tag) {
-    return data;
+    return buffer;
   }
   const decipher = crypto.createDecipheriv(
     'aes-256-gcm',
@@ -207,7 +215,42 @@ async function readAttachmentFile(attachment) {
     Buffer.from(attachment.encryption_iv, 'base64')
   );
   decipher.setAuthTag(Buffer.from(attachment.encryption_auth_tag, 'base64'));
-  return Buffer.concat([decipher.update(data), decipher.final()]);
+  return Buffer.concat([decipher.update(buffer), decipher.final()]);
+}
+
+function prepareAttachmentStorageBuffer(buffer) {
+  const originalSize = buffer.length;
+  const compressed = zlib.brotliCompressSync(buffer, ATTACHMENT_BROTLI_OPTIONS);
+  if (compressed.length < originalSize) {
+    return {
+      buffer: compressed,
+      algorithm: 'brotli',
+      originalSize,
+      storedPlainSize: compressed.length,
+      savedBytes: originalSize - compressed.length
+    };
+  }
+  return {
+    buffer,
+    algorithm: null,
+    originalSize,
+    storedPlainSize: originalSize,
+    savedBytes: 0
+  };
+}
+
+function decodeStoredAttachmentBuffer(buffer, attachment) {
+  const decrypted = decryptAttachmentBuffer(buffer, attachment);
+  if (attachment.compression_algorithm === 'brotli') {
+    return zlib.brotliDecompressSync(decrypted);
+  }
+  return decrypted;
+}
+
+async function readAttachmentFile(attachment) {
+  const filePath = path.join(ATTACHMENTS_DIR, attachment.stored_filename);
+  const data = await fs.promises.readFile(filePath);
+  return decodeStoredAttachmentBuffer(data, attachment);
 }
 
 function getAttachmentExpiresAt(expireDays = ATTACHMENT_EXPIRE_DAYS) {
@@ -467,11 +510,70 @@ function getRequestOrigin(req) {
 }
 
 function getPasskeyOrigin(req) {
+  const configuredOrigin = String(process.env.PASSKEY_ORIGIN || '').trim().replace(/\/+$/, '');
+  if (configuredOrigin) {
+    return new URL(configuredOrigin).origin;
+  }
   return getRequestOrigin(req);
 }
 
 function getPasskeyRpId(req) {
-  return new URL(getRequestOrigin(req)).hostname;
+  const configuredRpId = String(process.env.PASSKEY_RP_ID || '').trim();
+  if (configuredRpId) {
+    return configuredRpId;
+  }
+  return new URL(getPasskeyOrigin(req)).hostname;
+}
+
+function getAndroidAssetLinks() {
+  const configuredApps = String(process.env.ANDROID_ASSETLINKS_APPS || '').trim();
+  if (configuredApps) {
+    return configuredApps
+      .split(';')
+      .map((entry) => {
+        const [rawPackageName, rawFingerprints = ''] = entry.split('=');
+        const packageName = String(rawPackageName || '').trim();
+        const fingerprints = rawFingerprints
+          .split(',')
+          .map((fingerprint) => fingerprint.trim())
+          .filter(Boolean);
+        if (!packageName || fingerprints.length === 0) {
+          return null;
+        }
+        return {
+          relation: [
+            'delegate_permission/common.handle_all_urls',
+            'delegate_permission/common.get_login_creds'
+          ],
+          target: {
+            namespace: 'android_app',
+            package_name: packageName,
+            sha256_cert_fingerprints: fingerprints
+          }
+        };
+      })
+      .filter(Boolean);
+  }
+
+  const packageName = String(process.env.ANDROID_PACKAGE_NAME || 'com.jellodog.chat').trim();
+  const fingerprints = String(process.env.ANDROID_ASSETLINKS_SHA256_CERT_FINGERPRINTS || '')
+    .split(',')
+    .map((fingerprint) => fingerprint.trim())
+    .filter(Boolean);
+  if (!packageName || fingerprints.length === 0) {
+    return [];
+  }
+  return [{
+    relation: [
+      'delegate_permission/common.handle_all_urls',
+      'delegate_permission/common.get_login_creds'
+    ],
+    target: {
+      namespace: 'android_app',
+      package_name: packageName,
+      sha256_cert_fingerprints: fingerprints
+    }
+  }];
 }
 
 function cleanupChallengeStore(store) {
@@ -639,6 +741,11 @@ app.use('/assets', express.static(path.join(__dirname, 'assets'), {
   maxAge: '1h'
 }));
 
+app.get('/.well-known/assetlinks.json', (_req, res) => {
+  const links = getAndroidAssetLinks();
+  res.type('application/json').send(JSON.stringify(links, null, 2));
+});
+
 app.use((req, res, next) => {
   const pathname = String(req.path || '');
   if (req.method === 'GET' && (
@@ -646,6 +753,7 @@ app.use((req, res, next) => {
     || pathname === '/index.html'
     || pathname === '/app'
     || pathname === '/ban-appeal'
+    || pathname === '/.well-known/assetlinks.json'
     || pathname === '/manifest.webmanifest'
     || pathname === '/service-worker.js'
     || pathname === '/home.js'
@@ -1893,6 +2001,205 @@ async function broadcastPresenceForUser(userId) {
   }
 }
 
+const NOTIFICATION_DEFAULTS = {
+  dm_messages: true,
+  mentions: true,
+  channel_messages: false,
+  friend_requests: true,
+  calls: true,
+  moderation: true
+};
+
+function normalizeNotificationPreferences(row = {}) {
+  return Object.fromEntries(
+    Object.entries(NOTIFICATION_DEFAULTS).map(([key, fallback]) => [key, row[key] ?? fallback])
+  );
+}
+
+function notificationPreferenceKey(type) {
+  if (type === 'dm_message') return 'dm_messages';
+  if (type === 'mention' || type === 'role_mention') return 'mentions';
+  if (type === 'channel_message') return 'channel_messages';
+  if (type === 'friend_request') return 'friend_requests';
+  if (type === 'dm_call') return 'calls';
+  return 'moderation';
+}
+
+async function getNotificationPreferences(userId) {
+  const result = await db.query('SELECT * FROM notification_preferences WHERE user_id = $1', [userId]);
+  return normalizeNotificationPreferences(result.rows[0] || {});
+}
+
+async function createUserNotification(userId, type, title, body = '', data = {}) {
+  const preferences = await getNotificationPreferences(userId);
+  const preferenceKey = notificationPreferenceKey(type);
+  if (preferences[preferenceKey] === false) {
+    return null;
+  }
+  const inserted = await db.query(
+    `INSERT INTO user_notifications (user_id, type, title, body, data)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     RETURNING id, type, title, body, data, read_at, created_at`,
+    [userId, type, title, body, JSON.stringify(data || {})]
+  );
+  const notification = inserted.rows[0];
+  broadcastToUsers([userId], { type: 'notification-created', notification });
+  return notification;
+}
+
+async function getUnreadSummary(userId) {
+  const [channelUnread, channelMentions, dmUnread, notificationUnread] = await Promise.all([
+    db.query(
+      `SELECT m.channel_id, COUNT(*)::int AS count
+       FROM messages m
+       JOIN channels c ON c.id = m.channel_id
+       JOIN server_members sm ON sm.server_id = c.server_id AND sm.user_id = $1
+       LEFT JOIN channel_read_states crs ON crs.user_id = $1 AND crs.channel_id = m.channel_id
+       WHERE m.user_id <> $1
+         AND m.id > COALESCE(crs.last_read_message_id, 0)
+       GROUP BY m.channel_id`,
+      [userId]
+    ),
+    db.query(
+      `SELECT (data->>'channelId')::int AS channel_id, COUNT(*)::int AS count
+       FROM user_notifications
+       WHERE user_id = $1
+         AND read_at IS NULL
+         AND type IN ('mention', 'role_mention')
+         AND data ? 'channelId'
+       GROUP BY data->>'channelId'`,
+      [userId]
+    ),
+    db.query(
+      `SELECT dm.sender_user_id AS partner_user_id, COUNT(*)::int AS count
+       FROM dm_messages dm
+       LEFT JOIN dm_read_states drs ON drs.user_id = $1 AND drs.partner_user_id = dm.sender_user_id
+       WHERE dm.receiver_user_id = $1
+         AND dm.id > COALESCE(drs.last_read_message_id, 0)
+       GROUP BY dm.sender_user_id`,
+      [userId]
+    ),
+    db.query('SELECT COUNT(*)::int AS count FROM user_notifications WHERE user_id = $1 AND read_at IS NULL', [userId])
+  ]);
+  const mentionCounts = new Map(channelMentions.rows.map((row) => [Number(row.channel_id), Number(row.count || 0)]));
+  const channelRows = channelUnread.rows.map((row) => ({
+    channel_id: row.channel_id,
+    count: Number(row.count || 0),
+    mentions: mentionCounts.get(Number(row.channel_id)) || 0
+  }));
+  const channelIds = new Set(channelRows.map((row) => Number(row.channel_id)));
+  for (const [channelId, mentions] of mentionCounts.entries()) {
+    if (!channelIds.has(channelId)) {
+      channelRows.push({ channel_id: channelId, count: 0, mentions });
+    }
+  }
+  return {
+    channels: channelRows,
+    dms: dmUnread.rows.map((row) => ({ partner_user_id: row.partner_user_id, count: Number(row.count || 0) })),
+    notifications: Number(notificationUnread.rows[0]?.count || 0)
+  };
+}
+
+async function markChannelRead(userId, channelId) {
+  const result = await db.query('SELECT COALESCE(MAX(id), 0)::bigint AS last_id FROM messages WHERE channel_id = $1', [channelId]);
+  const lastId = Number(result.rows[0]?.last_id || 0);
+  await db.query(
+    `INSERT INTO channel_read_states (user_id, channel_id, last_read_message_id, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id, channel_id)
+     DO UPDATE SET last_read_message_id = GREATEST(channel_read_states.last_read_message_id, EXCLUDED.last_read_message_id),
+                   updated_at = NOW()`,
+    [userId, channelId, lastId]
+  );
+  await db.query(
+    `UPDATE user_notifications
+     SET read_at = COALESCE(read_at, NOW())
+     WHERE user_id = $1
+       AND read_at IS NULL
+       AND type IN ('mention', 'role_mention', 'channel_message')
+       AND data->>'channelId' = $2`,
+    [userId, String(channelId)]
+  );
+}
+
+async function markDmRead(userId, partnerUserId) {
+  const result = await db.query(
+    `SELECT COALESCE(MAX(id), 0)::bigint AS last_id
+     FROM dm_messages
+     WHERE (sender_user_id = $1 AND receiver_user_id = $2)
+        OR (sender_user_id = $2 AND receiver_user_id = $1)`,
+    [userId, partnerUserId]
+  );
+  const lastId = Number(result.rows[0]?.last_id || 0);
+  await db.query(
+    `INSERT INTO dm_read_states (user_id, partner_user_id, last_read_message_id, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id, partner_user_id)
+     DO UPDATE SET last_read_message_id = GREATEST(dm_read_states.last_read_message_id, EXCLUDED.last_read_message_id),
+                   updated_at = NOW()`,
+    [userId, partnerUserId, lastId]
+  );
+  await db.query(
+    `UPDATE user_notifications
+     SET read_at = COALESCE(read_at, NOW())
+     WHERE user_id = $1
+       AND read_at IS NULL
+       AND type = 'dm_message'
+       AND data->>'partnerUserId' = $2`,
+    [userId, String(partnerUserId)]
+  );
+}
+
+function messageMentionsName(content, username) {
+  const name = String(username || '').split('#')[0].trim().toLowerCase();
+  if (!name) {
+    return false;
+  }
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)@${escaped}(?=$|\\s|[.,!?;:)\\]])`, 'i').test(String(content || ''));
+}
+
+async function notifyChannelMessageTargets({ channelId, senderUserId, content, message, channelName }) {
+  const [memberResult, roleResult] = await Promise.all([
+    db.query(
+      `SELECT sm.user_id,
+              u.username,
+              COALESCE(array_agg(smr.role_id) FILTER (WHERE smr.role_id IS NOT NULL), '{}') AS role_ids
+       FROM channels c
+       JOIN server_members sm ON sm.server_id = c.server_id
+       JOIN users u ON u.id = sm.user_id
+       LEFT JOIN server_member_roles smr ON smr.server_id = sm.server_id AND smr.user_id = sm.user_id
+       WHERE c.id = $1 AND sm.user_id <> $2
+       GROUP BY sm.user_id, u.username`,
+      [channelId, senderUserId]
+    ),
+    db.query(
+      `SELECT r.id, r.name
+       FROM channels c
+       JOIN server_roles r ON r.server_id = c.server_id
+       WHERE c.id = $1 AND r.is_default = FALSE`,
+      [channelId]
+    )
+  ]);
+  const mentionedRoleIds = roleResult.rows
+    .filter((role) => messageMentionsName(content, role.name))
+    .map((role) => Number(role.id));
+  for (const member of memberResult.rows) {
+    const directMention = messageMentionsName(content, member.username);
+    const memberRoleIds = (member.role_ids || []).map(Number);
+    const roleMention = mentionedRoleIds.some((roleId) => memberRoleIds.includes(roleId));
+    const mentioned = directMention || roleMention;
+    const type = directMention ? 'mention' : (roleMention ? 'role_mention' : 'channel_message');
+    await createUserNotification(
+      member.user_id,
+      type,
+      mentioned ? `Mention in #${channelName}` : `New message in #${channelName}`,
+      `${message.username || 'Someone'}: ${String(content || 'Sent an attachment.').slice(0, 160)}`,
+      { channelId, messageId: message.id, serverId: message.server_id || null, mentioned, roleMention }
+    );
+  }
+}
+
 async function canAccessServer(userId, serverId) {
   const membership = await db.query(
     'SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2',
@@ -2018,30 +2325,78 @@ async function isServerOwner(userId, serverId) {
 }
 
 const SERVER_PERMISSION_KEYS = [
+  'view_channels',
   'manage_server',
   'manage_roles',
   'manage_channels',
   'create_invites',
-  'moderate_members'
+  'send_messages',
+  'attach_files',
+  'read_message_history',
+  'manage_messages',
+  'connect_voice',
+  'speak_voice',
+  'view_members',
+  'kick_members',
+  'ban_members',
+  'view_bans'
+];
+
+const DEFAULT_MEMBER_PERMISSION_KEYS = [
+  'view_channels',
+  'send_messages',
+  'attach_files',
+  'read_message_history',
+  'connect_voice',
+  'speak_voice',
+  'view_members'
 ];
 
 function emptyServerPermissions() {
-  return {
-    manage_server: false,
-    manage_roles: false,
-    manage_channels: false,
-    create_invites: false,
-    moderate_members: false
-  };
+  return Object.fromEntries(SERVER_PERMISSION_KEYS.map((key) => [key, false]));
 }
 
-function normalizeServerPermissions(value) {
-  const normalized = emptyServerPermissions();
+function defaultMemberPermissions() {
+  const permissions = emptyServerPermissions();
+  for (const key of DEFAULT_MEMBER_PERMISSION_KEYS) {
+    permissions[key] = true;
+  }
+  return permissions;
+}
+
+function allServerPermissions() {
+  return Object.fromEntries(SERVER_PERMISSION_KEYS.map((key) => [key, true]));
+}
+
+function normalizeServerPermissions(value, options = {}) {
+  const normalized = options.defaultMember ? defaultMemberPermissions() : emptyServerPermissions();
   const raw = value && typeof value === 'object' ? value : {};
   for (const key of SERVER_PERMISSION_KEYS) {
-    normalized[key] = Boolean(raw[key]);
+    if (Object.prototype.hasOwnProperty.call(raw, key)) {
+      normalized[key] = Boolean(raw[key]);
+    }
+  }
+  const hasLegacyPermissions = ['manage_server', 'manage_roles', 'manage_channels', 'create_invites', 'moderate_members']
+    .some((key) => Object.prototype.hasOwnProperty.call(raw, key));
+  if (hasLegacyPermissions) {
+    const defaults = defaultMemberPermissions();
+    for (const key of DEFAULT_MEMBER_PERMISSION_KEYS) {
+      normalized[key] = normalized[key] || defaults[key];
+    }
+  }
+  if (raw.moderate_members) {
+    normalized.view_members = true;
+    normalized.kick_members = true;
+    normalized.ban_members = true;
+    normalized.view_bans = true;
+    normalized.manage_messages = true;
   }
   return normalized;
+}
+
+function normalizeRoleColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : '#99aab5';
 }
 
 function mergeServerPermissions(...permissionSets) {
@@ -2055,14 +2410,38 @@ function mergeServerPermissions(...permissionSets) {
   return merged;
 }
 
+function normalizePermissionOverrideSet(value) {
+  const normalized = emptyServerPermissions();
+  const raw = value && typeof value === 'object' ? value : {};
+  for (const key of SERVER_PERMISSION_KEYS) {
+    normalized[key] = Boolean(raw[key]);
+  }
+  return normalized;
+}
+
+function applyPermissionOverride(basePermissions, override) {
+  const permissions = { ...normalizeServerPermissions(basePermissions) };
+  const allow = normalizePermissionOverrideSet(override?.allow);
+  const deny = normalizePermissionOverrideSet(override?.deny);
+  for (const key of SERVER_PERMISSION_KEYS) {
+    if (deny[key]) {
+      permissions[key] = false;
+    }
+    if (allow[key]) {
+      permissions[key] = true;
+    }
+  }
+  return permissions;
+}
+
 async function ensureServerRoles(serverId) {
   const roles = await db.query('SELECT id, name, is_default FROM server_roles WHERE server_id = $1', [serverId]);
   const hasDefaultRole = roles.rows.some((role) => role.is_default);
   if (!hasDefaultRole) {
     await db.query(
       `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
-       VALUES ($1, '@everyone', 0, '{}'::jsonb, TRUE)`,
-      [serverId]
+       VALUES ($1, '@everyone', 0, $2::jsonb, TRUE)`,
+      [serverId, JSON.stringify(defaultMemberPermissions())]
     );
   }
 
@@ -2071,13 +2450,7 @@ async function ensureServerRoles(serverId) {
     await db.query(
       `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
        VALUES ($1, 'Admin', 100, $2::jsonb, FALSE)`,
-      [serverId, JSON.stringify({
-        manage_server: true,
-        manage_roles: true,
-        manage_channels: true,
-        create_invites: true,
-        moderate_members: true
-      })]
+      [serverId, JSON.stringify(allServerPermissions())]
     );
   }
 }
@@ -2085,7 +2458,7 @@ async function ensureServerRoles(serverId) {
 async function getServerRoles(serverId) {
   await ensureServerRoles(serverId);
   const result = await db.query(
-    `SELECT id, server_id, name, position, permissions, is_default
+    `SELECT id, server_id, name, color, position, permissions, is_default
      FROM server_roles
      WHERE server_id = $1
      ORDER BY is_default DESC, position DESC, name ASC`,
@@ -2093,20 +2466,14 @@ async function getServerRoles(serverId) {
   );
   return result.rows.map((role) => ({
     ...role,
-    permissions: normalizeServerPermissions(role.permissions)
+    color: normalizeRoleColor(role.color),
+    permissions: normalizeServerPermissions(role.permissions, { defaultMember: role.is_default })
   }));
 }
 
 async function getUserServerPermissions(userId, serverId) {
   if (await isServerOwner(userId, serverId)) {
-    return {
-      ...emptyServerPermissions(),
-      manage_server: true,
-      manage_roles: true,
-      manage_channels: true,
-      create_invites: true,
-      moderate_members: true
-    };
+    return allServerPermissions();
   }
 
   const roles = await getServerRoles(serverId);
@@ -2127,6 +2494,184 @@ async function getUserServerPermissions(userId, serverId) {
     permissionSets.push(row.permissions);
   }
   return mergeServerPermissions(...permissionSets);
+}
+
+async function getUserAssignedRoleIds(userId, serverId) {
+  const assigned = await db.query(
+    'SELECT role_id FROM server_member_roles WHERE server_id = $1 AND user_id = $2',
+    [serverId, userId]
+  );
+  return assigned.rows.map((row) => Number(row.role_id)).filter(Boolean);
+}
+
+async function getChannelPermissionRows(serverId, scopeType, scopeId) {
+  const scopeColumn = scopeType === 'category' ? 'category_id' : 'channel_id';
+  const result = await db.query(
+    `SELECT id, server_id, scope_type, category_id, channel_id, target_type, role_id, user_id, allow, deny
+     FROM channel_permission_overrides
+     WHERE server_id = $1 AND scope_type = $2 AND ${scopeColumn} = $3
+     ORDER BY id`,
+    [serverId, scopeType, scopeId]
+  );
+  return result.rows;
+}
+
+function applyScopedPermissionOverrides(basePermissions, overrides, defaultRoleId, assignedRoleIds, userId) {
+  let permissions = { ...normalizeServerPermissions(basePermissions) };
+  const roleIdSet = new Set(assignedRoleIds.map(Number));
+  const everyoneOverride = overrides.find((override) => override.target_type === 'role' && Number(override.role_id) === Number(defaultRoleId));
+  if (everyoneOverride) {
+    permissions = applyPermissionOverride(permissions, everyoneOverride);
+  }
+  for (const override of overrides) {
+    if (override.target_type === 'role' && Number(override.role_id) !== Number(defaultRoleId) && roleIdSet.has(Number(override.role_id))) {
+      permissions = applyPermissionOverride(permissions, override);
+    }
+  }
+  const memberOverride = overrides.find((override) => override.target_type === 'member' && Number(override.user_id) === Number(userId));
+  if (memberOverride) {
+    permissions = applyPermissionOverride(permissions, memberOverride);
+  }
+  return permissions;
+}
+
+async function getUserChannelPermissions(userId, channelId) {
+  const channelResult = await db.query(
+    `SELECT c.id, c.server_id, c.category_id, c.type, c.name, c.topic, c.slowmode_seconds
+     FROM channels c
+     JOIN server_members sm ON sm.server_id = c.server_id
+     WHERE c.id = $1 AND sm.user_id = $2`,
+    [channelId, userId]
+  );
+  const channel = channelResult.rows[0];
+  if (!channel) {
+    return null;
+  }
+  if (await isServerOwner(userId, channel.server_id)) {
+    return { channel, permissions: allServerPermissions() };
+  }
+
+  const [serverPermissions, roles, assignedRoleIds] = await Promise.all([
+    getUserServerPermissions(userId, channel.server_id),
+    getServerRoles(channel.server_id),
+    getUserAssignedRoleIds(userId, channel.server_id)
+  ]);
+  const defaultRoleId = roles.find((role) => role.is_default)?.id || null;
+  let permissions = { ...serverPermissions };
+
+  if (channel.category_id) {
+    const categoryOverrides = await getChannelPermissionRows(channel.server_id, 'category', channel.category_id);
+    permissions = applyScopedPermissionOverrides(permissions, categoryOverrides, defaultRoleId, assignedRoleIds, userId);
+  }
+
+  const channelOverrides = await getChannelPermissionRows(channel.server_id, 'channel', channel.id);
+  permissions = applyScopedPermissionOverrides(permissions, channelOverrides, defaultRoleId, assignedRoleIds, userId);
+
+  return { channel, permissions };
+}
+
+async function filterVisibleChannels(userId, channels) {
+  const visible = [];
+  for (const channel of channels) {
+    const access = await getUserChannelPermissions(userId, channel.id);
+    if (access?.permissions.view_channels) {
+      visible.push(channel);
+    }
+  }
+  return visible;
+}
+
+function sanitizeOverridePermissions(value) {
+  const sanitized = emptyServerPermissions();
+  const raw = value && typeof value === 'object' ? value : {};
+  for (const key of SERVER_PERMISSION_KEYS) {
+    sanitized[key] = Boolean(raw[key]);
+  }
+  return sanitized;
+}
+
+async function getPermissionOverrideState(serverId) {
+  const [roles, members, categories, channels, overrides] = await Promise.all([
+    getServerRoles(serverId),
+    db.query(
+      `SELECT u.id, u.username, u.avatar_url
+       FROM server_members sm
+       JOIN users u ON u.id = sm.user_id
+       WHERE sm.server_id = $1 AND u.platform_banned_at IS NULL
+       ORDER BY u.username`,
+      [serverId]
+    ),
+    db.query('SELECT id, server_id, name, position FROM channel_categories WHERE server_id = $1 ORDER BY position, id', [serverId]),
+    db.query(
+      `SELECT id, type, name, topic, slowmode_seconds, server_id, category_id, position
+       FROM channels
+       WHERE server_id = $1
+       ORDER BY COALESCE(category_id, 0), position, id`,
+      [serverId]
+    ),
+    db.query(
+      `SELECT id, server_id, scope_type, category_id, channel_id, target_type, role_id, user_id, allow, deny
+       FROM channel_permission_overrides
+       WHERE server_id = $1
+       ORDER BY scope_type, COALESCE(category_id, channel_id), target_type, id`,
+      [serverId]
+    )
+  ]);
+  return {
+    permissionKeys: SERVER_PERMISSION_KEYS,
+    roles,
+    members: members.rows,
+    categories: categories.rows,
+    channels: channels.rows,
+    overrides: overrides.rows.map((override) => ({
+      ...override,
+      allow: sanitizeOverridePermissions(override.allow),
+      deny: sanitizeOverridePermissions(override.deny)
+    }))
+  };
+}
+
+async function validatePermissionOverridePayload(serverId, payload) {
+  const scopeType = String(payload?.scopeType || payload?.scope_type || '').trim().toLowerCase();
+  const scopeId = Number(payload?.scopeId || payload?.scope_id);
+  const targetType = String(payload?.targetType || payload?.target_type || '').trim().toLowerCase();
+  const targetId = Number(payload?.targetId || payload?.target_id);
+  if (!['category', 'channel'].includes(scopeType) || !scopeId || !['role', 'member'].includes(targetType) || !targetId) {
+    throw new Error('Valid scope and target are required.');
+  }
+
+  if (scopeType === 'category') {
+    const category = await db.query('SELECT id FROM channel_categories WHERE id = $1 AND server_id = $2', [scopeId, serverId]);
+    if (category.rows.length === 0) {
+      throw new Error('Category not found.');
+    }
+  } else {
+    const channel = await db.query('SELECT id FROM channels WHERE id = $1 AND server_id = $2', [scopeId, serverId]);
+    if (channel.rows.length === 0) {
+      throw new Error('Channel not found.');
+    }
+  }
+
+  if (targetType === 'role') {
+    const role = await db.query('SELECT id FROM server_roles WHERE id = $1 AND server_id = $2', [targetId, serverId]);
+    if (role.rows.length === 0) {
+      throw new Error('Role not found.');
+    }
+  } else {
+    const member = await db.query('SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetId]);
+    if (member.rows.length === 0) {
+      throw new Error('Member not found.');
+    }
+  }
+
+  return {
+    scopeType,
+    scopeId,
+    targetType,
+    targetId,
+    allow: sanitizeOverridePermissions(payload?.allow),
+    deny: sanitizeOverridePermissions(payload?.deny)
+  };
 }
 
 async function getMessageAccess(userId, messageId) {
@@ -2158,7 +2703,10 @@ function sanitizeAttachment(row) {
     id: row.id,
     original_filename: row.original_filename,
     mime_type: row.mime_type || 'application/octet-stream',
-    file_size: Number(row.file_size || 0),
+    file_size: Number(row.original_file_size || row.file_size || 0),
+    stored_file_size: Number(row.stored_file_size || row.file_size || 0),
+    compression_algorithm: row.compression_algorithm || null,
+    compression_saved_bytes: Number(row.compression_saved_bytes || 0),
     expires_at: row.expires_at || null,
     url: `/api/attachments/${row.id}`
   };
@@ -2186,20 +2734,24 @@ async function saveMessageAttachment({ file, uploaderUserId, messageId = null, d
     throw new Error(`You can upload up to ${storageSettings.maxUploadsPerDay} attachments per day.`);
   }
 
+  const plaintext = await fs.promises.readFile(file.path);
+  const prepared = prepareAttachmentStorageBuffer(plaintext);
+  const encrypted = encryptAttachmentBuffer(prepared.buffer);
+
   if (storageSettings.storageQuotaMb > 0) {
     const usage = await db.query(
-      `SELECT COALESCE(SUM(file_size), 0)::bigint AS active_bytes
+      `SELECT COALESCE(SUM(COALESCE(stored_file_size, file_size)), 0)::bigint AS active_bytes
        FROM message_attachments
        WHERE expires_at IS NULL OR expires_at > NOW()`
     );
     const quotaBytes = storageSettings.storageQuotaMb * 1024 * 1024;
-    if (Number(usage.rows[0]?.active_bytes || 0) + file.size > quotaBytes) {
+    if (Number(usage.rows[0]?.active_bytes || 0) + encrypted.data.length > quotaBytes) {
       removeUploadedFile(file);
       throw new Error('Attachment storage quota is full.');
     }
   }
 
-  const encrypted = await encryptAttachmentFile(file.path);
+  await fs.promises.writeFile(file.path, encrypted.data);
   const result = await db.query(
     `INSERT INTO message_attachments (
        message_id,
@@ -2209,12 +2761,17 @@ async function saveMessageAttachment({ file, uploaderUserId, messageId = null, d
        stored_filename,
        mime_type,
        file_size,
+       original_file_size,
+       stored_file_size,
+       compression_algorithm,
+       compression_saved_bytes,
+       compression_checked_at,
        encryption_iv,
        encryption_auth_tag,
        expires_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     RETURNING id, original_filename, mime_type, file_size, expires_at`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14)
+     RETURNING id, original_filename, mime_type, file_size, original_file_size, stored_file_size, compression_algorithm, compression_saved_bytes, expires_at`,
     [
       messageId,
       dmMessageId,
@@ -2222,7 +2779,11 @@ async function saveMessageAttachment({ file, uploaderUserId, messageId = null, d
       file.originalname || 'attachment',
       file.filename,
       file.mimetype || 'application/octet-stream',
-      file.size,
+      prepared.originalSize,
+      prepared.originalSize,
+      encrypted.data.length,
+      prepared.algorithm,
+      prepared.savedBytes,
       encrypted.iv,
       encrypted.authTag,
       getAttachmentExpiresAt(storageSettings.expireDays)
@@ -2481,12 +3042,24 @@ async function scheduleCleanupJobs() {
 async function getAttachmentStorageOverview() {
   const storageSettings = await getStoragePolicySettings();
   const stats = await db.query(
-    `SELECT
-       COUNT(*)::int AS total_attachments,
-       COALESCE(SUM(file_size), 0)::bigint AS total_bytes,
-       COUNT(*) FILTER (WHERE expires_at IS NULL OR expires_at > NOW())::int AS active_attachments,
-       COALESCE(SUM(file_size) FILTER (WHERE expires_at IS NULL OR expires_at > NOW()), 0)::bigint AS active_bytes,
-       COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= NOW())::int AS expired_attachments,
+     `SELECT
+        COUNT(*)::int AS total_attachments,
+        COALESCE(SUM(COALESCE(original_file_size, file_size)), 0)::bigint AS total_original_bytes,
+        COALESCE(SUM(COALESCE(stored_file_size, file_size)), 0)::bigint AS total_stored_bytes,
+        COALESCE(SUM(COALESCE(compression_saved_bytes, 0)), 0)::bigint AS compression_saved_bytes,
+        COUNT(*) FILTER (WHERE expires_at IS NULL OR expires_at > NOW())::int AS active_attachments,
+        COALESCE(SUM(COALESCE(original_file_size, file_size)) FILTER (WHERE expires_at IS NULL OR expires_at > NOW()), 0)::bigint AS active_original_bytes,
+        COALESCE(SUM(COALESCE(stored_file_size, file_size)) FILTER (WHERE expires_at IS NULL OR expires_at > NOW()), 0)::bigint AS active_bytes,
+        COALESCE(SUM(COALESCE(compression_saved_bytes, 0)) FILTER (WHERE expires_at IS NULL OR expires_at > NOW()), 0)::bigint AS active_compression_saved_bytes,
+        COUNT(*) FILTER (WHERE compression_algorithm = 'brotli')::int AS compressed_attachments,
+        COUNT(*) FILTER (
+          WHERE compression_checked_at IS NULL
+            AND compression_algorithm IS NULL
+            AND encryption_iv IS NOT NULL
+            AND encryption_auth_tag IS NOT NULL
+            AND (expires_at IS NULL OR expires_at > NOW())
+        )::int AS compression_pending_attachments,
+        COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= NOW())::int AS expired_attachments,
        COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at > NOW() AND expires_at <= NOW() + INTERVAL '7 days')::int AS expiring_soon,
        COUNT(*) FILTER (WHERE encryption_iv IS NULL OR encryption_auth_tag IS NULL)::int AS legacy_unencrypted,
        MIN(created_at) AS oldest_attachment_at,
@@ -2551,6 +3124,8 @@ async function getAttachmentStorageOverview() {
       maxUploadsPerDay: storageSettings.maxUploadsPerDay,
       storageQuotaMb: storageSettings.storageQuotaMb,
       encryptionEnabled: true,
+      compressionEnabled: true,
+      compressionAlgorithm: 'brotli',
       encryptionKeyConfigured: Boolean(process.env.ATTACHMENT_ENCRYPTION_KEY),
       cleanupIntervalMinutes: storageSettings.cleanupIntervalMinutes,
       emptyServerCleanupDays: storageSettings.emptyServerCleanupDays,
@@ -2561,12 +3136,86 @@ async function getAttachmentStorageOverview() {
   };
 }
 
+async function backfillAttachmentCompressionBatch(limit = 25) {
+  const batchLimit = Math.max(1, Math.min(200, Number(limit) || 25));
+  const result = await db.query(
+    `SELECT id, stored_filename, file_size, original_file_size, stored_file_size, encryption_iv, encryption_auth_tag
+     FROM message_attachments
+     WHERE compression_checked_at IS NULL
+       AND compression_algorithm IS NULL
+       AND encryption_iv IS NOT NULL
+       AND encryption_auth_tag IS NOT NULL
+       AND (expires_at IS NULL OR expires_at > NOW())
+     ORDER BY id
+     LIMIT $1`,
+    [batchLimit]
+  );
+  const summary = {
+    scanned: result.rows.length,
+    compressed: 0,
+    skipped: 0,
+    failed: 0,
+    bytesSaved: 0
+  };
+
+  for (const attachment of result.rows) {
+    const filePath = path.join(ATTACHMENTS_DIR, attachment.stored_filename);
+    const nextStoredFilename = `${crypto.randomUUID()}${path.extname(attachment.stored_filename || '')}`;
+    const nextFilePath = path.join(ATTACHMENTS_DIR, nextStoredFilename);
+    try {
+      const encryptedBytes = await fs.promises.readFile(filePath);
+      const plaintext = decryptAttachmentBuffer(encryptedBytes, attachment);
+      const prepared = prepareAttachmentStorageBuffer(plaintext);
+      if (prepared.algorithm !== 'brotli') {
+        await db.query(
+          `UPDATE message_attachments
+           SET original_file_size = $1,
+               stored_file_size = $2,
+               compression_saved_bytes = 0,
+               compression_checked_at = NOW()
+           WHERE id = $3`,
+          [plaintext.length, encryptedBytes.length, attachment.id]
+        );
+        summary.skipped += 1;
+        continue;
+      }
+
+      const encrypted = encryptAttachmentBuffer(prepared.buffer);
+      await fs.promises.writeFile(nextFilePath, encrypted.data);
+      await db.query(
+        `UPDATE message_attachments
+         SET original_file_size = $1,
+             stored_file_size = $2,
+             stored_filename = $3,
+             compression_algorithm = 'brotli',
+             compression_saved_bytes = $4,
+             compression_checked_at = NOW(),
+             encryption_iv = $5,
+             encryption_auth_tag = $6
+         WHERE id = $7`,
+        [prepared.originalSize, encrypted.data.length, nextStoredFilename, prepared.savedBytes, encrypted.iv, encrypted.authTag, attachment.id]
+      );
+      await fs.promises.unlink(filePath).catch(() => {});
+      summary.compressed += 1;
+      summary.bytesSaved += prepared.savedBytes;
+    } catch (_error) {
+      await fs.promises.unlink(nextFilePath).catch(() => {});
+      summary.failed += 1;
+    }
+  }
+
+  return summary;
+}
+
 function normalizeAttachmentRow(row) {
   const {
     attachment_id,
     attachment_original_filename,
     attachment_mime_type,
     attachment_file_size,
+    attachment_stored_file_size,
+    attachment_compression_algorithm,
+    attachment_compression_saved_bytes,
     attachment_expires_at,
     ...messageRow
   } = row;
@@ -2576,6 +3225,9 @@ function normalizeAttachmentRow(row) {
     original_filename: attachment_original_filename,
     mime_type: attachment_mime_type,
     file_size: attachment_file_size,
+    stored_file_size: attachment_stored_file_size,
+    compression_algorithm: attachment_compression_algorithm,
+    compression_saved_bytes: attachment_compression_saved_bytes,
     expires_at: attachment_expires_at
   });
   return message;
@@ -3385,7 +4037,7 @@ app.delete('/api/auth/passkeys/:passkeyId', authMiddleware, async (req, res) => 
 app.get('/api/chat/servers', authMiddleware, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT s.id, s.name, s.owner_user_id
+      `SELECT s.id, s.name, s.icon_url, s.owner_user_id
        FROM servers s
        JOIN server_members sm ON sm.server_id = s.id
        WHERE sm.user_id = $1
@@ -3407,7 +4059,7 @@ app.post('/api/chat/servers', authMiddleware, async (req, res) => {
 
   try {
     const created = await db.query(
-      'INSERT INTO servers (name, owner_user_id) VALUES ($1, $2) RETURNING id, name, owner_user_id',
+      'INSERT INTO servers (name, owner_user_id) VALUES ($1, $2) RETURNING id, name, icon_url, owner_user_id',
       [name, req.userId]
     );
     const server = created.rows[0];
@@ -3422,6 +4074,23 @@ app.post('/api/chat/servers', authMiddleware, async (req, res) => {
     res.json({ ok: true, server });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to create server: ${error.message}` });
+  }
+});
+
+app.post('/api/chat/servers/discord-migration', authMiddleware, async (req, res) => {
+  try {
+    res.json(await createDiscordMigrationSession(db, req.userId));
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to start Discord migration: ${error.message}` });
+  }
+});
+
+app.get('/api/chat/servers/discord-migration/:code', authMiddleware, async (req, res) => {
+  try {
+    const result = await getDiscordMigrationStatus(db, req.params.code, req.userId);
+    res.status(result.ok ? 200 : 404).json(result);
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load Discord migration status: ${error.message}` });
   }
 });
 
@@ -3486,7 +4155,7 @@ app.post('/api/chat/servers/:serverId/kick', authMiddleware, async (req, res) =>
 
   try {
     const permissions = await getUserServerPermissions(req.userId, serverId);
-    if (!permissions.moderate_members) {
+    if (!permissions.kick_members) {
       res.status(403).json({ ok: false, message: 'You do not have permission to kick members.' });
       return;
     }
@@ -3502,6 +4171,20 @@ app.post('/api/chat/servers/:serverId/kick', authMiddleware, async (req, res) =>
 
     await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
+    const notification = await createUserNotification(
+      targetUserId,
+      'moderation',
+      'Removed From Server',
+      'You were removed from this server by a moderator.',
+      { serverId }
+    );
+    broadcastToUsers([targetUserId], {
+      type: 'server-banned',
+      serverId,
+      title: 'Removed From Server',
+      message: 'You were removed from this server by a moderator.',
+      notification: notification || { type: 'moderation', suppressed: true }
+    });
     await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
     await broadcastPresenceForUser(targetUserId);
     res.json({ ok: true });
@@ -3525,7 +4208,7 @@ app.post('/api/chat/servers/:serverId/ban', authMiddleware, async (req, res) => 
 
   try {
     const permissions = await getUserServerPermissions(req.userId, serverId);
-    if (!permissions.moderate_members) {
+    if (!permissions.ban_members) {
       res.status(403).json({ ok: false, message: 'You do not have permission to ban members.' });
       return;
     }
@@ -3542,11 +4225,19 @@ app.post('/api/chat/servers/:serverId/ban', authMiddleware, async (req, res) => 
     await db.query('DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
     await db.query('DELETE FROM server_members WHERE server_id = $1 AND user_id = $2', [serverId, targetUserId]);
 
+    const notification = await createUserNotification(
+      targetUserId,
+      'moderation',
+      'Removed From Server',
+      reason ? `You were banned from this server. Reason: ${reason}` : 'You were banned from this server.',
+      { serverId, reason: reason || null }
+    );
     broadcastToUsers([targetUserId], {
       type: 'server-banned',
       serverId,
       title: 'Removed From Server',
-      message: reason ? `You were banned from this server. Reason: ${reason}` : 'You were banned from this server.'
+      message: reason ? `You were banned from this server. Reason: ${reason}` : 'You were banned from this server.',
+      notification: notification || { type: 'moderation', suppressed: true }
     });
     await broadcastToServerMembers(serverId, { type: 'server-membership-changed', serverId });
     await broadcastPresenceForUser(targetUserId);
@@ -3567,7 +4258,7 @@ app.post('/api/chat/servers/:serverId/unban', authMiddleware, async (req, res) =
 
   try {
     const permissions = await getUserServerPermissions(req.userId, serverId);
-    if (!permissions.moderate_members) {
+    if (!permissions.ban_members) {
       res.status(403).json({ ok: false, message: 'You do not have permission to unban members.' });
       return;
     }
@@ -3612,7 +4303,7 @@ app.get('/api/chat/servers/:serverId/bans', authMiddleware, async (req, res) => 
 
   try {
     const permissions = await getUserServerPermissions(req.userId, serverId);
-    if (!permissions.moderate_members) {
+    if (!permissions.view_bans) {
       res.status(403).json({ ok: false, message: 'You do not have permission to view banned users.' });
       return;
     }
@@ -3634,6 +4325,7 @@ app.get('/api/chat/servers/:serverId/bans', authMiddleware, async (req, res) => 
 app.post('/api/chat/servers/:serverId/rename', authMiddleware, async (req, res) => {
   const serverId = Number(req.params.serverId);
   const name = String(req.body?.name || '').trim();
+  const iconUrl = String(req.body?.iconUrl || req.body?.icon_url || '').trim();
   if (!serverId || name.length < 2 || name.length > 80) {
     res.status(400).json({ ok: false, message: 'Server name must be between 2 and 80 characters.' });
     return;
@@ -3647,8 +4339,8 @@ app.post('/api/chat/servers/:serverId/rename', authMiddleware, async (req, res) 
     }
 
     const updated = await db.query(
-      'UPDATE servers SET name = $1 WHERE id = $2 RETURNING id, name, owner_user_id',
-      [name, serverId]
+      'UPDATE servers SET name = $1, icon_url = $2 WHERE id = $3 RETURNING id, name, icon_url, owner_user_id',
+      [name, iconUrl || null, serverId]
     );
     if (updated.rows.length === 0) {
       res.status(404).json({ ok: false, message: 'Server not found.' });
@@ -3677,12 +4369,26 @@ app.get('/api/chat/servers/:serverId/channels', authMiddleware, async (req, res)
     }
 
     const permissions = await getUserServerPermissions(req.userId, serverId);
-    const channels = await db.query('SELECT id, type, name, server_id FROM channels WHERE server_id = $1 ORDER BY name', [
-      serverId
-    ]);
+    const categories = await db.query(
+      'SELECT id, server_id, name, position FROM channel_categories WHERE server_id = $1 ORDER BY position, id',
+      [serverId]
+    );
+    const channels = await db.query(
+      `SELECT id, type, name, topic, slowmode_seconds, server_id, category_id, position
+       FROM channels
+       WHERE server_id = $1
+       ORDER BY COALESCE(category_id, 0), position, id`,
+      [serverId]
+    );
+    const visibleChannels = await filterVisibleChannels(req.userId, channels.rows);
+    const visibleCategoryIds = new Set(visibleChannels.map((channel) => channel.category_id).filter(Boolean));
+    const visibleCategories = permissions.manage_channels
+      ? categories.rows
+      : categories.rows.filter((category) => visibleCategoryIds.has(category.id));
     res.json({
       ok: true,
-      channels: channels.rows,
+      categories: visibleCategories,
+      channels: visibleChannels,
       canCreateChannels: permissions.manage_channels,
       permissions
     });
@@ -3691,10 +4397,41 @@ app.get('/api/chat/servers/:serverId/channels', authMiddleware, async (req, res)
   }
 });
 
+app.post('/api/chat/categories', authMiddleware, async (req, res) => {
+  const serverId = Number(req.body?.serverId);
+  const name = String(req.body?.name || '').trim();
+  if (!serverId || name.length < 1 || name.length > 80) {
+    res.status(400).json({ ok: false, message: 'Valid server and category name are required.' });
+    return;
+  }
+  try {
+    const membership = await canAccessServer(req.userId, serverId);
+    if (!membership) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to create categories.' });
+      return;
+    }
+    const next = await db.query('SELECT COALESCE(MAX(position), -1) + 1 AS position FROM channel_categories WHERE server_id = $1', [serverId]);
+    const created = await db.query(
+      'INSERT INTO channel_categories (server_id, name, position) VALUES ($1, $2, $3) RETURNING id, server_id, name, position',
+      [serverId, name, next.rows[0]?.position || 0]
+    );
+    await broadcastToServerMembers(serverId, { type: 'channel-layout-updated', serverId });
+    res.json({ ok: true, category: created.rows[0] });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to create category: ${error.message}` });
+  }
+});
+
 app.post('/api/chat/channels', authMiddleware, async (req, res) => {
   const serverId = Number(req.body?.serverId);
   const type = String(req.body?.type || 'text').trim().toLowerCase();
   const name = String(req.body?.name || '').trim().toLowerCase();
+  const categoryId = req.body?.categoryId ? Number(req.body.categoryId) : null;
 
   if (!serverId || !['text', 'voice'].includes(type) || name.length < 1 || name.length > 80) {
     res.status(400).json({ ok: false, message: 'Valid server and channel name are required.' });
@@ -3712,16 +4449,201 @@ app.post('/api/chat/channels', authMiddleware, async (req, res) => {
       res.status(403).json({ ok: false, message: 'You do not have permission to create channels.' });
       return;
     }
+    if (categoryId) {
+      const category = await db.query('SELECT id FROM channel_categories WHERE id = $1 AND server_id = $2', [categoryId, serverId]);
+      if (!category.rows.length) {
+        res.status(404).json({ ok: false, message: 'Category not found.' });
+        return;
+      }
+    }
+    const next = await db.query(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS position
+       FROM channels
+       WHERE server_id = $1 AND category_id IS NOT DISTINCT FROM $2`,
+      [serverId, categoryId]
+    );
 
     const created = await db.query(
-      'INSERT INTO channels (server_id, type, name) VALUES ($1, $2, $3) RETURNING id, type, name, server_id',
-      [serverId, type, name]
+      `INSERT INTO channels (server_id, type, name, category_id, position)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, type, name, topic, slowmode_seconds, server_id, category_id, position`,
+      [serverId, type, name, categoryId, next.rows[0]?.position || 0]
     );
     const channel = created.rows[0];
     await broadcastToServerMembers(serverId, { type: 'channel-created', serverId, channel });
     res.json({ ok: true, channel });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to create channel: ${error.message}` });
+  }
+});
+
+app.post('/api/chat/categories/:categoryId', authMiddleware, async (req, res) => {
+  const categoryId = Number(req.params.categoryId);
+  const name = String(req.body?.name || '').trim();
+  if (!categoryId || name.length < 1 || name.length > 80) {
+    res.status(400).json({ ok: false, message: 'Valid category and name are required.' });
+    return;
+  }
+  try {
+    const existing = await db.query('SELECT id, server_id FROM channel_categories WHERE id = $1', [categoryId]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Category not found.' });
+      return;
+    }
+    const serverId = existing.rows[0].server_id;
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage categories.' });
+      return;
+    }
+    const updated = await db.query(
+      'UPDATE channel_categories SET name = $1 WHERE id = $2 RETURNING id, server_id, name, position',
+      [name, categoryId]
+    );
+    await broadcastToServerMembers(serverId, { type: 'channel-layout-updated', serverId });
+    res.json({ ok: true, category: updated.rows[0] });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update category: ${error.message}` });
+  }
+});
+
+app.delete('/api/chat/categories/:categoryId', authMiddleware, async (req, res) => {
+  const categoryId = Number(req.params.categoryId);
+  if (!categoryId) {
+    res.status(400).json({ ok: false, message: 'Valid category is required.' });
+    return;
+  }
+  try {
+    const existing = await db.query('SELECT id, server_id FROM channel_categories WHERE id = $1', [categoryId]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Category not found.' });
+      return;
+    }
+    const serverId = existing.rows[0].server_id;
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage categories.' });
+      return;
+    }
+    await db.query('UPDATE channels SET category_id = NULL WHERE category_id = $1', [categoryId]);
+    await db.query('DELETE FROM channel_categories WHERE id = $1', [categoryId]);
+    await broadcastToServerMembers(serverId, { type: 'channel-layout-updated', serverId });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to delete category: ${error.message}` });
+  }
+});
+
+app.post('/api/chat/channels/:channelId', authMiddleware, async (req, res) => {
+  const channelId = Number(req.params.channelId);
+  const name = String(req.body?.name || '').trim().toLowerCase();
+  const topic = String(req.body?.topic || '').trim().slice(0, 1024);
+  const slowmodeSeconds = Math.max(0, Math.min(21600, Number(req.body?.slowmodeSeconds || req.body?.slowmode_seconds || 0) || 0));
+  const categoryId = req.body?.categoryId ? Number(req.body.categoryId) : null;
+  if (!channelId || name.length < 1 || name.length > 80) {
+    res.status(400).json({ ok: false, message: 'Valid channel and name are required.' });
+    return;
+  }
+  try {
+    const existing = await db.query('SELECT id, server_id, type FROM channels WHERE id = $1', [channelId]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Channel not found.' });
+      return;
+    }
+    const serverId = existing.rows[0].server_id;
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage channels.' });
+      return;
+    }
+    if (categoryId) {
+      const category = await db.query('SELECT id FROM channel_categories WHERE id = $1 AND server_id = $2', [categoryId, serverId]);
+      if (category.rows.length === 0) {
+        res.status(404).json({ ok: false, message: 'Category not found.' });
+        return;
+      }
+    }
+    const updated = await db.query(
+      `UPDATE channels
+       SET name = $1, topic = $2, slowmode_seconds = $3, category_id = $4
+       WHERE id = $5
+       RETURNING id, type, name, topic, slowmode_seconds, server_id, category_id, position`,
+      [name, topic, slowmodeSeconds, categoryId, channelId]
+    );
+    await broadcastToServerMembers(serverId, { type: 'channel-layout-updated', serverId });
+    res.json({ ok: true, channel: updated.rows[0] });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update channel: ${error.message}` });
+  }
+});
+
+app.delete('/api/chat/channels/:channelId', authMiddleware, async (req, res) => {
+  const channelId = Number(req.params.channelId);
+  if (!channelId) {
+    res.status(400).json({ ok: false, message: 'Valid channel is required.' });
+    return;
+  }
+  try {
+    const existing = await db.query('SELECT id, server_id FROM channels WHERE id = $1', [channelId]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Channel not found.' });
+      return;
+    }
+    const serverId = existing.rows[0].server_id;
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage channels.' });
+      return;
+    }
+    await db.query('DELETE FROM channels WHERE id = $1', [channelId]);
+    await broadcastToServerMembers(serverId, { type: 'channel-layout-updated', serverId });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to delete channel: ${error.message}` });
+  }
+});
+
+app.post('/api/chat/servers/:serverId/channel-layout', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  const categories = Array.isArray(req.body?.categories) ? req.body.categories : [];
+  const channels = Array.isArray(req.body?.channels) ? req.body.channels : [];
+  if (!serverId) {
+    res.status(400).json({ ok: false, message: 'Valid server id is required.' });
+    return;
+  }
+  try {
+    const membership = await canAccessServer(req.userId, serverId);
+    if (!membership) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to arrange channels.' });
+      return;
+    }
+    await db.withTransaction(async (tx) => {
+      for (const item of categories) {
+        const id = Number(item.id);
+        if (id) {
+          await tx.query('UPDATE channel_categories SET position = $1 WHERE id = $2 AND server_id = $3', [Number(item.position) || 0, id, serverId]);
+        }
+      }
+      for (const item of channels) {
+        const id = Number(item.id);
+        const categoryId = item.categoryId ? Number(item.categoryId) : null;
+        if (id) {
+          await tx.query(
+            'UPDATE channels SET category_id = $1, position = $2 WHERE id = $3 AND server_id = $4',
+            [categoryId, Number(item.position) || 0, id, serverId]
+          );
+        }
+      }
+    });
+    await broadcastToServerMembers(serverId, { type: 'channel-layout-updated', serverId });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to arrange channels: ${error.message}` });
   }
 });
 
@@ -3734,22 +4656,17 @@ app.post('/api/vc/token', authMiddleware, async (req, res) => {
   }
 
   try {
-    const membership = await canAccessServer(req.userId, serverId);
-    if (!membership) {
-      res.status(403).json({ ok: false, message: 'Access denied.' });
-      return;
-    }
-
-    const channel = await db.query(
-      'SELECT id, server_id, type, name FROM channels WHERE id = $1 AND server_id = $2',
-      [channelId, serverId]
-    );
-    if (channel.rows.length === 0) {
+    const channelAccess = await getUserChannelPermissions(req.userId, channelId);
+    if (!channelAccess || Number(channelAccess.channel.server_id) !== serverId) {
       res.status(404).json({ ok: false, message: 'Channel not found.' });
       return;
     }
-    if (channel.rows[0].type !== 'voice') {
+    if (channelAccess.channel.type !== 'voice') {
       res.status(400).json({ ok: false, message: 'This channel is not a voice channel.' });
+      return;
+    }
+    if (!channelAccess.permissions.view_channels || !channelAccess.permissions.connect_voice) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to join this voice channel.' });
       return;
     }
 
@@ -3932,12 +4849,20 @@ app.get('/api/chat/servers/:serverId/presence', authMiddleware, async (req, res)
     }
 
     const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.view_members) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to view members.' });
+      return;
+    }
     const members = await db.query(
       `SELECT u.id, u.username, u.avatar_url,
               COALESCE(
                 ARRAY_AGG(r.name ORDER BY r.position DESC, r.name ASC) FILTER (WHERE r.id IS NOT NULL),
                 '{}'::text[]
-              ) AS role_names
+              ) AS role_names,
+              COALESCE(
+                JSONB_AGG(JSONB_BUILD_OBJECT('id', r.id, 'name', r.name, 'color', r.color) ORDER BY r.position DESC, r.name ASC) FILTER (WHERE r.id IS NOT NULL),
+                '[]'::jsonb
+              ) AS role_details
        FROM server_members sm
        JOIN users u ON u.id = sm.user_id
        LEFT JOIN server_member_roles smr ON smr.server_id = sm.server_id AND smr.user_id = sm.user_id
@@ -3953,6 +4878,107 @@ app.get('/api/chat/servers/:serverId/presence', authMiddleware, async (req, res)
     res.json({ ok: true, users, permissions });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load server presence: ${error.message}` });
+  }
+});
+
+app.get('/api/chat/servers/:serverId/permission-overrides', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  if (!serverId) {
+    res.status(400).json({ ok: false, message: 'Valid server id is required.' });
+    return;
+  }
+  try {
+    const membership = await canAccessServer(req.userId, serverId);
+    if (!membership) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_roles && !permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage channel permissions.' });
+      return;
+    }
+    const state = await getPermissionOverrideState(serverId);
+    res.json({ ok: true, permissions, ...state });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load permission overrides: ${error.message}` });
+  }
+});
+
+app.post('/api/chat/servers/:serverId/permission-overrides', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  if (!serverId) {
+    res.status(400).json({ ok: false, message: 'Valid server id is required.' });
+    return;
+  }
+  try {
+    const membership = await canAccessServer(req.userId, serverId);
+    if (!membership) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_roles && !permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage channel permissions.' });
+      return;
+    }
+    const payload = await validatePermissionOverridePayload(serverId, req.body);
+    const scopeColumn = payload.scopeType === 'category' ? 'category_id' : 'channel_id';
+    const targetColumn = payload.targetType === 'role' ? 'role_id' : 'user_id';
+    const existing = await db.query(
+      `SELECT id FROM channel_permission_overrides
+       WHERE server_id = $1 AND scope_type = $2 AND ${scopeColumn} = $3 AND target_type = $4 AND ${targetColumn} = $5`,
+      [serverId, payload.scopeType, payload.scopeId, payload.targetType, payload.targetId]
+    );
+    const saved = existing.rows[0]
+      ? await db.query(
+        `UPDATE channel_permission_overrides
+         SET allow = $1::jsonb, deny = $2::jsonb, updated_at = NOW()
+         WHERE id = $3
+         RETURNING id, server_id, scope_type, category_id, channel_id, target_type, role_id, user_id, allow, deny`,
+        [JSON.stringify(payload.allow), JSON.stringify(payload.deny), existing.rows[0].id]
+      )
+      : await db.query(
+        `INSERT INTO channel_permission_overrides
+          (server_id, scope_type, ${scopeColumn}, target_type, ${targetColumn}, allow, deny)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+         RETURNING id, server_id, scope_type, category_id, channel_id, target_type, role_id, user_id, allow, deny`,
+        [serverId, payload.scopeType, payload.scopeId, payload.targetType, payload.targetId, JSON.stringify(payload.allow), JSON.stringify(payload.deny)]
+      );
+    await broadcastToServerMembers(serverId, { type: 'channel-layout-updated', serverId });
+    res.json({ ok: true, override: saved.rows[0] });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: `Failed to save permission override: ${error.message}` });
+  }
+});
+
+app.delete('/api/chat/servers/:serverId/permission-overrides/:overrideId', authMiddleware, async (req, res) => {
+  const serverId = Number(req.params.serverId);
+  const overrideId = Number(req.params.overrideId);
+  if (!serverId || !overrideId) {
+    res.status(400).json({ ok: false, message: 'Valid server and override are required.' });
+    return;
+  }
+  try {
+    const membership = await canAccessServer(req.userId, serverId);
+    if (!membership) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    const permissions = await getUserServerPermissions(req.userId, serverId);
+    if (!permissions.manage_roles && !permissions.manage_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to manage channel permissions.' });
+      return;
+    }
+    const deleted = await db.query('DELETE FROM channel_permission_overrides WHERE id = $1 AND server_id = $2 RETURNING id', [overrideId, serverId]);
+    if (deleted.rows.length === 0) {
+      res.status(404).json({ ok: false, message: 'Permission override not found.' });
+      return;
+    }
+    await broadcastToServerMembers(serverId, { type: 'channel-layout-updated', serverId });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to delete permission override: ${error.message}` });
   }
 });
 
@@ -3991,6 +5017,7 @@ app.get('/api/chat/servers/:serverId/roles', authMiddleware, async (req, res) =>
 app.post('/api/chat/servers/:serverId/roles', authMiddleware, async (req, res) => {
   const serverId = Number(req.params.serverId);
   const name = String(req.body?.name || '').trim();
+  const color = normalizeRoleColor(req.body?.color);
   if (!serverId || name.length < 2 || name.length > 80) {
     res.status(400).json({ ok: false, message: 'Role name must be between 2 and 80 characters.' });
     return;
@@ -4002,10 +5029,10 @@ app.post('/api/chat/servers/:serverId/roles', authMiddleware, async (req, res) =
       return;
     }
     const created = await db.query(
-      `INSERT INTO server_roles (server_id, name, position, permissions, is_default)
-       VALUES ($1, $2, 1, '{}'::jsonb, FALSE)
-       RETURNING id, server_id, name, position, permissions, is_default`,
-      [serverId, name]
+      `INSERT INTO server_roles (server_id, name, color, position, permissions, is_default)
+       VALUES ($1, $2, $3, 1, '{}'::jsonb, FALSE)
+       RETURNING id, server_id, name, color, position, permissions, is_default`,
+      [serverId, name, color]
     );
     res.json({ ok: true, role: { ...created.rows[0], permissions: normalizeServerPermissions(created.rows[0].permissions) } });
   } catch (error) {
@@ -4017,6 +5044,7 @@ app.post('/api/chat/servers/:serverId/roles/:roleId', authMiddleware, async (req
   const serverId = Number(req.params.serverId);
   const roleId = Number(req.params.roleId);
   const name = String(req.body?.name || '').trim();
+  const color = normalizeRoleColor(req.body?.color);
   const rolePermissions = normalizeServerPermissions(req.body?.permissions);
   if (!serverId || !roleId || name.length < 2 || name.length > 80) {
     res.status(400).json({ ok: false, message: 'Valid server, role, and role name are required.' });
@@ -4035,10 +5063,10 @@ app.post('/api/chat/servers/:serverId/roles/:roleId', authMiddleware, async (req
     }
     const nextName = existing.rows[0].is_default ? '@everyone' : name;
     const updated = await db.query(
-      `UPDATE server_roles SET name = $1, permissions = $2::jsonb
-       WHERE id = $3 AND server_id = $4
-       RETURNING id, server_id, name, position, permissions, is_default`,
-      [nextName, JSON.stringify(rolePermissions), roleId, serverId]
+      `UPDATE server_roles SET name = $1, color = $2, permissions = $3::jsonb
+       WHERE id = $4 AND server_id = $5
+       RETURNING id, server_id, name, color, position, permissions, is_default`,
+      [nextName, color, JSON.stringify(rolePermissions), roleId, serverId]
     );
     res.json({ ok: true, role: { ...updated.rows[0], permissions: normalizeServerPermissions(updated.rows[0].permissions) } });
   } catch (error) {
@@ -4341,6 +5369,20 @@ app.post('/api/admin/storage/cleanup', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/api/admin/storage/compression-backfill', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    const summary = await backfillAttachmentCompressionBatch(req.body?.limit);
+    const overview = await getAttachmentStorageOverview();
+    res.json({ ok: true, summary, ...overview });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to backfill attachment compression: ${error.message}` });
+  }
+});
+
 app.get('/api/admin/ban-appeals', authMiddleware, async (req, res) => {
   try {
     if (!(await requirePlatformAdmin(req.userId))) {
@@ -4486,6 +5528,16 @@ app.post('/api/reports/users', authMiddleware, async (req, res) => {
       'INSERT INTO user_reports (reporter_user_id, target_user_id, server_id, reason) VALUES ($1, $2, $3, $4)',
       [req.userId, targetUserId, serverId, reason]
     );
+    const admins = await db.query('SELECT id FROM users WHERE is_platform_admin = TRUE AND platform_banned_at IS NULL');
+    for (const admin of admins.rows) {
+      await createUserNotification(
+        admin.id,
+        'moderation',
+        'New User Report',
+        'A user report needs review.',
+        { targetUserId, serverId, reporterUserId: req.userId }
+      );
+    }
     const reportVolume = await db.query(
       `SELECT COUNT(*)::int AS count
        FROM user_reports
@@ -4524,11 +5576,18 @@ app.get('/api/admin/servers/:serverId', authMiddleware, async (req, res) => {
       return;
     }
 
+    const categories = await db.query(
+      `SELECT id, server_id, name, position, created_at
+       FROM channel_categories
+       WHERE server_id = $1
+       ORDER BY position, id`,
+      [serverId]
+    );
     const channels = await db.query(
-      `SELECT id, name, type, created_at
+      `SELECT id, name, type, category_id, position, created_at
        FROM channels
        WHERE server_id = $1
-       ORDER BY type DESC, LOWER(name), id`,
+       ORDER BY COALESCE(category_id, 0), position, id`,
       [serverId]
     );
     const members = await db.query(
@@ -4554,7 +5613,10 @@ app.get('/api/admin/servers/:serverId', authMiddleware, async (req, res) => {
               a.id AS attachment_id,
               a.original_filename AS attachment_original_filename,
               a.mime_type AS attachment_mime_type,
-              a.file_size AS attachment_file_size,
+              COALESCE(a.original_file_size, a.file_size) AS attachment_file_size,
+              COALESCE(a.stored_file_size, a.file_size) AS attachment_stored_file_size,
+              a.compression_algorithm AS attachment_compression_algorithm,
+              COALESCE(a.compression_saved_bytes, 0) AS attachment_compression_saved_bytes,
               a.expires_at AS attachment_expires_at
        FROM messages m
        JOIN channels c ON c.id = m.channel_id
@@ -4569,6 +5631,7 @@ app.get('/api/admin/servers/:serverId', authMiddleware, async (req, res) => {
     res.json({
       ok: true,
       server: server.rows[0],
+      categories: categories.rows,
       channels: channels.rows,
       members: members.rows,
       messages: messages.rows.map(normalizeAttachmentRow).reverse()
@@ -4793,7 +5856,10 @@ app.get('/api/dm/:partnerUserId/messages', authMiddleware, async (req, res) => {
               a.id AS attachment_id,
               a.original_filename AS attachment_original_filename,
               a.mime_type AS attachment_mime_type,
-              a.file_size AS attachment_file_size,
+              COALESCE(a.original_file_size, a.file_size) AS attachment_file_size,
+              COALESCE(a.stored_file_size, a.file_size) AS attachment_stored_file_size,
+              a.compression_algorithm AS attachment_compression_algorithm,
+              COALESCE(a.compression_saved_bytes, 0) AS attachment_compression_saved_bytes,
               a.expires_at AS attachment_expires_at
        FROM dm_messages m
        JOIN users u ON u.id = m.sender_user_id
@@ -4867,8 +5933,21 @@ app.post('/api/dm/:partnerUserId/messages', authMiddleware, uploadMessageAttachm
 
     broadcastToUsers([req.userId, partnerUserId], {
       type: 'dm-message-created',
-      fromUserId: req.userId
+      fromUserId: req.userId,
+      notification: {
+        type: 'dm_message',
+        title: 'Direct Message',
+        body: `${message.username || 'Someone'} sent you a DM.`,
+        data: { partnerUserId: req.userId, messageId: message.id }
+      }
     });
+    await createUserNotification(
+      partnerUserId,
+      'dm_message',
+      'Direct Message',
+      `${message.username || 'Someone'}: ${String(content || 'Sent an attachment.').slice(0, 160)}`,
+      { partnerUserId: req.userId, messageId: message.id }
+    );
     res.json({ ok: true, message });
   } catch (error) {
     removeUploadedFile(req.file);
@@ -4946,7 +6025,24 @@ app.post('/api/friends/requests', authMiddleware, async (req, res) => {
       'INSERT INTO friend_requests (sender_user_id, receiver_user_id, status) VALUES ($1, $2, $3)',
       [req.userId, receiverId, 'pending']
     );
-    broadcastToUsers([receiverId], { type: 'friend-requests-changed' });
+    const sender = await db.query('SELECT username FROM users WHERE id = $1', [req.userId]);
+    const senderName = sender.rows[0]?.username || 'Someone';
+    broadcastToUsers([receiverId], {
+      type: 'friend-requests-changed',
+      notification: {
+        type: 'friend_request',
+        title: 'Friend Request',
+        body: `${senderName} sent you a friend request.`,
+        data: { senderUserId: req.userId }
+      }
+    });
+    await createUserNotification(
+      receiverId,
+      'friend_request',
+      'Friend Request',
+      `${senderName} sent you a friend request.`,
+      { senderUserId: req.userId }
+    );
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to send friend request: ${error.message}` });
@@ -5049,8 +6145,21 @@ app.post('/api/dm/:partnerUserId/call/start', authMiddleware, async (req, res) =
       fromUserId: req.userId,
       fromUsername: me?.username || 'Unknown',
       partnerUserId,
-      roomName
+      roomName,
+      notification: {
+        type: 'dm_call',
+        title: 'Incoming Call',
+        body: `${me?.username || 'Someone'} is calling you.`,
+        data: { partnerUserId: req.userId, roomName }
+      }
     });
+    await createUserNotification(
+      partnerUserId,
+      'dm_call',
+      'Incoming Call',
+      `${me?.username || 'Someone'} is calling you.`,
+      { partnerUserId: req.userId, roomName }
+    );
 
     res.json({
       ok: true,
@@ -5118,15 +6227,13 @@ app.get('/api/chat/channels/:channelId/messages', authMiddleware, async (req, re
   }
 
   try {
-    const access = await db.query(
-      `SELECT c.server_id
-       FROM channels c
-       JOIN server_members sm ON sm.server_id = c.server_id
-       WHERE c.id = $1 AND sm.user_id = $2`,
-      [channelId, req.userId]
-    );
-    if (access.rows.length === 0) {
+    const access = await getUserChannelPermissions(req.userId, channelId);
+    if (!access) {
       res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    if (!access.permissions.view_channels || !access.permissions.read_message_history) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to read this channel.' });
       return;
     }
 
@@ -5136,7 +6243,10 @@ app.get('/api/chat/channels/:channelId/messages', authMiddleware, async (req, re
               a.id AS attachment_id,
               a.original_filename AS attachment_original_filename,
               a.mime_type AS attachment_mime_type,
-              a.file_size AS attachment_file_size,
+              COALESCE(a.original_file_size, a.file_size) AS attachment_file_size,
+              COALESCE(a.stored_file_size, a.file_size) AS attachment_stored_file_size,
+              a.compression_algorithm AS attachment_compression_algorithm,
+              COALESCE(a.compression_saved_bytes, 0) AS attachment_compression_saved_bytes,
               a.expires_at AS attachment_expires_at
        FROM messages m
        JOIN users u ON u.id = m.user_id
@@ -5162,20 +6272,40 @@ app.post('/api/chat/messages', authMiddleware, uploadMessageAttachment, async (r
   }
 
   try {
-    const access = await db.query(
-      `SELECT c.server_id
-       FROM channels c
-       JOIN server_members sm ON sm.server_id = c.server_id
-       WHERE c.id = $1 AND sm.user_id = $2`,
-      [channelId, req.userId]
-    );
-    if (access.rows.length === 0) {
+    const access = await getUserChannelPermissions(req.userId, channelId);
+    if (!access) {
       removeUploadedFile(req.file);
       res.status(403).json({ ok: false, message: 'Access denied.' });
       return;
     }
+    if (!access.permissions.view_channels || !access.permissions.send_messages) {
+      removeUploadedFile(req.file);
+      res.status(403).json({ ok: false, message: 'You do not have permission to send messages in this channel.' });
+      return;
+    }
+    if (req.file && !access.permissions.attach_files) {
+      removeUploadedFile(req.file);
+      res.status(403).json({ ok: false, message: 'You do not have permission to attach files in this channel.' });
+      return;
+    }
+    const slowmodeSeconds = Number(access.channel.slowmode_seconds || 0);
+    if (slowmodeSeconds > 0 && !access.permissions.manage_messages) {
+      const recent = await db.query(
+        `SELECT created_at
+         FROM messages
+         WHERE channel_id = $1 AND user_id = $2 AND created_at > NOW() - ($3::int * INTERVAL '1 second')
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [channelId, req.userId, slowmodeSeconds]
+      );
+      if (recent.rows.length > 0) {
+        removeUploadedFile(req.file);
+        res.status(429).json({ ok: false, message: `Slowmode is enabled. Wait ${slowmodeSeconds} seconds between messages.` });
+        return;
+      }
+    }
 
-    const moderationResult = content ? await handleServerAutoModeration(access.rows[0].server_id, channelId, req.userId, content) : null;
+    const moderationResult = content ? await handleServerAutoModeration(access.channel.server_id, channelId, req.userId, content) : null;
     if (moderationResult?.blocked) {
       removeUploadedFile(req.file);
       res.status(400).json({ ok: false, message: moderationResult.message });
@@ -5190,8 +6320,21 @@ app.post('/api/chat/messages', authMiddleware, uploadMessageAttachment, async (r
     );
     const user = await db.query('SELECT username, avatar_url FROM users WHERE id = $1', [req.userId]);
     const attachment = await saveMessageAttachment({ file: req.file, uploaderUserId: req.userId, messageId: inserted.rows[0].id });
-    const message = { ...inserted.rows[0], username: user.rows[0]?.username || 'Unknown', avatar_url: user.rows[0]?.avatar_url || '', attachment };
+    const message = {
+      ...inserted.rows[0],
+      server_id: access.channel.server_id,
+      username: user.rows[0]?.username || 'Unknown',
+      avatar_url: user.rows[0]?.avatar_url || '',
+      attachment
+    };
     broadcastToChannel(channelId, { type: 'message-created', channelId, message });
+    await notifyChannelMessageTargets({
+      channelId,
+      senderUserId: req.userId,
+      content,
+      message,
+      channelName: access.channel.name || 'channel'
+    });
     res.json({ ok: true, message });
   } catch (error) {
     removeUploadedFile(req.file);
@@ -5211,6 +6354,11 @@ app.patch('/api/chat/messages/:messageId', authMiddleware, async (req, res) => {
     const access = await getMessageAccess(req.userId, messageId);
     if (!access) {
       res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    const channelAccess = await getUserChannelPermissions(req.userId, access.channel_id);
+    if (!channelAccess?.permissions.view_channels || !channelAccess.permissions.send_messages) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to edit messages in this channel.' });
       return;
     }
     if (access.user_id !== req.userId) {
@@ -5245,7 +6393,12 @@ app.delete('/api/chat/messages/:messageId', authMiddleware, async (req, res) => 
       res.status(403).json({ ok: false, message: 'Access denied.' });
       return;
     }
-    if (access.user_id !== req.userId) {
+    const channelAccess = await getUserChannelPermissions(req.userId, access.channel_id);
+    if (!channelAccess?.permissions.view_channels) {
+      res.status(403).json({ ok: false, message: 'You do not have permission to view this channel.' });
+      return;
+    }
+    if (access.user_id !== req.userId && !channelAccess.permissions.manage_messages) {
       res.status(403).json({ ok: false, message: 'You can only delete your own messages.' });
       return;
     }
@@ -5256,6 +6409,144 @@ app.delete('/api/chat/messages/:messageId', authMiddleware, async (req, res) => 
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to delete message: ${error.message}` });
+  }
+});
+
+app.get('/api/notifications', authMiddleware, async (req, res) => {
+  try {
+    const [notifications, preferences, unread] = await Promise.all([
+      db.query(
+        `SELECT id, type, title, body, data, read_at, created_at
+         FROM user_notifications
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 100`,
+        [req.userId]
+      ),
+      getNotificationPreferences(req.userId),
+      getUnreadSummary(req.userId)
+    ]);
+    res.json({ ok: true, notifications: notifications.rows, preferences, unread });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load notifications: ${error.message}` });
+  }
+});
+
+app.post('/api/notifications/read-all', authMiddleware, async (req, res) => {
+  try {
+    await db.query('UPDATE user_notifications SET read_at = COALESCE(read_at, NOW()) WHERE user_id = $1 AND read_at IS NULL', [req.userId]);
+    res.json({ ok: true, unread: await getUnreadSummary(req.userId) });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to clear notifications: ${error.message}` });
+  }
+});
+
+app.patch('/api/notifications/:notificationId/read', authMiddleware, async (req, res) => {
+  const notificationId = Number(req.params.notificationId);
+  if (!notificationId) {
+    res.status(400).json({ ok: false, message: 'Notification id is required.' });
+    return;
+  }
+  try {
+    await db.query('UPDATE user_notifications SET read_at = COALESCE(read_at, NOW()) WHERE id = $1 AND user_id = $2', [notificationId, req.userId]);
+    res.json({ ok: true, unread: await getUnreadSummary(req.userId) });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to mark notification read: ${error.message}` });
+  }
+});
+
+app.get('/api/unreads', authMiddleware, async (req, res) => {
+  try {
+    res.json({ ok: true, unread: await getUnreadSummary(req.userId) });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to load unread state: ${error.message}` });
+  }
+});
+
+app.post('/api/unreads/channels/:channelId/read', authMiddleware, async (req, res) => {
+  const channelId = Number(req.params.channelId);
+  if (!channelId) {
+    res.status(400).json({ ok: false, message: 'Channel id is required.' });
+    return;
+  }
+  try {
+    const access = await getUserChannelPermissions(req.userId, channelId);
+    if (!access?.permissions.view_channels) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    await markChannelRead(req.userId, channelId);
+    res.json({ ok: true, unread: await getUnreadSummary(req.userId) });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to mark channel read: ${error.message}` });
+  }
+});
+
+app.post('/api/unreads/dms/:partnerUserId/read', authMiddleware, async (req, res) => {
+  const partnerUserId = Number(req.params.partnerUserId);
+  if (!partnerUserId) {
+    res.status(400).json({ ok: false, message: 'Partner user id is required.' });
+    return;
+  }
+  try {
+    if (!(await canUsersDm(req.userId, partnerUserId))) {
+      res.status(403).json({ ok: false, message: 'Access denied.' });
+      return;
+    }
+    await markDmRead(req.userId, partnerUserId);
+    res.json({ ok: true, unread: await getUnreadSummary(req.userId) });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to mark DM read: ${error.message}` });
+  }
+});
+
+app.post('/api/notifications/preferences', authMiddleware, async (req, res) => {
+  const next = normalizeNotificationPreferences(req.body || {});
+  try {
+    const result = await db.query(
+      `INSERT INTO notification_preferences
+       (user_id, dm_messages, mentions, channel_messages, friend_requests, calls, moderation, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET dm_messages = EXCLUDED.dm_messages,
+                     mentions = EXCLUDED.mentions,
+                     channel_messages = EXCLUDED.channel_messages,
+                     friend_requests = EXCLUDED.friend_requests,
+                     calls = EXCLUDED.calls,
+                     moderation = EXCLUDED.moderation,
+                     updated_at = NOW()
+       RETURNING *`,
+      [req.userId, next.dm_messages, next.mentions, next.channel_messages, next.friend_requests, next.calls, next.moderation]
+    );
+    res.json({ ok: true, preferences: normalizeNotificationPreferences(result.rows[0]) });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to save notification preferences: ${error.message}` });
+  }
+});
+
+app.post('/api/notifications/push-tokens', authMiddleware, async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  const platform = String(req.body?.platform || 'android').trim().toLowerCase().slice(0, 32);
+  const deviceLabel = String(req.body?.deviceLabel || '').trim().slice(0, 120);
+  if (!token) {
+    res.status(400).json({ ok: false, message: 'Push token is required.' });
+    return;
+  }
+  try {
+    await db.query(
+      `INSERT INTO notification_push_tokens (user_id, platform, token, device_label, updated_at, last_seen_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       ON CONFLICT (token)
+       DO UPDATE SET user_id = EXCLUDED.user_id,
+                     platform = EXCLUDED.platform,
+                     device_label = EXCLUDED.device_label,
+                     updated_at = NOW(),
+                     last_seen_at = NOW()`,
+      [req.userId, platform, token, deviceLabel || null]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to save push token: ${error.message}` });
   }
 });
 
@@ -5272,6 +6563,11 @@ app.get('/api/attachments/:attachmentId', authMiddleware, async (req, res) => {
               a.original_filename,
               a.stored_filename,
               a.mime_type,
+              a.file_size,
+              a.original_file_size,
+              a.stored_file_size,
+              a.compression_algorithm,
+              a.compression_saved_bytes,
               a.encryption_iv,
               a.encryption_auth_tag,
               m.channel_id,
@@ -5296,6 +6592,13 @@ app.get('/api/attachments/:attachmentId', authMiddleware, async (req, res) => {
     if (!attachment) {
       res.status(404).json({ ok: false, message: 'Attachment not found.' });
       return;
+    }
+    if (attachment.channel_id) {
+      const access = await getUserChannelPermissions(req.userId, attachment.channel_id);
+      if (!access?.permissions.view_channels || !access.permissions.read_message_history) {
+        res.status(403).json({ ok: false, message: 'You do not have permission to view this attachment.' });
+        return;
+      }
     }
 
     const safeFilename = String(attachment.original_filename || 'attachment').replace(/[\r\n"]/g, '');
@@ -5327,6 +6630,19 @@ async function start() {
   });
   sendPrivacyUpdateEmailsOnStartup().catch((error) => {
     console.warn(`Privacy Policy update email job failed: ${error.message}`);
+  });
+  const discordBot = await startDiscordMigrationBot({
+    db,
+    onImported: async (serverId) => {
+      await ensureServerRoles(serverId);
+      const serverResult = await db.query('SELECT id, name, icon_url, owner_user_id FROM servers WHERE id = $1', [serverId]);
+      if (serverResult.rows[0]) {
+        await broadcastToServerMembers(serverId, { type: 'server-created', server: serverResult.rows[0] });
+      }
+    }
+  }).catch((error) => {
+    console.warn(`Discord migration bot failed to start: ${error.message}`);
+    return null;
   });
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -5366,14 +6682,8 @@ async function start() {
             return;
           }
 
-          const access = await db.query(
-            `SELECT 1
-             FROM channels c
-             JOIN server_members sm ON sm.server_id = c.server_id
-             WHERE c.id = $1 AND sm.user_id = $2`,
-            [channelId, userId]
-          );
-          if (access.rows.length > 0) {
+          const access = await getUserChannelPermissions(userId, channelId);
+          if (access?.permissions.view_channels) {
             meta.subscriptions.add(channelId);
             sendWs(ws, { type: 'subscribed', channelId });
           }
@@ -5411,6 +6721,9 @@ async function start() {
     }
     wss.close();
     server.close();
+    if (discordBot) {
+      await discordBot.destroy();
+    }
     await db.close();
     process.exit(0);
   });

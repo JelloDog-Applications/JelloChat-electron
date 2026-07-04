@@ -97,10 +97,30 @@ function query(text, params = []) {
   return pool.query(text, params);
 }
 
+async function withTransaction(callback) {
+  if (!pool) {
+    throw new Error('Database is not connected.');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback({
+      query: (text, params = []) => client.query(text, params)
+    });
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function close() {
   if (pool) {
     await pool.end();
   }
 }
 
-module.exports = { connect, query, close };
+module.exports = { connect, query, withTransaction, close };

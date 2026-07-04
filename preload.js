@@ -27,6 +27,8 @@ if (!isCloudClientMode) {
     chat: {
       getServers: () => ipcRenderer.invoke('chat:getServers'),
       createServer: (payload) => ipcRenderer.invoke('chat:createServer', payload),
+      startDiscordMigration: () => ipcRenderer.invoke('chat:startDiscordMigration'),
+      getDiscordMigrationStatus: (code) => ipcRenderer.invoke('chat:getDiscordMigrationStatus', code),
       leaveServer: (payload) => ipcRenderer.invoke('chat:leaveServer', payload),
       kickMember: (payload) => ipcRenderer.invoke('chat:kickMember', payload),
       banMember: (payload) => ipcRenderer.invoke('chat:banMember', payload),
@@ -37,7 +39,13 @@ if (!isCloudClientMode) {
       joinByInvite: (payload) => ipcRenderer.invoke('chat:joinByInvite', payload),
       getServerPresence: (serverId) => ipcRenderer.invoke('chat:getServerPresence', serverId),
       getChannels: (serverId) => ipcRenderer.invoke('chat:getChannels', serverId),
+      createCategory: (payload) => ipcRenderer.invoke('chat:createCategory', payload),
       createChannel: (payload) => ipcRenderer.invoke('chat:createChannel', payload),
+      updateCategory: (payload) => ipcRenderer.invoke('chat:updateCategory', payload),
+      deleteCategory: (payload) => ipcRenderer.invoke('chat:deleteCategory', payload),
+      updateChannel: (payload) => ipcRenderer.invoke('chat:updateChannel', payload),
+      deleteChannel: (payload) => ipcRenderer.invoke('chat:deleteChannel', payload),
+      updateChannelLayout: (payload) => ipcRenderer.invoke('chat:updateChannelLayout', payload),
       getMessages: (channelId) => ipcRenderer.invoke('chat:getMessages', channelId),
       sendMessage: (payload) => ipcRenderer.invoke('chat:sendMessage', payload),
       updateMessage: (payload) => ipcRenderer.invoke('chat:updateMessage', payload),
@@ -53,6 +61,16 @@ if (!isCloudClientMode) {
       getToken: (payload) => ipcRenderer.invoke('vc:getToken', payload),
       getParticipants: (payload) => ipcRenderer.invoke('vc:getParticipants', payload)
     },
+    notifications: {
+      list: () => ipcRenderer.invoke('notifications:list'),
+      markRead: (payload) => ipcRenderer.invoke('notifications:markRead', payload),
+      markAllRead: () => ipcRenderer.invoke('notifications:markAllRead'),
+      getUnread: () => ipcRenderer.invoke('notifications:getUnread'),
+      markChannelRead: (payload) => ipcRenderer.invoke('notifications:markChannelRead', payload),
+      markDmRead: (payload) => ipcRenderer.invoke('notifications:markDmRead', payload),
+      savePreferences: (payload) => ipcRenderer.invoke('notifications:savePreferences', payload),
+      registerPushToken: (payload) => ipcRenderer.invoke('notifications:registerPushToken', payload)
+    },
     screen: {
       getSources: () => ipcRenderer.invoke('screen:getSources')
     },
@@ -63,12 +81,18 @@ if (!isCloudClientMode) {
       delete: (payload) => ipcRenderer.invoke('roles:delete', payload),
       setMemberRole: (payload) => ipcRenderer.invoke('roles:setMemberRole', payload)
     },
+    permissions: {
+      getOverrides: (payload) => ipcRenderer.invoke('permissions:getOverrides', payload),
+      saveOverride: (payload) => ipcRenderer.invoke('permissions:saveOverride', payload),
+      deleteOverride: (payload) => ipcRenderer.invoke('permissions:deleteOverride', payload)
+    },
     admin: {
       listUsers: (payload) => ipcRenderer.invoke('admin:listUsers', payload),
       listReports: (payload) => ipcRenderer.invoke('admin:listReports', payload),
       updateReport: (payload) => ipcRenderer.invoke('admin:updateReport', payload),
       getStorageConfig: () => ipcRenderer.invoke('admin:getStorageConfig'),
       updateCleanupSettings: (payload) => ipcRenderer.invoke('admin:updateCleanupSettings', payload),
+      runAttachmentCompressionBackfill: (payload) => ipcRenderer.invoke('admin:runAttachmentCompressionBackfill', payload),
       listBanAppeals: (payload) => ipcRenderer.invoke('admin:listBanAppeals', payload),
       updateBanAppeal: (payload) => ipcRenderer.invoke('admin:updateBanAppeal', payload),
       listServers: (payload) => ipcRenderer.invoke('admin:listServers', payload),
