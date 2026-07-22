@@ -50,9 +50,27 @@ Builds:
     gradle:
       - fdroid
 
+  - versionName: 1.2.4
+    versionCode: 15
+    commit: 70064ba100a3d45dc920a66d31af7cae0889790e
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y npm
+    init:
+      - cd ../..
+      - npm ci --omit=dev
+      - npm run prepare:fdroid
+      - find node_modules -mindepth 1 -maxdepth 1 ! -name '@capacitor' -exec rm -rf
+        {} +
+      - find node_modules/@capacitor -mindepth 1 -maxdepth 1 ! -name android -exec
+        rm -rf {} +
+    gradle:
+      - fdroid
+
 AllowedAPKSigningKeys: 16461a56c7e0796dd8c03340effb399e9b5545aaed2bc0c0d19b3866c23bb35e
 
 AutoUpdateMode: Version
-UpdateCheckMode: Tags
-CurrentVersion: 1.2.3
-CurrentVersionCode: 14
+UpdateCheckMode: Tags ^v[\d.]+$
+CurrentVersion: 1.2.4
+CurrentVersionCode: 15
