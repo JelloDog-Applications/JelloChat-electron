@@ -165,32 +165,9 @@ jobs:
           CHANNEL_APP_NAME: ${{ matrix.app_name }}
           CHANNEL_APP_ID: ${{ matrix.app_id }}
           VERSION_OFFSET: ${{ matrix.version_offset }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          node - <<'NODE'
-          const fs = require('fs');
-          const appGradlePath = 'android/app/build.gradle';
-          const stringsPath = 'android/app/src/main/res/values/strings.xml';
-          const packageJson = require('./package.json');
-          const versionOffset = Number(process.env.VERSION_OFFSET || 0);
-          const runNumber = Number(process.env.GITHUB_RUN_NUMBER || 0);
-          const versionCode = versionOffset + runNumber;
-          const versionName = `${packageJson.version}-${process.env.CHANNEL_NAME}.${runNumber}`;
-
-          let gradle = fs.readFileSync(appGradlePath, 'utf8');
-          gradle = gradle
-            .replace(/applicationId "com\.jellodog\.chat"/, `applicationId "${process.env.CHANNEL_APP_ID}"`)
-            .replace(/versionCode \d+/, `versionCode ${versionCode}`)
-            .replace(/versionName "[^"]+"/, `versionName "${versionName}"`);
-          fs.writeFileSync(appGradlePath, gradle);
-
-          let strings = fs.readFileSync(stringsPath, 'utf8');
-          strings = strings
-            .replace(/<string name="app_name">[^<]+<\/string>/, `<string name="app_name">${process.env.CHANNEL_APP_NAME}</string>`)
-            .replace(/<string name="title_activity_main">[^<]+<\/string>/, `<string name="title_activity_main">${process.env.CHANNEL_APP_NAME}</string>`)
-            .replace(/<string name="package_name">[^<]+<\/string>/, `<string name="package_name">${process.env.CHANNEL_APP_ID}</string>`)
-            .replace(/<string name="custom_url_scheme">[^<]+<\/string>/, `<string name="custom_url_scheme">${process.env.CHANNEL_APP_ID}</string>`);
-          fs.writeFileSync(stringsPath, strings);
-          NODE
+          node scripts/build-android-channel.js --variant=release --channel="${{ matrix.channel }}" --metadata-only
 
       - name: Make Gradle wrapper executable
         if: ${{ env.SHOULD_BUILD == 'true' }}
