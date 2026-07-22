@@ -20,8 +20,10 @@
     "cap:open": "npx cap open android",
     "prepare:fdroid": "npm run cap:sync && node scripts/prepare-fdroid.js",
     "build:fdroid": "npm run prepare:fdroid && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && cd android && gradlew.bat assembleFdroidRelease",
-    "build:android-debug": "npm run cap:sync && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && cd android && gradlew.bat assembleStandardDebug",
-    "install:android-debug": "npm run cap:sync && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && cd android && gradlew.bat installStandardDebug",
+    "build:android-debug": "npm run cap:sync && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && node scripts/build-android-channel.js --variant=debug",
+    "install:android-debug": "npm run cap:sync && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && node scripts/build-android-channel.js --variant=debug",
+    "build:android-release": "npm run cap:sync && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && node scripts/build-android-channel.js --variant=release",
+    "install:android-release": "npm run cap:sync && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=%JAVA_HOME%\\bin;%PATH%\" && node scripts/build-android-channel.js --variant=release",
     "build:apk": "npm run cap:sync && npx cap open android"
   },
   "dependencies": {
