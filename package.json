@@ -1,6 +1,6 @@
 {
   "name": "jellodog-chat",
-  "version": "1.2.1",
+  "version": "1.2.4",
   "description": "Electron chat app with PostgreSQL",
   "author": "JelloDog Applications",
   "license": "AGPL-3.0-or-later",
