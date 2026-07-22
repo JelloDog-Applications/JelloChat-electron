@@ -167,7 +167,7 @@ jobs:
           VERSION_OFFSET: ${{ matrix.version_offset }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          node scripts/build-android-channel.js --variant=release --channel="${{ matrix.channel }}"
+          node scripts/build-android-channel.js --variant=release --channel="${{ matrix.channel }}" --metadata-only
 
       - name: Make Gradle wrapper executable
         if: ${{ env.SHOULD_BUILD == 'true' }}

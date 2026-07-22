@@ -23,6 +23,8 @@ function parseArgs(argv) {
       i += 1;
     } else if (arg.startsWith('--channel=')) {
       options.channel = arg.split('=')[1];
+    } else if (arg === '--metadata-only') {
+      options.metadataOnly = true;
     }
   }
   return options;
@@ -96,7 +98,9 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   const variant = (options.variant || 'release').toLowerCase();
   applyAndroidMetadata(options);
-  runGradle(variant);
+  if (!options.metadataOnly) {
+    runGradle(variant);
+  }
 }
 
 try {
