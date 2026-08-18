@@ -38,6 +38,11 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Release builds otherwise inherit usesCleartextTraffic=false from the flavor, which
+            // blocks plain-HTTP self-hosted servers on a LAN. The JS-side isAllowedServerBase()
+            // check already restricts cleartext to localhost/private-network hosts, so this is
+            // the actual security boundary -- this manifest flag was redundantly over-blocking.
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
     }
 }
