@@ -217,6 +217,23 @@ h1 {
   color: var(--text);
 }
 
+.download-note {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  animation: riseIn 780ms 460ms ease both;
+}
+
+.download-note a {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.download-note a:hover {
+  text-decoration: underline;
+}
+
 .signal-row {
   display: flex;
   flex-wrap: wrap;

@@ -53,7 +53,7 @@ function applyAndroidMetadata(options) {
     : channel === 'canary'
       ? 'com.jellodog.chat.canary'
       : 'com.jellodog.chat');
-  const versionOffset = Number(pickValue('VERSION_OFFSET', channel === 'ptb' ? 120000 : channel === 'canary' ? 130000 : 0));
+  const versionOffset = Number(pickValue('VERSION_OFFSET', channel === 'ptb' ? 120000 : channel === 'canary' ? 130000 : 1));
   const runNumber = Number(pickValue('GITHUB_RUN_NUMBER', pickValue('RUN_NUMBER', 0)) || 0);
   const versionCode = versionOffset + runNumber;
   const versionName = `${packageJson.version}-${channel}.${runNumber}`;
@@ -79,12 +79,14 @@ function applyAndroidMetadata(options) {
 
 function runGradle(variant) {
   const task = variant === 'debug' ? 'assembleStandardDebug' : 'assembleStandardRelease';
-  const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
-  const result = spawnSync(gradlew, [task], {
-    cwd: androidRoot,
-    stdio: 'inherit',
-    shell: process.platform === 'win32'
-  });
+  const isWindows = process.platform === 'win32';
+  const gradlewPath = path.join(androidRoot, isWindows ? 'gradlew.bat' : 'gradlew');
+  // On Windows, shell:true with an args array only concatenates (does not quote) the
+  // command line, so a path containing spaces (e.g. this repo's own folder) breaks.
+  // Build an explicitly quoted single-string command instead.
+  const result = isWindows
+    ? spawnSync(`"${gradlewPath}" ${task}`, { cwd: androidRoot, stdio: 'inherit', shell: true })
+    : spawnSync(gradlewPath, [task], { cwd: androidRoot, stdio: 'inherit' });
 
   if (result.error) {
     throw result.error;

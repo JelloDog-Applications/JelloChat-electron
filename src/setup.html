@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Server Setup - JelloDog Chat</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#57d7a4" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/assets/app-icon-256.png" sizes="256x256" type="image/png" />
+    <link rel="stylesheet" href="./vendor/fontawesome/css/all.min.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260601-server-url" />
+    <link rel="stylesheet" href="./setup.css?v=1" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="auth-panel">
+        <h1>Server Setup</h1>
+        <p>Finish configuring this JelloChat server.</p>
+
+        <div class="setup-steps" aria-hidden="true">
+          <span id="setup-step-dot-1" class="setup-step-dot setup-step-dot-active"></span>
+          <span id="setup-step-dot-2" class="setup-step-dot"></span>
+          <span id="setup-step-dot-3" class="setup-step-dot"></span>
+          <span id="setup-step-dot-4" class="setup-step-dot"></span>
+          <span id="setup-step-dot-5" class="setup-step-dot"></span>
+          <span id="setup-step-dot-6" class="setup-step-dot"></span>
+        </div>
+
+        <form id="setup-token-form" class="auth-form">
+          <label>Setup Token</label>
+          <p class="setup-hint">Printed to the server console/logs when it started.</p>
+          <input id="setup-token-input" type="text" autocomplete="off" required />
+          <button type="submit"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Continue</span></button>
+        </form>
+
+        <div id="setup-choice-view" class="auth-form auth-hidden">
+          <p class="setup-hint">Set up a fresh server, or restore everything from a backup archive exported from another JelloChat instance's Admin Console.</p>
+          <div class="setup-step-actions">
+            <button type="button" id="setup-choice-restore-btn" class="secondary-btn"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Restore From Backup</span></button>
+            <button type="button" id="setup-choice-fresh-btn"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i><span>Set Up Fresh</span></button>
+          </div>
+        </div>
+
+        <form id="setup-restore-form" class="auth-form auth-hidden">
+          <p class="setup-hint">Upload the .zip backup archive. This restores all data from the archive onto this server -- make sure this server's <code>ATTACHMENT_ENCRYPTION_KEY</code> matches the one used when the backup was exported, or attachments won't be readable.</p>
+          <label for="setup-restore-file">Backup archive (.zip)</label>
+          <input id="setup-restore-file" type="file" accept=".zip" required />
+          <div class="setup-step-actions">
+            <button type="button" id="setup-restore-back-btn" class="secondary-btn">Back</button>
+            <button type="submit"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Restore</span></button>
+          </div>
+        </form>
+
+        <form id="setup-admin-form" class="auth-form auth-hidden">
+          <label>Username</label>
+          <input id="setup-admin-username" type="text" required />
+          <label>Email</label>
+          <input id="setup-admin-email" type="email" required />
+          <label>Password</label>
+          <div class="password-input-wrap">
+            <input id="setup-admin-password" type="password" minlength="6" required />
+            <button class="password-toggle-btn" type="button" data-target="setup-admin-password" aria-label="Show password">
+              <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+            </button>
+          </div>
+          <label>Confirm Password</label>
+          <div class="password-input-wrap">
+            <input id="setup-admin-password-confirm" type="password" minlength="6" required />
+            <button class="password-toggle-btn" type="button" data-target="setup-admin-password-confirm" aria-label="Show password">
+              <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+            </button>
+          </div>
+          <button type="submit"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Continue</span></button>
+        </form>
+
+        <form id="setup-server-form" class="auth-form auth-hidden">
+          <label for="setup-instance-name">Server Display Name</label>
+          <input id="setup-instance-name" type="text" maxlength="60" placeholder="e.g. Alex's JelloChat" />
+          <p class="setup-hint">Shown in the app when someone adds this server's URL to connect. Leave blank to just show the URL instead.</p>
+          <label class="setup-radio-card">
+            <input type="radio" name="setup-server-action" value="keep" checked />
+            <span>Keep the default server, named "Jello HQ"</span>
+          </label>
+          <label class="setup-radio-card">
+            <input type="radio" name="setup-server-action" value="rename" />
+            <span>Keep the default server, but rename it</span>
+          </label>
+          <input id="setup-server-name" type="text" maxlength="80" placeholder="Server name" class="auth-hidden" />
+          <label class="setup-radio-card">
+            <input type="radio" name="setup-server-action" value="disable" />
+            <span>Don't create a default server</span>
+          </label>
+          <button type="submit"><span>Continue</span></button>
+        </form>
+
+        <form id="setup-smtp-form" class="auth-form auth-hidden">
+          <label>SMTP Host</label>
+          <input id="setup-smtp-host" type="text" placeholder="smtp.example.com" />
+          <label>SMTP Port</label>
+          <input id="setup-smtp-port" type="number" placeholder="587" />
+          <label>SMTP Username</label>
+          <input id="setup-smtp-user" type="text" />
+          <label>SMTP Password</label>
+          <div class="password-input-wrap">
+            <input id="setup-smtp-pass" type="password" />
+            <button class="password-toggle-btn" type="button" data-target="setup-smtp-pass" aria-label="Show password">
+              <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+            </button>
+          </div>
+          <label>From Email</label>
+          <input id="setup-smtp-from-email" type="email" placeholder="no-reply@example.com" />
+          <label>From Name</label>
+          <input id="setup-smtp-from-name" type="text" placeholder="JelloChat" />
+          <p class="setup-hint">Optional. Without SMTP, new accounts are auto-verified and password reset emails won't send.</p>
+          <div class="setup-step-actions">
+            <button type="button" id="setup-smtp-skip" class="secondary-btn">Skip for now</button>
+            <button type="submit"><span>Continue</span></button>
+          </div>
+        </form>
+
+        <form id="setup-livekit-form" class="auth-form auth-hidden">
+          <label>LiveKit URL</label>
+          <input id="setup-livekit-url" type="text" placeholder="wss://your-livekit-host" />
+          <label>API Key</label>
+          <input id="setup-livekit-key" type="text" />
+          <label>API Secret</label>
+          <div class="password-input-wrap">
+            <input id="setup-livekit-secret" type="password" />
+            <button class="password-toggle-btn" type="button" data-target="setup-livekit-secret" aria-label="Show password">
+              <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+            </button>
+          </div>
+          <p class="setup-hint">Optional. Without this, voice channels won't work on web/mobile clients.</p>
+          <div class="setup-step-actions">
+            <button type="button" id="setup-livekit-skip" class="secondary-btn">Skip for now</button>
+            <button type="submit"><span>Continue</span></button>
+          </div>
+        </form>
+
+        <form id="setup-discord-form" class="auth-form auth-hidden">
+          <label>Discord Bot Token</label>
+          <div class="password-input-wrap">
+            <input id="setup-discord-token" type="password" />
+            <button class="password-toggle-btn" type="button" data-target="setup-discord-token" aria-label="Show password">
+              <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+            </button>
+          </div>
+          <label>Discord Application/Client ID</label>
+          <input id="setup-discord-client-id" type="text" />
+          <p class="setup-hint">Optional. A server restart is required after setup finishes for the Discord bot to connect.</p>
+          <div class="setup-step-actions">
+            <button type="button" id="setup-discord-skip" class="secondary-btn">Skip for now</button>
+            <button type="submit"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i><span>Finish Setup</span></button>
+          </div>
+        </form>
+
+        <p id="setup-message" class="message"></p>
+      </section>
+    </main>
+    <script src="./setup.js"></script>
+  </body>
+</html>

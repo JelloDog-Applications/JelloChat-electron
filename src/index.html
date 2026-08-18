@@ -32,6 +32,7 @@
       <section id="auth-panel" class="auth-panel">
         <h1>JelloDog Chat</h1>
         <p>Login to continue.</p>
+        <p id="auth-connected-server" class="auth-connected-server"></p>
 
         <div class="auth-tabs">
           <button id="show-login" class="tab tab-active" type="button">Login</button>
@@ -614,11 +615,13 @@
           <div class="account-modal-card account-modal-card-wide admin-console-card">
             <aside class="account-modal-sidebar admin-console-sidebar">
               <nav class="account-modal-nav admin-modal-nav" aria-label="Admin sections">
+                <a href="#admin-general-view" data-admin-view="general"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>General</span></a>
                 <a class="active" href="#admin-reports-view" data-admin-view="reports"><i class="fa-solid fa-flag" aria-hidden="true"></i><span>Reports</span></a>
                 <a href="#admin-appeals-view" data-admin-view="appeals"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><span>Appeals</span></a>
                 <a href="#admin-users-view" data-admin-view="users"><i class="fa-solid fa-users-gear" aria-hidden="true"></i><span>Users</span></a>
                 <a href="#admin-servers-view" data-admin-view="servers"><i class="fa-solid fa-server" aria-hidden="true"></i><span>Servers</span></a>
                 <a href="#admin-storage-view" data-admin-view="storage"><i class="fa-solid fa-hard-drive" aria-hidden="true"></i><span>Storage</span></a>
+                <a href="#admin-backup-view" data-admin-view="backup"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Backup</span></a>
               </nav>
             </aside>
             <div class="account-modal-main">
@@ -627,6 +630,17 @@
                 <button id="admin-modal-close-btn" type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Close</span></button>
               </div>
               <div class="account-modal-scroll admin-modal-scroll">
+                <section id="admin-general-view" class="admin-view-section hidden">
+                  <div class="admin-storage-panel">
+                    <div class="admin-reports-header"><h4>Server Display Name</h4></div>
+                    <p class="settings-muted">Shown in the app when someone adds this server's URL to connect (in the Server URL switcher, and on the login screen). Leave blank to just show the URL instead.</p>
+                    <form id="admin-instance-name-form" class="admin-instance-name-form">
+                      <input id="admin-instance-name-input" type="text" maxlength="60" placeholder="e.g. Alex's JelloChat" />
+                      <button type="submit">Save</button>
+                    </form>
+                    <p id="admin-instance-name-status" class="settings-muted"></p>
+                  </div>
+                </section>
                 <section id="admin-reports-view" class="admin-view-section">
                   <div class="admin-reports-panel">
                     <div class="admin-reports-header">
@@ -692,6 +706,42 @@
                     </form>
                     <p id="admin-storage-backfill-status" class="settings-muted"></p>
                     <div id="admin-storage-stats" class="admin-storage-grid"></div>
+                  </div>
+                </section>
+                <section id="admin-backup-view" class="admin-view-section hidden">
+                  <div class="admin-storage-panel">
+                    <div class="admin-reports-header">
+                      <h4>Export Backup</h4>
+                    </div>
+                    <p class="settings-muted">
+                      Downloads the full database (users, servers, messages, everything) plus all attachment
+                      files as a single .zip. Keep this file private -- it contains password hashes and any
+                      configured SMTP/LiveKit/Discord credentials.
+                    </p>
+                    <div class="admin-storage-actions">
+                      <button id="admin-backup-export-btn" type="button"><i class="fa-solid fa-download" aria-hidden="true"></i><span>Export Backup</span></button>
+                    </div>
+                    <p id="admin-backup-export-status" class="settings-muted"></p>
+
+                    <div class="admin-backup-restore-panel">
+                      <div class="admin-reports-header">
+                        <h4>Restore from Backup</h4>
+                      </div>
+                      <p class="settings-danger-text">
+                        This replaces ALL current data on this server with the contents of the uploaded backup.
+                        Everything since that backup was taken will be lost. Every signed-in session (including
+                        yours) will be signed out afterward. A safety backup of the current state is taken
+                        automatically before restoring.
+                      </p>
+                      <form id="admin-backup-restore-form" class="admin-backup-restore-form">
+                        <label for="admin-backup-restore-file">Backup archive (.zip)</label>
+                        <input id="admin-backup-restore-file" type="file" accept=".zip" required />
+                        <label for="admin-backup-restore-confirm">Type RESTORE to confirm</label>
+                        <input id="admin-backup-restore-confirm" type="text" autocomplete="off" required />
+                        <button id="admin-backup-restore-btn" type="submit" class="settings-danger-btn">Restore and Replace Everything</button>
+                      </form>
+                      <p id="admin-backup-restore-status" class="settings-muted"></p>
+                    </div>
                   </div>
                 </section>
               </div>

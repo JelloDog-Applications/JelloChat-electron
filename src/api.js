@@ -168,6 +168,11 @@
     return `${apiBase()}${path}`;
   }
 
+  async function getPublicStats() {
+    const response = await fetch(`${apiBase()}/api/public/stats`, { cache: 'no-store' });
+    return response.json();
+  }
+
   async function getAttachmentObjectUrl(path) {
     const token = getToken();
     const headers = {};
@@ -180,6 +185,44 @@
     }
     const blob = await response.blob();
     return URL.createObjectURL(blob);
+  }
+
+  async function downloadAdminBackup() {
+    const token = getToken();
+    const headers = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(`${apiBase()}/api/admin/backup/download`, { headers });
+    if (!response.ok) {
+      let message = 'Failed to create backup.';
+      try {
+        const payload = await response.json();
+        message = payload?.message || message;
+      } catch (_error) {
+        // response wasn't JSON; keep the default message
+      }
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match ? match[1] : `jellochat-backup-${Date.now()}.zip`;
+    return { blob, filename };
+  }
+
+  async function restoreAdminBackup(formData) {
+    const token = getToken();
+    const headers = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(`${apiBase()}/api/admin/backup/restore`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    return response.json();
   }
 
   function wsBaseUrl() {
@@ -195,6 +238,9 @@
   window.api = {
     realtime: {
       getConfig: async () => ({ ok: true, wsUrl: wsBaseUrl() })
+    },
+    public: {
+      getStats: getPublicStats
     },
     config: {
       getServerBase: apiBase,
@@ -283,6 +329,7 @@
     },
     admin: {
       listUsers: (payload) => request('POST', '/api/admin/users/search', payload),
+      updateInstanceName: (payload) => request('POST', '/api/admin/settings/instance-name', payload),
       listReports: (payload = {}) => request('GET', `/api/admin/reports?status=${encodeURIComponent(payload.status || 'open')}`),
       updateReport: (payload) => request('POST', `/api/admin/reports/${payload.reportId}`, payload),
       getStorageConfig: () => request('GET', '/api/admin/storage'),
@@ -295,7 +342,11 @@
       getServerView: (payload) => request('GET', `/api/admin/servers/${payload.serverId}`),
       updateUser: (payload) => request('POST', `/api/admin/users/${payload.userId}`, payload),
       deleteUser: (payload) => request('DELETE', `/api/admin/users/${payload.userId}`),
-      deleteServer: (payload) => request('DELETE', `/api/admin/servers/${payload.serverId}`)
+      deleteServer: (payload) => request('DELETE', `/api/admin/servers/${payload.serverId}`),
+      backup: {
+        download: downloadAdminBackup,
+        restore: restoreAdminBackup
+      }
     },
     reports: {
       createUserReport: (payload) => request('POST', '/api/reports/users', payload)

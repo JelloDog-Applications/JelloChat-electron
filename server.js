@@ -8,8 +8,11 @@ const zlib = require('zlib');
 const { WebSocketServer } = require('ws');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const fs = require('fs');
+const os = require('os');
 const db = require('./db');
-const { sendMail } = require('./mailer');
+const { getAppSetting, setAppSetting, deleteAppSetting } = require('./app-settings');
+const { sendMail, isMailerConfigured } = require('./mailer');
+const { createBackupArchive, restoreFromBackupArchive } = require('./backup');
 const { startDiscordMigrationBot } = require('./discordBot');
 const {
   createDiscordMigrationSession,
@@ -179,6 +182,32 @@ function uploadMessageAttachment(req, res, next) {
       return;
     }
     res.status(400).json({ ok: false, message: error.message || 'Failed to upload attachment.' });
+  });
+}
+
+const BACKUP_MAX_MB = Math.max(64, Number(process.env.BACKUP_MAX_MB || 2048));
+const BACKUP_UPLOAD_DIR = path.join(os.tmpdir(), 'jellochat-backup-uploads');
+fs.mkdirSync(BACKUP_UPLOAD_DIR, { recursive: true });
+
+const backupUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, BACKUP_UPLOAD_DIR),
+    filename: (_req, _file, cb) => cb(null, `${crypto.randomUUID()}.zip`)
+  }),
+  limits: { fileSize: BACKUP_MAX_MB * 1024 * 1024, files: 1 }
+});
+
+function uploadBackupArchive(req, res, next) {
+  backupUpload.single('archive')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ ok: false, message: `Backup archive is larger than the configured limit (${BACKUP_MAX_MB}MB).` });
+      return;
+    }
+    res.status(400).json({ ok: false, message: error.message || 'Failed to upload backup archive.' });
   });
 }
 
@@ -384,8 +413,9 @@ app.get('/api/public/stats', async (_req, res) => {
        FROM users
        WHERE platform_banned_at IS NULL`
     );
+    const instanceName = await getAppSetting('instance_name');
     res.setHeader('Cache-Control', 'public, max-age=60');
-    res.json({ ok: true, registeredUsers: result.rows[0]?.registered_users || 0 });
+    res.json({ ok: true, registeredUsers: result.rows[0]?.registered_users || 0, instanceName: instanceName || null });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Failed to load public stats: ${error.message}` });
   }
@@ -396,8 +426,37 @@ const wsClients = new Map();
 const pendingPasskeyRegistrations = new Map();
 const pendingPasskeyLogins = new Map();
 
+let setupCompleted = false;
+let maintenanceMode = false;
+
 function hashToken(rawToken) {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
+
+async function generateAndPrintSetupToken() {
+  const rawToken = crypto.randomBytes(24).toString('hex');
+  await setAppSetting('setup_token_hash', hashToken(rawToken));
+  console.log('\n==================================================');
+  console.log(' JelloChat first-run setup is required.');
+  console.log(` Setup token: ${rawToken}`);
+  console.log(` Open http://localhost:${WEB_PORT}/setup to finish setup.`);
+  console.log('==================================================\n');
+}
+
+async function verifySetupToken(candidate) {
+  if (!candidate) {
+    return false;
+  }
+  const storedHash = await getAppSetting('setup_token_hash');
+  if (!storedHash) {
+    return false;
+  }
+  const a = Buffer.from(hashToken(String(candidate)));
+  const b = Buffer.from(storedHash);
+  if (a.length !== b.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(a, b);
 }
 
 function buildPublicUrl(pathname) {
@@ -766,6 +825,48 @@ app.use(express.static(path.join(__dirname, 'src'), {
   index: false
 }));
 
+app.use((req, res, next) => {
+  if (setupCompleted) {
+    next();
+    return;
+  }
+  const pathname = String(req.path || '');
+  if (pathname === '/setup' || pathname.startsWith('/api/setup/')) {
+    next();
+    return;
+  }
+  if (pathname.startsWith('/api/')) {
+    res.status(503).json({
+      ok: false,
+      code: 'SETUP_REQUIRED',
+      message: 'Server setup has not been completed yet. Visit /setup to finish configuration.'
+    });
+    return;
+  }
+  if (req.method === 'GET') {
+    res.redirect(302, '/setup');
+    return;
+  }
+  res.status(503).json({ ok: false, code: 'SETUP_REQUIRED', message: 'Server setup has not been completed yet.' });
+});
+
+app.use((req, res, next) => {
+  if (!maintenanceMode) {
+    next();
+    return;
+  }
+  const pathname = String(req.path || '');
+  if (pathname.startsWith('/api/')) {
+    res.status(503).json({
+      ok: false,
+      code: 'MAINTENANCE_MODE',
+      message: 'Server is restoring from a backup. Please try again shortly.'
+    });
+    return;
+  }
+  res.status(503).send('Server is restoring from a backup. Please try again shortly.');
+});
+
 function buildAuthWebUrl(mode, rawToken) {
   if (mode === 'verify') {
     return buildPublicUrl(`/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`);
@@ -1062,6 +1163,10 @@ app.get(['/', '/index.html'], (_req, res) => {
 
 app.get('/app', (_req, res) => {
   res.sendFile(path.join(__dirname, 'src', 'index.html'));
+});
+
+app.get('/setup', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'src', 'setup.html'));
 });
 
 app.get('/invite/:code', async (req, res) => {
@@ -2256,9 +2361,9 @@ function normalizeAvatarUrl(value) {
 }
 
 async function createVoiceToken({ identity, name, roomName }) {
-  const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
-  const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
-  let livekitUrl = String(process.env.LIVEKIT_URL || '').trim();
+  const apiKey = String((await getAppSetting('livekit_api_key')) || process.env.LIVEKIT_API_KEY || '').trim();
+  const apiSecret = String((await getAppSetting('livekit_api_secret')) || process.env.LIVEKIT_API_SECRET || '').trim();
+  let livekitUrl = String((await getAppSetting('livekit_url')) || process.env.LIVEKIT_URL || '').trim();
   if (livekitUrl.startsWith('http://')) {
     livekitUrl = livekitUrl.replace(/^http:\/\//, 'ws://');
   } else if (livekitUrl.startsWith('https://')) {
@@ -2296,9 +2401,9 @@ function getLivekitHostForServerApi(livekitUrl) {
 }
 
 async function listVoiceParticipants(roomName) {
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
-  const livekitUrl = process.env.LIVEKIT_URL;
+  const apiKey = String((await getAppSetting('livekit_api_key')) || process.env.LIVEKIT_API_KEY || '').trim();
+  const apiSecret = String((await getAppSetting('livekit_api_secret')) || process.env.LIVEKIT_API_SECRET || '').trim();
+  const livekitUrl = String((await getAppSetting('livekit_url')) || process.env.LIVEKIT_URL || '').trim();
   if (!apiKey || !apiSecret || !livekitUrl) {
     throw new Error('LiveKit environment variables are not configured.');
   }
@@ -3229,6 +3334,256 @@ function normalizeAttachmentRow(row) {
   return message;
 }
 
+app.get('/api/setup/status', async (_req, res) => {
+  res.json({ ok: true, completed: setupCompleted });
+});
+
+app.post('/api/setup/verify-token', async (req, res) => {
+  const requestIp = normalizeIpAddress(req.ip);
+  if (setupCompleted) {
+    res.status(409).json({ ok: false, message: 'Setup has already been completed.' });
+    return;
+  }
+  if (isIpTemporarilyBlocked(requestIp)) {
+    res.status(429).json({ ok: false, message: 'Too many attempts. Please try again later.' });
+    return;
+  }
+  if (trackAuthAttempts(`setup-token:${requestIp}`, 8, 10 * 60 * 1000)) {
+    penalizeIp(requestIp, 2, 'setup-token-rate-limit');
+    res.status(429).json({ ok: false, message: 'Too many attempts. Please try again later.' });
+    return;
+  }
+  const valid = await verifySetupToken(String(req.body?.token || '').trim());
+  if (!valid) {
+    penalizeIp(requestIp, 1, 'setup-token-invalid');
+    res.status(401).json({ ok: false, message: 'Invalid setup token.' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+app.post('/api/setup/restore', uploadBackupArchive, async (req, res) => {
+  const requestIp = normalizeIpAddress(req.ip);
+  const uploadedPath = req.file?.path;
+  try {
+    if (setupCompleted) {
+      res.status(409).json({ ok: false, message: 'Setup has already been completed.' });
+      return;
+    }
+    if (isIpTemporarilyBlocked(requestIp)) {
+      res.status(429).json({ ok: false, message: 'Too many attempts. Please try again later.' });
+      return;
+    }
+    if (trackAuthAttempts(`setup-restore:${requestIp}`, 4, 10 * 60 * 1000)) {
+      penalizeIp(requestIp, 2, 'setup-restore-rate-limit');
+      res.status(429).json({ ok: false, message: 'Too many attempts. Please try again later.' });
+      return;
+    }
+    const validToken = await verifySetupToken(String(req.body?.token || '').trim());
+    if (!validToken) {
+      penalizeIp(requestIp, 2, 'setup-restore-bad-token');
+      res.status(401).json({ ok: false, message: 'Invalid setup token.' });
+      return;
+    }
+    if (!uploadedPath) {
+      res.status(400).json({ ok: false, message: 'A backup archive file is required.' });
+      return;
+    }
+
+    await restoreFromBackupArchive(uploadedPath, { attachmentsDir: ATTACHMENTS_DIR });
+
+    await setAppSetting('setup_completed', 'true');
+    await deleteAppSetting('setup_token_hash');
+    setupCompleted = true;
+
+    res.json({
+      ok: true,
+      message: 'Restore complete. Log in with your restored account credentials.'
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Restore failed: ${error.message}` });
+  } finally {
+    if (uploadedPath) {
+      removeUploadedFile({ path: uploadedPath });
+    }
+  }
+});
+
+app.post('/api/setup/complete', async (req, res) => {
+  const requestIp = normalizeIpAddress(req.ip);
+  if (setupCompleted) {
+    res.status(409).json({ ok: false, message: 'Setup has already been completed.' });
+    return;
+  }
+  if (isIpTemporarilyBlocked(requestIp)) {
+    res.status(429).json({ ok: false, message: 'Too many attempts. Please try again later.' });
+    return;
+  }
+  if (trackAuthAttempts(`setup-complete:${requestIp}`, 6, 10 * 60 * 1000)) {
+    penalizeIp(requestIp, 2, 'setup-complete-rate-limit');
+    res.status(429).json({ ok: false, message: 'Too many attempts. Please try again later.' });
+    return;
+  }
+
+  const validToken = await verifySetupToken(String(req.body?.token || '').trim());
+  if (!validToken) {
+    penalizeIp(requestIp, 2, 'setup-complete-bad-token');
+    res.status(401).json({ ok: false, message: 'Invalid setup token.' });
+    return;
+  }
+
+  const requestedUsername = String(req.body?.username || '').trim();
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+  const instanceName = String(req.body?.instanceName || '').trim();
+  const serverAction = String(req.body?.defaultServer?.action || 'keep');
+  const serverName = String(req.body?.defaultServer?.name || '').trim();
+
+  if (!requestedUsername || !email || !password) {
+    res.status(400).json({ ok: false, message: 'Username, email, and password are required.' });
+    return;
+  }
+  if (baseUsername(requestedUsername).length < 2 || baseUsername(requestedUsername).length > 50) {
+    res.status(400).json({ ok: false, message: 'Username must be between 2 and 50 characters.' });
+    return;
+  }
+  if (password.length < 6) {
+    res.status(400).json({ ok: false, message: 'Password must be at least 6 characters.' });
+    return;
+  }
+  if (instanceName && (instanceName.length < 2 || instanceName.length > 60)) {
+    res.status(400).json({ ok: false, message: 'Server display name must be between 2 and 60 characters.' });
+    return;
+  }
+  if (!['keep', 'rename', 'disable'].includes(serverAction)) {
+    res.status(400).json({ ok: false, message: 'Invalid default server option.' });
+    return;
+  }
+  if (serverAction === 'rename' && (serverName.length < 2 || serverName.length > 80)) {
+    res.status(400).json({ ok: false, message: 'Server name must be between 2 and 80 characters.' });
+    return;
+  }
+
+  const smtpInput = req.body?.smtp && typeof req.body.smtp === 'object' ? req.body.smtp : null;
+  const livekitInput = req.body?.livekit && typeof req.body.livekit === 'object' ? req.body.livekit : null;
+  const discordInput = req.body?.discord && typeof req.body.discord === 'object' ? req.body.discord : null;
+
+  if (smtpInput) {
+    const host = String(smtpInput.host || '').trim();
+    const smtpUser = String(smtpInput.user || '').trim();
+    const pass = String(smtpInput.pass || '').trim();
+    const fromEmail = String(smtpInput.fromEmail || '').trim();
+    if (!host || !smtpUser || !pass || !fromEmail) {
+      res.status(400).json({ ok: false, message: 'SMTP host, username, password, and from-email are all required if SMTP is being configured.' });
+      return;
+    }
+  }
+  if (livekitInput) {
+    const url = String(livekitInput.url || '').trim();
+    const apiKey = String(livekitInput.apiKey || '').trim();
+    const apiSecret = String(livekitInput.apiSecret || '').trim();
+    if (!url || !apiKey || !apiSecret) {
+      res.status(400).json({ ok: false, message: 'LiveKit URL, API key, and API secret are all required if LiveKit is being configured.' });
+      return;
+    }
+  }
+
+  try {
+    const exists = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (exists.rows.length > 0) {
+      res.status(409).json({ ok: false, message: 'Email already in use.' });
+      return;
+    }
+
+    const allocated = await allocateUniqueUsername(requestedUsername);
+    const passwordHash = await bcrypt.hash(password, 10);
+    const created = await db.query(
+      `INSERT INTO users (username, email, password_hash, email_verified, is_platform_admin, tos_notified_version, tos_email_notified_version, privacy_notified_version, privacy_email_notified_version)
+       VALUES ($1, $2, $3, TRUE, TRUE, $4, $4, $5, $5)
+       RETURNING id, username, email, avatar_url`,
+      [allocated.username, email, passwordHash, CURRENT_TOS_VERSION, CURRENT_PRIVACY_VERSION]
+    );
+    const admin = created.rows[0];
+
+    if (instanceName) {
+      await setAppSetting('instance_name', instanceName);
+    }
+
+    let defaultServerInfo = null;
+    if (serverAction === 'disable') {
+      await db.query('DELETE FROM servers WHERE name = $1', ['Jello HQ']);
+      await deleteAppSetting('default_server_id');
+    } else {
+      const hqResult = await db.query('SELECT id, name FROM servers WHERE name = $1 LIMIT 1', ['Jello HQ']);
+      let hq = hqResult.rows[0] || null;
+      if (serverAction === 'rename' && hq) {
+        const renamed = await db.query('UPDATE servers SET name = $1 WHERE id = $2 RETURNING id, name', [serverName, hq.id]);
+        hq = renamed.rows[0];
+      }
+      if (hq) {
+        await db.query('UPDATE servers SET owner_user_id = $1 WHERE id = $2 AND owner_user_id IS NULL', [admin.id, hq.id]);
+        await db.query(
+          'INSERT INTO server_members (user_id, server_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [admin.id, hq.id]
+        );
+        await setAppSetting('default_server_id', String(hq.id));
+        defaultServerInfo = { id: hq.id, name: hq.name };
+      }
+    }
+
+    let smtpConfigured = false;
+    let livekitConfigured = false;
+    let discordConfigured = false;
+
+    if (smtpInput) {
+      await setAppSetting('smtp_host', String(smtpInput.host).trim());
+      await setAppSetting('smtp_port', String(Number(smtpInput.port) || 587));
+      await setAppSetting('smtp_user', String(smtpInput.user).trim());
+      await setAppSetting('smtp_pass', String(smtpInput.pass).trim());
+      await setAppSetting('smtp_from_email', String(smtpInput.fromEmail).trim());
+      await setAppSetting('smtp_from_name', String(smtpInput.fromName || 'JelloChat').trim());
+      smtpConfigured = true;
+    }
+
+    if (livekitInput) {
+      await setAppSetting('livekit_url', String(livekitInput.url).trim());
+      await setAppSetting('livekit_api_key', String(livekitInput.apiKey).trim());
+      await setAppSetting('livekit_api_secret', String(livekitInput.apiSecret).trim());
+      livekitConfigured = true;
+    }
+
+    if (discordInput) {
+      const botToken = String(discordInput.botToken || '').trim();
+      const clientId = String(discordInput.clientId || '').trim();
+      if (botToken) {
+        await setAppSetting('discord_bot_token', botToken);
+        discordConfigured = true;
+      }
+      if (clientId) {
+        await setAppSetting('discord_bot_client_id', clientId);
+        discordConfigured = true;
+      }
+    }
+
+    await setAppSetting('setup_completed', 'true');
+    await deleteAppSetting('setup_token_hash');
+    setupCompleted = true;
+
+    await ensurePlatformAdminExists();
+    const realtimeToken = await issueAuthToken(admin.id);
+
+    res.json({
+      ok: true,
+      user: { id: admin.id, username: admin.username, email: admin.email, avatar_url: admin.avatar_url, is_platform_admin: true },
+      realtimeToken,
+      defaultServer: defaultServerInfo,
+      integrations: { smtp: smtpConfigured, livekit: livekitConfigured, discord: discordConfigured }
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Setup failed: ${error.message}` });
+  }
+});
+
 app.post('/api/auth/register', async (req, res) => {
   const requestIp = normalizeIpAddress(req.ip);
   const requestedUsername = String(req.body?.username || '').trim();
@@ -3281,42 +3636,58 @@ app.post('/api/auth/register', async (req, res) => {
       return;
     }
 
+    const mailerConfigured = await isMailerConfigured();
     const allocated = await allocateUniqueUsername(requestedUsername);
     const passwordHash = await bcrypt.hash(password, 10);
     const created = await db.query(
-      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version, tos_email_notified_version, privacy_notified_version, privacy_email_notified_version) VALUES ($1, $2, $3, $4, FALSE, $5, $5, $6, $6) RETURNING id, username, email, avatar_url, date_of_birth',
-      [allocated.username, email, passwordHash, dateOfBirth, CURRENT_TOS_VERSION, CURRENT_PRIVACY_VERSION]
+      'INSERT INTO users (username, email, password_hash, date_of_birth, email_verified, tos_notified_version, tos_email_notified_version, privacy_notified_version, privacy_email_notified_version) VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $7) RETURNING id, username, email, avatar_url, date_of_birth',
+      [allocated.username, email, passwordHash, dateOfBirth, !mailerConfigured, CURRENT_TOS_VERSION, CURRENT_PRIVACY_VERSION]
     );
     const user = created.rows[0];
 
-    const defaultServer = await db.query('SELECT id, owner_user_id FROM servers WHERE name = $1 LIMIT 1', ['Jello HQ']);
-    if (defaultServer.rows.length > 0) {
-      if (!defaultServer.rows[0].owner_user_id) {
-        await db.query('UPDATE servers SET owner_user_id = $1 WHERE id = $2', [user.id, defaultServer.rows[0].id]);
+    const defaultServerIdRaw = await getAppSetting('default_server_id');
+    const defaultServerId = defaultServerIdRaw ? Number(defaultServerIdRaw) : null;
+    if (defaultServerId) {
+      const defaultServer = await db.query('SELECT id, owner_user_id FROM servers WHERE id = $1', [defaultServerId]);
+      if (defaultServer.rows.length > 0) {
+        if (!defaultServer.rows[0].owner_user_id) {
+          await db.query('UPDATE servers SET owner_user_id = $1 WHERE id = $2', [user.id, defaultServer.rows[0].id]);
+        }
+        await db.query(
+          'INSERT INTO server_members (user_id, server_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [user.id, defaultServer.rows[0].id]
+        );
       }
-      await db.query(
-        'INSERT INTO server_members (user_id, server_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-        [user.id, defaultServer.rows[0].id]
-      );
     }
 
     await ensurePlatformAdminExists();
 
-    const mailResult = await issueEmailVerification(user.id, user.email, user.username);
-    if (!mailResult.ok) {
-      res.status(500).json({ ok: false, message: `Account created but verification email failed: ${mailResult.message}` });
-      return;
+    let realtimeToken = null;
+    if (mailerConfigured) {
+      const mailResult = await issueEmailVerification(user.id, user.email, user.username);
+      if (!mailResult.ok) {
+        res.status(500).json({ ok: false, message: `Account created but verification email failed: ${mailResult.message}` });
+        return;
+      }
+    } else {
+      realtimeToken = await issueAuthToken(user.id);
     }
 
     rewardIp(requestIp, 1);
 
     res.json({
       ok: true,
-      needsVerification: true,
+      needsVerification: mailerConfigured,
       assignedUsername: user.username,
-      message: allocated.changed
-        ? `Account created. Username set to ${user.username}. Check your email to verify your account before logging in.`
-        : 'Account created. Check your email to verify your account before logging in.'
+      user: mailerConfigured ? undefined : { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url },
+      realtimeToken: realtimeToken || undefined,
+      message: mailerConfigured
+        ? (allocated.changed
+            ? `Account created. Username set to ${user.username}. Check your email to verify your account before logging in.`
+            : 'Account created. Check your email to verify your account before logging in.')
+        : (allocated.changed
+            ? `Account created. Username set to ${user.username}. You're signed in.`
+            : "Account created. You're signed in.")
     });
   } catch (error) {
     res.status(500).json({ ok: false, message: `Registration failed: ${error.message}` });
@@ -5331,6 +5702,95 @@ app.post('/api/admin/reports/:reportId', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/api/admin/backup/download', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="jellochat-backup-${timestamp}.zip"`);
+    await createBackupArchive(res, { attachmentsDir: ATTACHMENTS_DIR });
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, message: `Failed to create backup: ${error.message}` });
+    } else {
+      res.end();
+    }
+  }
+});
+
+app.post('/api/admin/backup/restore', authMiddleware, uploadBackupArchive, async (req, res) => {
+  const uploadedPath = req.file?.path;
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    if (!uploadedPath) {
+      res.status(400).json({ ok: false, message: 'A backup archive file is required.' });
+      return;
+    }
+    const confirmText = String(req.body?.confirmText || '').trim();
+    if (confirmText !== 'RESTORE') {
+      res.status(400).json({ ok: false, message: 'Confirmation text did not match. Type exactly: RESTORE' });
+      return;
+    }
+    if (maintenanceMode) {
+      res.status(409).json({ ok: false, message: 'A restore is already in progress.' });
+      return;
+    }
+
+    const safetyBackupPath = path.join(BACKUP_UPLOAD_DIR, `${crypto.randomUUID()}-safety.zip`);
+    const safetyOut = fs.createWriteStream(safetyBackupPath);
+    await createBackupArchive(safetyOut, { attachmentsDir: ATTACHMENTS_DIR });
+    console.log(`Safety backup written to ${safetyBackupPath} before restore (admin user ${req.userId}).`);
+
+    maintenanceMode = true;
+    try {
+      await restoreFromBackupArchive(uploadedPath, { attachmentsDir: ATTACHMENTS_DIR });
+      await db.query('DELETE FROM auth_sessions');
+      authTokens.clear();
+      for (const ws of wsClients.keys()) {
+        sendWs(ws, { type: 'server-restored', message: 'This server was restored from a backup. Please reload and sign in again.' });
+        ws.close();
+      }
+      res.json({ ok: true, message: 'Restore complete. Every session (including yours) has been signed out.' });
+    } finally {
+      maintenanceMode = false;
+    }
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Restore failed: ${error.message}` });
+  } finally {
+    if (uploadedPath) {
+      removeUploadedFile({ path: uploadedPath });
+    }
+  }
+});
+
+app.post('/api/admin/settings/instance-name', authMiddleware, async (req, res) => {
+  try {
+    if (!(await requirePlatformAdmin(req.userId))) {
+      res.status(403).json({ ok: false, message: 'Platform admin access required.' });
+      return;
+    }
+    const instanceName = String(req.body?.instanceName || '').trim();
+    if (instanceName && (instanceName.length < 2 || instanceName.length > 60)) {
+      res.status(400).json({ ok: false, message: 'Server display name must be between 2 and 60 characters.' });
+      return;
+    }
+    if (instanceName) {
+      await setAppSetting('instance_name', instanceName);
+    } else {
+      await deleteAppSetting('instance_name');
+    }
+    res.json({ ok: true, instanceName: instanceName || null });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: `Failed to update server display name: ${error.message}` });
+  }
+});
+
 app.get('/api/admin/storage', authMiddleware, async (req, res) => {
   try {
     if (!(await requirePlatformAdmin(req.userId))) {
@@ -6618,6 +7078,10 @@ app.get('*', (_req, res) => {
 
 async function start() {
   await db.connect();
+  setupCompleted = (await getAppSetting('setup_completed')) === 'true';
+  if (!setupCompleted) {
+    await generateAndPrintSetupToken();
+  }
   await runCleanupJobs();
   await scheduleCleanupJobs();
   await ensurePlatformAdminExists();

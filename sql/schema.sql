@@ -603,15 +603,33 @@ WHERE s.id = members.server_id
 
 INSERT INTO servers (name)
 SELECT 'Jello HQ'
-WHERE NOT EXISTS (SELECT 1 FROM servers WHERE name = 'Jello HQ');
+WHERE NOT EXISTS (SELECT 1 FROM servers WHERE name = 'Jello HQ')
+  AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'setup_completed');
 
 INSERT INTO channels (server_id, type, name)
 SELECT s.id, 'text', c.name
 FROM servers s
 CROSS JOIN (VALUES ('general'), ('dev-chat'), ('memes')) AS c(name)
 WHERE s.name = 'Jello HQ'
+  AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'setup_completed')
   AND NOT EXISTS (
     SELECT 1
     FROM channels x
     WHERE x.server_id = s.id AND x.name = c.name
   );
+
+DO $$
+DECLARE
+  hq_id INT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM app_settings WHERE key = 'setup_completed')
+     AND EXISTS (SELECT 1 FROM users LIMIT 1) THEN
+    SELECT id INTO hq_id FROM servers WHERE name = 'Jello HQ' LIMIT 1;
+    IF hq_id IS NOT NULL THEN
+      INSERT INTO app_settings (key, value) VALUES ('default_server_id', hq_id::TEXT)
+      ON CONFLICT (key) DO NOTHING;
+    END IF;
+    INSERT INTO app_settings (key, value) VALUES ('setup_completed', 'true')
+    ON CONFLICT (key) DO NOTHING;
+  END IF;
+END $$;

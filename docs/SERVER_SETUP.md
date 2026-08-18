@@ -9,6 +9,8 @@ JelloChat has two main server modes:
 
 For a public server, use web mode behind HTTPS.
 
+Prefer not to install Node/PostgreSQL directly on the host? See [Running JelloChat with Docker](./DOCKER.md) for a Docker Compose setup instead — skip straight to that guide and come back here only for reference.
+
 ## Requirements
 
 - Node.js 20 or newer
@@ -211,7 +213,7 @@ CLEANUP_INTERVAL_MINUTES=60
 
 Make sure the service user can write to `ATTACHMENTS_DIR`.
 
-Back up the database and attachment directory together. Database-only backups will lose uploaded file contents.
+Back up the database and attachment directory together. Database-only backups will lose uploaded file contents. The Admin Console's **Backup** tab does this for you: it exports the full database plus all attachments as a single `.zip`, and can restore that archive either during initial setup (`/setup`, e.g. when migrating an npm install to [Docker](./DOCKER.md#migrating-an-existing-install-to-docker)) or over an already-running instance for disaster recovery. Prefer it over manual `pg_dump`/directory copies — it keeps the database and attachments in sync and handles the restore ordering for you.
 
 ## 11. Updating a Server
 

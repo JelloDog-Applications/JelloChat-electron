@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { getAppSetting } = require('./app-settings');
 
 function cleanText(value, fallback = '') {
   return String(value || '').trim() || fallback;
@@ -28,8 +29,11 @@ function makePairingCode() {
   return code;
 }
 
-function getDiscordBotInviteUrl() {
-  const clientId = cleanText(process.env.DISCORD_BOT_CLIENT_ID || process.env.DISCORD_CLIENT_ID, '');
+async function getDiscordBotInviteUrl() {
+  const clientId = cleanText(
+    (await getAppSetting('discord_bot_client_id')) || process.env.DISCORD_BOT_CLIENT_ID || process.env.DISCORD_CLIENT_ID,
+    ''
+  );
   if (!clientId) {
     return '';
   }
@@ -150,7 +154,7 @@ async function createDiscordMigrationSession(db, userId) {
          RETURNING id, code, status, expires_at, created_at`,
         [code, requestedBy]
       );
-      const inviteUrl = getDiscordBotInviteUrl();
+      const inviteUrl = await getDiscordBotInviteUrl();
       return { ok: true, session: created.rows[0], inviteUrl, botConfigured: Boolean(inviteUrl) };
     } catch (error) {
       if (!String(error.message || '').includes('duplicate key')) {

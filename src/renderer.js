@@ -197,6 +197,16 @@ const ui = {
   adminStorageConfig: document.getElementById('admin-storage-config'),
   adminStorageStats: document.getElementById('admin-storage-stats'),
   adminCleanupForm: document.getElementById('admin-cleanup-form'),
+  adminInstanceNameForm: document.getElementById('admin-instance-name-form'),
+  adminInstanceNameInput: document.getElementById('admin-instance-name-input'),
+  adminInstanceNameStatus: document.getElementById('admin-instance-name-status'),
+  adminBackupExportBtn: document.getElementById('admin-backup-export-btn'),
+  adminBackupExportStatus: document.getElementById('admin-backup-export-status'),
+  adminBackupRestoreForm: document.getElementById('admin-backup-restore-form'),
+  adminBackupRestoreFile: document.getElementById('admin-backup-restore-file'),
+  adminBackupRestoreConfirm: document.getElementById('admin-backup-restore-confirm'),
+  adminBackupRestoreBtn: document.getElementById('admin-backup-restore-btn'),
+  adminBackupRestoreStatus: document.getElementById('admin-backup-restore-status'),
   storageMaxUploadMbInput: document.getElementById('storage-max-upload-mb-input'),
   storageExpireDaysInput: document.getElementById('storage-expire-days-input'),
   storageMaxUploadsDayInput: document.getElementById('storage-max-uploads-day-input'),
@@ -2988,6 +2998,127 @@ async function runAdminAttachmentCompressionBackfill() {
   }
 }
 
+async function loadAdminGeneral() {
+  if (ui.adminInstanceNameStatus) {
+    ui.adminInstanceNameStatus.textContent = '';
+  }
+  try {
+    const result = await window.api.public.getStats();
+    if (result.ok && ui.adminInstanceNameInput) {
+      ui.adminInstanceNameInput.value = result.instanceName || '';
+    }
+  } catch (_error) {
+    // Leave the field as-is if the lookup fails.
+  }
+}
+
+async function saveAdminInstanceName() {
+  const instanceName = (ui.adminInstanceNameInput?.value || '').trim();
+  const result = await window.api.admin.updateInstanceName({ instanceName });
+  if (!result.ok) {
+    await showWarningDialog(result.message);
+    return;
+  }
+  if (ui.adminInstanceNameStatus) {
+    ui.adminInstanceNameStatus.textContent = instanceName ? `Saved. Now showing as "${instanceName}".` : 'Saved. Showing the URL instead of a name.';
+  }
+  updateConnectedServerLabel();
+}
+
+async function loadAdminBackup() {
+  if (ui.adminBackupExportStatus) {
+    ui.adminBackupExportStatus.textContent = '';
+  }
+  if (ui.adminBackupRestoreStatus) {
+    ui.adminBackupRestoreStatus.textContent = '';
+  }
+}
+
+async function exportAdminBackup() {
+  if (ui.adminBackupExportBtn) {
+    ui.adminBackupExportBtn.disabled = true;
+  }
+  if (ui.adminBackupExportStatus) {
+    ui.adminBackupExportStatus.textContent = 'Building backup archive...';
+  }
+  try {
+    const { blob, filename } = await window.api.admin.backup.download();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    if (ui.adminBackupExportStatus) {
+      ui.adminBackupExportStatus.textContent = `Downloaded ${filename}.`;
+    }
+  } catch (error) {
+    if (ui.adminBackupExportStatus) {
+      ui.adminBackupExportStatus.textContent = '';
+    }
+    await showWarningDialog(error?.message || 'Failed to create backup.');
+  } finally {
+    if (ui.adminBackupExportBtn) {
+      ui.adminBackupExportBtn.disabled = false;
+    }
+  }
+}
+
+async function submitAdminBackupRestore() {
+  const file = ui.adminBackupRestoreFile?.files?.[0];
+  if (!file) {
+    await showWarningDialog('Choose a backup archive (.zip) to restore.');
+    return;
+  }
+  if ((ui.adminBackupRestoreConfirm?.value || '').trim() !== 'RESTORE') {
+    await showWarningDialog('Type RESTORE (all caps) to confirm.');
+    return;
+  }
+  const confirmed = await showConfirmDialog(
+    'Restore and Replace Everything',
+    'This replaces ALL current data on this server with the contents of the uploaded archive. A safety backup of the current state is taken automatically before restoring, but every session (including yours) will be signed out. Continue?',
+    'Restore',
+    'Cancel'
+  );
+  if (!confirmed) {
+    return;
+  }
+  if (ui.adminBackupRestoreBtn) {
+    ui.adminBackupRestoreBtn.disabled = true;
+  }
+  if (ui.adminBackupRestoreStatus) {
+    ui.adminBackupRestoreStatus.textContent = 'Restoring... this may take a while, do not close the app.';
+  }
+  try {
+    const formData = new FormData();
+    formData.append('archive', file);
+    formData.append('confirmText', 'RESTORE');
+    const result = await window.api.admin.backup.restore(formData);
+    if (!result.ok) {
+      if (ui.adminBackupRestoreStatus) {
+        ui.adminBackupRestoreStatus.textContent = '';
+      }
+      await showWarningDialog(result.message);
+      return;
+    }
+    await showMessageDialog('Restore Complete', result.message || 'Restore complete. Please log in again.', {
+      okLabel: 'OK'
+    });
+    await performLogout(false);
+  } catch (error) {
+    if (ui.adminBackupRestoreStatus) {
+      ui.adminBackupRestoreStatus.textContent = '';
+    }
+    await showWarningDialog(error?.message || 'Failed to restore backup.');
+  } finally {
+    if (ui.adminBackupRestoreBtn) {
+      ui.adminBackupRestoreBtn.disabled = false;
+    }
+  }
+}
+
 function setAdminView(viewName) {
   const selected = String(viewName || 'reports');
   ui.adminModal?.querySelectorAll('.admin-modal-nav a[data-admin-view]').forEach((link) => {
@@ -3006,6 +3137,10 @@ function setAdminView(viewName) {
     loadAdminServers(ui.adminServerSearchInput?.value.trim() || '').catch(() => {});
   } else if (selected === 'storage') {
     loadAdminStorage().catch(() => {});
+  } else if (selected === 'backup') {
+    loadAdminBackup().catch(() => {});
+  } else if (selected === 'general') {
+    loadAdminGeneral().catch(() => {});
   }
 }
 
@@ -4373,6 +4508,7 @@ function openAuth() {
   closeFriendRequestsModal();
   closeDobModal();
   showLogin();
+  updateConnectedServerLabel();
 }
 
 function animateLogoutTransition() {
@@ -7859,6 +7995,18 @@ ui.adminCleanupForm?.addEventListener('submit', async (event) => {
   await saveAdminCleanupSettings();
 });
 
+ui.adminInstanceNameForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await saveAdminInstanceName();
+});
+
+ui.adminBackupExportBtn?.addEventListener('click', exportAdminBackup);
+
+ui.adminBackupRestoreForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await submitAdminBackupRestore();
+});
+
 ui.adminModal?.querySelectorAll('.admin-modal-nav a[data-admin-view]').forEach((link) => {
   link.addEventListener('click', (event) => {
     event.preventDefault();
@@ -8366,6 +8514,26 @@ function isAllowedServerBase(value) {
   }
 }
 
+async function checkServerReachable(baseUrl) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/public/stats`, {
+      signal: controller.signal,
+      cache: 'no-store'
+    });
+    if (!response.ok) {
+      return { reachable: false, instanceName: null };
+    }
+    const data = await response.json().catch(() => null);
+    return { reachable: Boolean(data?.ok), instanceName: data?.instanceName || null };
+  } catch (_error) {
+    return { reachable: false, instanceName: null };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function getSavedServerBases() {
   let parsed = [];
   try {
@@ -8410,6 +8578,7 @@ function setServerBase(normalized) {
     localStorage.removeItem('jellochat_token');
   }
   saveServerBaseOption(normalized);
+  updateConnectedServerLabel();
 }
 
 function clearServerBase() {
@@ -8419,6 +8588,7 @@ function clearServerBase() {
     localStorage.removeItem(API_BASE_KEY);
     localStorage.removeItem('jellochat_token');
   }
+  updateConnectedServerLabel();
 }
 
 function setServerUrlMessage(message, isError = false) {
@@ -8474,8 +8644,30 @@ function renderServerUrlModal() {
         fillInput();
       }
     });
+    const statusDot = document.createElement('span');
+    statusDot.className = 'status-dot checking';
+    statusDot.title = 'Checking connection...';
     const label = document.createElement('strong');
     label.textContent = url;
+    const urlSubtext = document.createElement('small');
+    urlSubtext.hidden = true;
+    const textWrap = document.createElement('div');
+    textWrap.className = 'server-url-row-text';
+    textWrap.append(label, urlSubtext);
+    checkServerReachable(url).then(({ reachable, instanceName }) => {
+      statusDot.classList.remove('checking');
+      statusDot.classList.toggle('online', reachable);
+      statusDot.classList.toggle('offline', !reachable);
+      statusDot.title = reachable ? 'Connected' : 'Unreachable';
+      if (instanceName) {
+        label.textContent = instanceName;
+        urlSubtext.textContent = url;
+        urlSubtext.hidden = false;
+      }
+    });
+    const labelWrap = document.createElement('div');
+    labelWrap.className = 'server-url-row-label';
+    labelWrap.append(statusDot, textWrap);
     const useBtn = document.createElement('button');
     useBtn.type = 'button';
     useBtn.className = 'server-url-use-btn';
@@ -8497,7 +8689,7 @@ function renderServerUrlModal() {
       setServerUrlMessage('Removed saved server.');
       renderServerUrlModal();
     });
-    row.append(label, useBtn, removeBtn);
+    row.append(labelWrap, useBtn, removeBtn);
     ui.serverUrlList.appendChild(row);
   }
 }
@@ -8533,6 +8725,28 @@ function getConfiguredServerBase() {
     return location.origin;
   }
   return DEFAULT_SERVER_BASE;
+}
+
+async function updateConnectedServerLabel() {
+  const el = document.getElementById('auth-connected-server');
+  if (!el) {
+    return;
+  }
+  const base = getConfiguredServerBase();
+  if (!base) {
+    el.textContent = '';
+    return;
+  }
+  el.textContent = `Connected to ${base}`;
+  try {
+    const response = await fetch(`${base.replace(/\/+$/, '')}/api/public/stats`, { cache: 'no-store' });
+    const result = await response.json();
+    if (result.ok && result.instanceName) {
+      el.textContent = `Connected to ${result.instanceName}`;
+    }
+  } catch (_error) {
+    // Keep showing the raw URL if the name lookup fails.
+  }
 }
 
 function getPublicPageUrl(pathname) {
@@ -8826,6 +9040,7 @@ if ('serviceWorker' in navigator && window.location.protocol === 'https:' && !is
 
 
 handleAuthDeepLinks().catch(() => {});
+updateConnectedServerLabel();
 
 (async function tryRestoreSession() {
   try {

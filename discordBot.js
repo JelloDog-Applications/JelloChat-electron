@@ -2,6 +2,7 @@ const {
   claimDiscordMigrationSession,
   importClaimedDiscordMigration
 } = require('./discordMigration');
+const { getAppSetting } = require('./app-settings');
 
 function loadDiscordJs() {
   try {
@@ -95,7 +96,7 @@ async function handleMigrateButton(interaction, db, discord, onImported) {
 }
 
 async function startDiscordMigrationBot({ db, onImported } = {}) {
-  const token = String(process.env.DISCORD_BOT_TOKEN || '').trim();
+  const token = String((await getAppSetting('discord_bot_token')) || process.env.DISCORD_BOT_TOKEN || '').trim();
   if (!token) {
     console.log('Discord migration bot disabled: DISCORD_BOT_TOKEN is not set.');
     return null;

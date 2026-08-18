@@ -1,89 +1,73 @@
-# JelloChat (Electron + PostgreSQL)
+# JelloDog Chat
 
-A simple Discord-like desktop app built with Electron and PostgreSQL.
+A self-hostable, Discord-like chat platform. One codebase runs as a web server, an Electron desktop app, and an Android app.
 
 ## Features
 
-- Register / login (passwords hashed with bcrypt)
-- Server list, channels, and messages UI
-- Create servers and channels in-app
-- Server creator becomes owner; only owner can create channels
-- Server invite system (owner creates invite code, users join by code)
-- Friends system (send requests, accept/reject, friend list)
-- Right sidebar showing online users in the selected server
-- Direct messages (DM) allowed only for friends or shared-server members
-- Leave server option from server context menu (desktop right-click, mobile long-press)
-- Kick and ban system (server owner only)
-- Unban members (server owner only)
-- Server options panel with tabs (General/Banned) and server rename
-- Voice channels (LiveKit token-based join)
-- Edit and delete your own messages
-- Live updates over local WebSocket events
-- Web mode for browser and phone access
-- PostgreSQL storage for users, servers, channels, and messages
-- IPC bridge between renderer and Electron main process
+- Servers, channels (text and voice), and channel categories with per-channel permission overrides
+- Roles and role-based permissions per server
+- Friends (requests, accept/reject) and direct messages
+- Voice channels with LiveKit — audio and screen sharing
+- Attachments with size/quota limits and automatic expiry cleanup
+- Passkey (WebAuthn) sign-in, in addition to email/password
+- Email verification, password reset, and account notifications (optional SMTP)
+- Discord migration tool — import a Discord server's channel structure via a bot
+- Platform admin console: user/report/ban-appeal management, server oversight, storage policy
+- Live updates over WebSocket
+- Guided first-run setup wizard (`/setup`) — create the admin account and configure the default server, SMTP, LiveKit, and the Discord bot from the browser, no manual `.env` editing required for any of it
+- Runs as a web server (browser + mobile), an Electron desktop app, or an Android app
 
-## Setup
+## Quick start (Docker)
 
-For a full public-server setup guide, see [docs/SERVER_SETUP.md](./docs/SERVER_SETUP.md).
+The fastest way to run your own server:
 
-1. Install PostgreSQL and create a database named `jellochat`.
-2. Run the schema script:
-
-   ```powershell
-   psql -U postgres -d jellochat -f .\sql\schema.sql
-   ```
-
-3. Copy `.env.example` to `.env` and set DB credentials.
-4. Configure LiveKit in `.env` for voice channels:
-
-   ```env
-   LIVEKIT_URL=wss://your-livekit-host
-   LIVEKIT_API_KEY=your_api_key
-   LIVEKIT_API_SECRET=your_api_secret
-   ```
-5. Install dependencies:
-
-   ```powershell
-   npm install
-   ```
-
-6. Start the app:
-
-   ```powershell
-   npm start
-   ```
-
-## Run in Browser / Phone
-
-1. Start web server mode:
-
-   ```powershell
-   npm run web
-   ```
-
-2. Open in browser: `http://localhost:3000`
-3. On phone (same Wi-Fi), open: `http://YOUR_COMPUTER_IP:3000`
-
-You can set `WEB_PORT` in `.env` if needed.
-
-## Voice Channels
-
-- Owner can create both `text` and `voice` channels.
-- Clicking a voice channel requests a secure token from the backend and opens LiveKit Meet.
-
-## Schema Update
-
-If you already created the database before this update, re-run:
-
-```powershell
-psql -U postgres -d jellochat -f .\sql\schema.sql
+```bash
+cp .env.example .env
+# edit .env, set at least DB_PASSWORD
+docker compose up -d
 ```
 
-## Important note
+Then open `http://localhost:3000/setup` and follow the wizard. See [docs/DOCKER.md](./docs/DOCKER.md) for details, reverse-proxy/HTTPS notes, and troubleshooting.
 
-The seed data creates one server (`Jello HQ`) and three channels. Newly registered users are auto-added to `Jello HQ`.
+## Quick start (manual)
+
+For a bare-metal install (Node + PostgreSQL directly on the host), or for running as a systemd service, see the full guides:
+
+- [docs/SERVER_SETUP.md](./docs/SERVER_SETUP.md) — install, configure `.env`, run in web mode, HTTPS
+- [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) — systemd service setup
+
+In short:
+
+```bash
+npm ci
+cp .env.example .env   # edit DB credentials and other settings
+npm run web
+```
+
+Then open `http://localhost:3000/setup` to finish configuration.
+
+## Desktop app
+
+```bash
+npm start
+```
+
+Runs the Electron app with its own embedded backend, connecting directly to PostgreSQL using the same `.env`.
+
+## Mobile app
+
+The Android app is built with Capacitor and points at any JelloChat server (default or self-hosted, changeable from the login screen's Server URL option). See [docs/FDROID.md](./docs/FDROID.md) for the F-Droid build, or grab a release from the [GitHub Releases page](https://github.com/JelloDog-Applications/JelloChat-electron/releases).
+
+## Configuring the server
+
+Everything below is optional and can be set either in `.env` before first boot, or through the setup wizard at `/setup` on first run:
+
+- **SMTP** (email verification, password reset, admin mail) — without it, new accounts are auto-verified instead of requiring email confirmation.
+- **LiveKit** (voice channels and screen sharing) — without it, text chat still works but voice join fails cleanly.
+- **Discord bot token** (Discord server migration) — optional; requires a restart after being set via the wizard.
+
+Most other settings (attachment limits, cleanup policy, storage quota) are managed post-login from the Admin Console rather than `.env`.
 
 ## License
 
-JelloChat is licensed under the GNU Affero General Public License v3.0 or later. See [LICENSE](./LICENSE).
+JelloDog Chat is licensed under the GNU Affero General Public License v3.0 or later. See [LICENSE](./LICENSE).

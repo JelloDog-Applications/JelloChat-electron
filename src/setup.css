@@ -1,0 +1,54 @@
+.setup-steps {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.setup-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #49526a;
+  transition: background 180ms ease;
+}
+
+.setup-step-dot-active {
+  background: var(--accent);
+}
+
+.setup-hint {
+  margin: -4px 0 4px;
+  font-size: 0.85rem;
+}
+
+.setup-radio-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #49526a;
+  background: #2d3441;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.setup-radio-card input {
+  width: auto;
+  margin: 0;
+}
+
+.setup-radio-card:has(input:checked) {
+  border-color: var(--accent);
+  background: #283f3a;
+}
+
+.setup-step-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.setup-step-actions .secondary-btn {
+  flex: 1;
+}
