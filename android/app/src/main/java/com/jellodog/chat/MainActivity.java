@@ -3,7 +3,6 @@ package com.jellodog.chat;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -70,7 +69,15 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().clearHistory();
         getBridge().getWebView().getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
         getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
-        if (isDebuggableBuild() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        // Capacitor serves app content over https://localhost, so a fetch() to a self-hosted
+        // server on plain HTTP (the normal case for a LAN Docker instance with no TLS cert) is
+        // "mixed content" and gets silently blocked unless explicitly allowed here. This used to
+        // be gated to debug builds only, which is why debug builds could reach self-hosted HTTP
+        // servers but release builds (canary/ptb/standard) could not. The JS-side
+        // isAllowedServerBase() check is the real security boundary (HTTPS anywhere, HTTP only
+        // for localhost/private-network hosts), so allowing mixed content here for all builds is
+        // consistent with that, not a new exposure.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
         appendAppUserAgentMarker();
@@ -116,10 +123,6 @@ public class MainActivity extends BridgeActivity {
                     AUDIO_PERMISSION_REQUEST_CODE
             );
         }
-    }
-
-    private boolean isDebuggableBuild() {
-        return (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
 
     private void appendAppUserAgentMarker() {
