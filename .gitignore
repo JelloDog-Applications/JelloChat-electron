@@ -15,6 +15,10 @@ uploads/
 .env.*
 !.env.example
 
+# Editor config -- machine-specific, and has held DB connection credentials
+.vscode/
+.vscode-upload.json
+
 # Logs
 *.log
 npm-debug.log*
